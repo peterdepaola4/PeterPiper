@@ -1,0 +1,14 @@
+# Binary files: never change line endings, never diff as text
+*.prism binary
+*.pzfx binary
+*.npz binary
+*.nd2 binary
+*.png binary
+*.tif binary
+*.xlsx binary
+*.zip binary
+# The Windows launcher keeps Windows line endings
+*.bat text eol=crlf
+*.ico binary
+# the launcher's terminal logo is UTF-16: never convert its line endings
+app/peterpiper/assets/logo_*.txt binary

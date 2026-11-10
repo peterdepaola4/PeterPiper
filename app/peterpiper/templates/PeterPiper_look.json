@@ -1,0 +1,55 @@
+{
+  "about": "PeterPiper Prism look (V2.5): taken from a graph styled in GraphPad Prism 11. series = the look of each data set in turn.",
+  "font_pt": 18.0,
+  "series": [
+    {
+      "symbol": "circle",
+      "colour": "#28D2F0",
+      "error_colour": "#28D2F0",
+      "symbol_colour": "#28D2F0",
+      "symbol_border": "#000000",
+      "line_pt": 0.5863,
+      "error_line_pt": 0.72,
+      "symbol_pt": 4.32,
+      "error_style_byte": 5,
+      "error": "SD"
+    },
+    {
+      "symbol": "square",
+      "colour": "#0000FF",
+      "error_colour": "#0000FF",
+      "symbol_colour": "#0000FF",
+      "symbol_border": "#000000",
+      "line_pt": 0.5863,
+      "error_line_pt": 0.72,
+      "symbol_pt": 4.32,
+      "error_style_byte": 5,
+      "error": "SD"
+    },
+    {
+      "symbol": "triangle",
+      "colour": "#000000",
+      "error_colour": "#000000",
+      "symbol_colour": "#000000",
+      "symbol_border": "#808080",
+      "line_pt": 0.5863,
+      "error_line_pt": 0.72,
+      "symbol_pt": 4.32,
+      "error_style_byte": 5,
+      "error": "SD"
+    },
+    {
+      "symbol": "triangle_down",
+      "colour": "#55A0FB",
+      "error_colour": "#167CFA",
+      "symbol_colour": "#55A0FB",
+      "symbol_border": "#D4D4D4",
+      "line_pt": 0.5863,
+      "error_line_pt": 0.72,
+      "symbol_pt": 4.32,
+      "error_style_byte": 5,
+      "error": "SD"
+    }
+  ],
+  "legend_shown": false
+}

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+_home/
+_work/
+out/
+_out/
+release/
+release*/
+# the launcher's own shortcut next to the .bat (made on each computer)
+PeterPiper.lnk
+# the lab's own file names (unpublished experiments) - never uploaded
+dev_tests/lab_paths.json
+# test logs (made by the tests; may hold local paths)
+dev_tests/logs/

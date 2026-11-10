@@ -1,0 +1,271 @@
+PeterPiper 1.0  -  quick start
+==============================
+(PeterPiper was called PD4nav up to version 3.0; 1.0 continues PD4nav V3.0.)
+Full manual: README.html (double-click it - it opens in your web browser).
+It explains every step, how every number is made, every output file, and
+what to write in a paper.
+Project page: https://github.com/peterdepaola4/PeterPiper
+
+START IT
+  Double-click  "PeterPiperV1.0.bat".  That is the only file you ever open.
+  Its window shows the PeterPiper logo; the first time, it also puts a
+  PeterPiper shortcut with the logo on your Desktop, in the Start menu and in
+  this folder - use that from then on (a .bat file cannot have its own icon).
+  First time on a computer it installs itself (about 5 minutes, internet once,
+  about 250 MB) into its own folder  %USERPROFILE%\.PeterPiperV1.0 ; after that it
+  opens straight away and everything runs on this computer - nothing is
+  uploaded. It installs the exact package versions PeterPiperV1.0 was tested with
+  (app\requirements.txt); if this computer cannot use them it installs
+  compatible versions instead and says so. The versions really installed are
+  listed in  %USERPROFILE%\.PeterPiperV1.0\venv\installed_versions.txt .
+  "Cannot run from inside the zip"?  Right-click the zip > Extract All... first.
+  "Python is missing"?  Install 64-bit Python 3.13 (or 3.12 / 3.11) from
+  python.org and tick "Add python.exe to PATH" on the first screen.
+  Windows only (64-bit Windows 10 / 11).
+
+WHO IS USING IT?  (V2.9)
+  Pick your name (Enter), or type a new one and press Add user (no password).
+  Your settings, runs, groups and saved files are kept apart from everyone
+  else's, in %USERPROFILE%\PeterPiper data (every PeterPiper version finds them);
+  results go into OUTPUT_<movie>\<your name>. You only see your own analyses.
+  PeterPiper starts empty: nothing is taken over from PD4nav (its data stays
+  where it is; Import a profile... brings a PD4nav profile in). Rename... /
+  Remove... (nothing is deleted). "Don't ask again" for computers where each
+  person has their own Windows login. Switch user... is in the first window.
+
+FIRST WINDOW
+  Only comparing / averaging runs you saved before? Press
+  "Compare / average runs..." at the top - no image needed.
+  Otherwise pick the .nd2 file, CHECK the pixel size and frame interval
+  (every size and time depends on them), rename the channels if you like, press
+  "Open image". Big files show "Opening... please wait" for a few seconds.
+  If the gaps between timepoints were uneven (e.g. the first frame taken
+  hours before the rest), an amber note under the summary says so (V3.0).
+  "Analysed before" tells you if earlier analyses of this file were found.
+
+ANALYSED BEFORE?
+  If this .nd2 was analysed before, a list of the earlier analyses appears:
+  "Load this run" brings back the ROIs AND the tracking (press Play to check,
+  export straight away), or "Start a fresh analysis". File > Earlier analyses
+  of this file... shows the list at any time.
+
+MAIN WINDOW  -  the blue box at the top always says what to do next
+  The step bar above it (1 Rules ... 5 Export) shows where you are - click a
+  step to go there. Steps you are not on fold to their title: click the title
+  to open one (View > Fold finished steps turns this off).
+  1  TRACKING RULES
+       One rule per kind of ROI (Nucleus / Whole cell / Cytoplasm / Mitochondria):
+         Auto-detect [Nucleus]  using [GFP]
+                     helped by [Cy5]          (+ helper channel)
+       The main channel ("using") is what the ROI is drawn and followed on.
+       A HELPER channel (V3.0) chooses which cells AUTO-DETECT picks (they
+       need its signal, e.g. Cy5 = transfected) and helps follow them (main
+       + half of each helper; the outline stays within 1 um of the main
+       channel's own outline). Cells you click are always kept.
+       Runs made before V3.0 with ONLY / WITH / AND / IF load and are applied
+       exactly as saved (a note says so); change the rule to use helpers.
+       Every channel is measured in every ROI - always (all ratios are made).
+       Cells move with the FIRST rule's compartment (put the nucleus first).
+       "+ Add rule" for another kind of ROI. Changing a rule = track again.
+  2  ADD ROIs
+       Compartment; the line under it says what it is "Drawn and followed on".
+       AUTO-DETECT      proposes the well-defined ROIs in a few seconds (clearly
+                        above background, normal size and shape, separate).
+                        A SLIDER under it then keeps only the N
+                        brightest found (slide left: the dimmest go first;
+                        brightness = mean in the ROI minus background).
+                        Undo removes them all. Then fix the rest.
+       TRAIN AUTO-DETECT FROM MY RUNS... (V3.0) teaches it the cells YOU pick:
+                        tick runs you outlined by hand, see its score and the
+                        cells it gets right / misses / adds, answer a short
+                        keep / skip quiz, save it with a name. It becomes your
+                        own button under AUTO-DETECT for movies with the same
+                        channels (README section 6.13).
+       ADD     (green when on)  click each one - the outline is drawn for you;
+                                straight after a click, SCROLL to make it
+                                bigger / smaller (redrawn from the image)
+       REMOVE  (red when on)    click an ROI to delete it
+       DRAW BY HAND (orange)    click around an outline, double-click to finish
+       RESIZE  (purple when on) click any cell, then SCROLL: up = bigger,
+                                down = smaller (12 % per notch, no limit);
+                                "Resize all cells together" does every cell
+       SPLIT   (teal when on)   hold the left button and draw a line across
+                                an ROI: it is cut into two cells
+       ADD TO CELL (pink)       click a cell's ROI, then click each missed
+                                part just outside it: that part is joined on
+       Click a tool again (or Esc) to turn it off. With no tool on, clicking a
+       cell selects it. Right-click an ROI: move it to another cell / make it a
+       cell of its own / remove it.
+       BACKGROUND (green box): YOU pick it (V3.0 - no longer automatic; it
+       often sat on cells): right-click an empty area > "Put the background
+       region here", or Compartment "Background", then ADD (a 60 um square
+       where you click) or DRAW BY HAND (hold the button, draw around the
+       region, release). TRACK & MEASURE without one takes you there. Cells in it are FINE: the
+       autofluorescence of non-transfected cells is background. EVERY
+       pixel of the region is used at every timepoint - nothing is left
+       out. After tracking the region is checked: only if a bright object
+       comes into it (raising the background by more than 3%) or measured
+       cells cover more than 5% of it, a box "Object in the background
+       region" says so - "Redraw background" (draw a new region, then
+       TRACK & MEASURE again) or "Keep it". Flicker and bleaching are only
+       recorded. The check never changes a value.
+  3  TRACK & MEASURE
+       Every ROI is REDRAWN at every timepoint from that frame's pixels, on its
+       rule's channel A. SIZE GUARD (a hard limit): each ROI never has more or
+       fewer pixels than +/-25 % of the size you drew ("Size may change by");
+       a redraw that spills over is re-fitted / trimmed to its brightest
+       pixels; if no outline is found the outline is moved with the cell and
+       that frame is noted in QC. 0 % = EXACTLY the number of pixels you drew,
+       at every timepoint. Two cells' ROIs never overlap.
+       TRACKER BOUNDARY: click the button, click a cell, click the points of a
+       line and double-click: that cell's ROIs never cross the line (orange;
+       fixed in the image; saved; listed in the methods). "Remove lines"
+       removes the selected cell's lines. Lines belong to the cell NUMBER.
+       MITOCHONDRIA: the mitochondria themselves are found again at every
+       timepoint - only those pixels are measured.
+       Also in this box: "Max movement between timepoints" (how far a cell may
+       move per timepoint, default 3 um) and - only while a rule uses them -
+       "IF rule: needed signal" (default 5 x noise) and "AND rule: pixel
+       threshold" (default 3 x noise). Changing any of these (or a boundary
+       line) after tracking = track again.
+  4  CHECK
+       Play (or the space bar) under the image - watch the outlines follow the
+       cells. Traces panel (right): the list of cells with Include ticks - THE
+       place to include / exclude (or double-click a trace). QC notes are
+       shown there; they never exclude a cell by themselves - you decide.
+       View "Check cells": every cell in its colour, excluded ones grey.
+       View "As exported": the graph exactly as it will be exported - choose
+       its look (mean +/- SEM, SD or 95% CI, bars or band, each cell...);
+       "Save graph..." saves it as Prism (.prism), PNG (300 dpi) or SVG.
+       The look goes into the Prism files too; if Prism cannot draw part of
+       it (e.g. a shaded band) a small brown note says what Prism shows
+       instead. Look > "Load look from a Prism file..." takes the look of a
+       .prism you styled in Prism.
+  5  EXPORT
+       Baseline timepoint = time 0 (earlier timepoints negative), F/F0 = 1.
+       "Choose outputs & export": put what you want on YOUR EXPORT LIST; only
+       that is written, into a new folder each time:
+         OUTPUT_<file name>\<you>\Export_<date>_<time>\<Compartment>\...
+       The workbook and methods text carry the .nd2 name (e.g.
+       movie1_nucleus.xlsx); graphs, CSV and Prism graphs inside do not repeat
+       it (shorter paths). A "Name for the files" you type goes on every file.
+       Long paths off (Help > Computer check...)? Too-long paths are warned.
+
+YOUR WORK IS SAVED AUTOMATICALLY
+  ROIs, tracking, include / exclude, rules, baseline and graph look are saved
+  as you work into  <results folder>\PeterPiper_sessions  (File > Save my work
+  automatically turns this off). Open the same .nd2 later and it is offered
+  back. A session identical to the last one saved is not saved again, and
+  identical saves are listed once. Old ROI files (V2.1 and older) hold no
+  tracking: you are asked whether to track them now.
+
+WHAT CAN BE EXPORTED (per compartment)
+  Excel workbook   every cell's values: Raw, background-subtracted, F/F0,
+                   ratio, R/R0 for every channel and channel pair, Include
+                   sheet (1/0), Graphs, QC, Settings (baseline dropdown) and
+                   Methods (a ready-to-edit methods text, every setting used);
+                   Sum_<channel>, Area_px, Area_um2: the raw pixel sums and
+                   areas behind every mean (Raw = Sum / Area_px)
+  Prism graphs     Prism 10+ (.prism), one per key quantity, GRAPH ALREADY MADE:
+                   in your graph look (default: the built-in Prism template
+                   look, mean +/- SEM of the included cells), title = file -
+                   compartment (n).
+                   Tables inside: cells as replicates, mean / SEM / n, each
+                   cell by name, baseline drift slopes (if chosen)
+  Prism tables     .pzfx for any Prism version: per quantity 'cells as
+                   replicates', 'mean, SEM, n', 'each cell'
+  Graphs           300 dpi PNG in your graph look ("As exported" view)
+  CSV tables       one per quantity: included cells + mean, SEM, n
+  Baseline drift   each cell's slope of a straight line through timepoints T2-T9
+                   (set the window in step 5), per minute
+  ROI pictures     full resolution, numbered as in Excel
+  ROI file         .npz: your ROIs AND their tracking - reload it later and
+                   check / export straight away, no re-tracking
+  Methods text     <name>_methods.txt: methods section + references, every
+                   rule and setting used - the start of your paper's methods
+  Raw TIFFs        16-bit raw counts, unchanged; tagged so Fiji / ImageJ opens
+                   them with visible contrast (Windows Photos shows raw 16-bit
+                   images almost black - that is the viewer, not the data)
+  Viewing copies   8-bit PNG, contrast-stretched: look right anywhere (Photos,
+                   PowerPoint). For looking only - do not measure them.
+
+COMPARE / AVERAGE RUNS
+  First window (top), File > Compare / average runs..., or the button under
+  the export button. Tick saved runs (ROI / session files WITH tracking).
+  Each run = one DISH. Put the dishes of one condition into one GROUP
+  (type a name in the Group column, "Put in group...", or "Group by cell
+  line"). Show:
+    Each run                  one line per dish: mean of its included cells
+    Groups - mean of dish     each dish's mean of its included cells, then
+      means                   mean +/- SEM ACROSS DISHES (n = dishes) - the
+                              number to report
+    Groups - pooled cells     all cells of the group as one sample (n =
+                              cells) - for reference only (cells of one dish
+                              are not independent replicates)
+  Time = from each run's own baseline; only frame times EVERY dish has are
+  averaged - nothing is interpolated (a note says what was left out).
+  Colours follow the CELL LINE in the name (U2OS reds, IHH greens, HepG2
+  blues, HEK293 purples, HeLa oranges ...; U20S = U2OS). Unknown cell line:
+  you pick a colour once, it is remembered.
+  CELL LINE column: if the automatic match is wrong, pick the run's cell
+  line from its dropdown (or type a new name - its colour is asked once).
+  The run is recoloured in that line's shades; the choice is remembered
+  for that .nd2 (also after restarting) and "Group by cell line" uses it.
+  Click a column title to sort the list (numbers as numbers, dates by date,
+  names in natural order; click again to reverse); drag a title to move
+  its column. Column order, widths and sort are remembered.
+  SAME .ND2 AS (orange): runs made from the same .nd2 movie are ONE dish.
+  If two of them are ticked, a red warning appears and "Save..." asks
+  first - averaging them would count one dish twice. Tick only one
+  analysis per movie.
+  "Save..." writes into <results folder>\Comparisons (never overwriting):
+  .prism (built-in template look), PNG / JPEG / SVG / TIFF / PDF, CSV and
+  Excel (the plotted numbers, each dish's mean and the pooled cells).
+  THE LIST (V2.8): ticked runs are BOLD and plotted; the rest are dimmed.
+  A folder holds the analyses of one .nd2 analysed more than once - tick
+  one. GROUPS panel (right): "+ New group", then drag runs onto it (or
+  select runs and "Put selected runs in"). Above the graph: Y / X error
+  bars, Each cell, Reset zoom; click a legend entry to hide a line; hover
+  a point to read its values; hover any dropdown entry for what it means.
+  WHAT TO PLOT is a sentence of dropdowns:
+    Plot [R/R0] of [GFP] over [Cy5] in the [Nucleus]  vs  [Time]
+  "vs" is the X axis: Time, or another measure of the SAME cells (e.g.
+  F/F0 of GFP in the nucleus vs R/R0 of mCherry over Cy5 in the cytoplasm):
+  one point per timepoint (mean, error bars on X and Y) or one dot per cell.
+  Measures: R/R0, F/F0, dR/R0, dF/F0, Ratio (not normalised), Intensity
+  (background-subtracted), Raw intensity, Sum intensity, Background,
+  Compartment ratio (e.g. nucleus / cytoplasm), Area. X: Time, Timepoint
+  or any measure. Optional: a second measure on a RIGHT Y axis. A red line
+  says when a plot makes no sense. "Save plot settings..." keeps a plot
+  for later; "Batch save..." saves several saved plots at once.
+
+PRISM STYLE TEMPLATES (V2.7)  -  File > Prism style templates...
+  Open "PeterPiper graph style.prism" in Prism, change the look of graph 1,
+  save it: every .prism from then on uses it (remembered). For kinetics /
+  drift tables, make a column graph in "PeterPiper column graph style.prism"
+  (New graph > Column > scatter dot plot, mean +/- SEM) and save it. Every
+  table in a .prism now gets its own graph.
+
+SAVED SETTINGS AND BATCH (V2.7)
+  File > Save analysis settings... keeps the tracking rules, detection, QC,
+  baseline, export list and graph look as a named file; Load... uses it.
+  "Batch analyse .nd2 files..." (first window or File menu) runs saved
+  settings on many .nd2 files without clicking (auto-detect, track, export)
+  and writes a log. Every file is flagged "automatic - check": open it and
+  check it before you use its numbers.
+
+HOW THE NUMBERS ARE MADE
+  ROI value = sum of the raw (full-resolution) pixel values under the ROI /
+  number of pixels, for every channel; minus the background of the same
+  frame and channel (sum / number of ALL the background region's pixels -
+  nothing is left out; jumps and drift are only reported, never
+  corrected); ratio = background-subtracted channel A / channel B; F/F0, R/R0
+  divide by the baseline timepoint; a cell's F/F0 / ratio / R/R0 is left out
+  where a channel is below 5 x the noise of its ROI mean at baseline (and a
+  ratio's points where the denominator collapses) - step 4, "Ratios need
+  baseline"; mean +/- SD over the included cells (SD with n - 1; SEM = SD /
+  sqrt(n) also given); across dishes: mean +/- SD of the dish means
+  (n = dishes). Details: README.html, section 8.
+
+Text too small?  View > Larger text (Ctrl +).   Dark or light?  View > Theme.
+Everything runs on this computer - nothing is uploaded anywhere.

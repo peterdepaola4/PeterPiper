@@ -1,0 +1,23 @@
+# PeterPiper - FALLBACK package list (version ranges, not exact versions).
+#
+# Used by PeterPiperV1.0.bat ONLY when the exact, tested versions in
+# requirements.txt cannot be installed on a computer (for example Python 3.10,
+# or a computer PyPI has no ready-made packages for). The launcher says so on
+# screen. pip picks the newest versions inside these ranges that suit that
+# computer, so the result can differ from the tested set: the versions that
+# were really installed are written to installed_versions.txt in the install
+# folder (venv). For work you will publish, prefer a computer where the exact
+# versions install (64-bit Python 3.11 - 3.14; see READ ME.txt).
+numpy>=1.24,<3
+scipy>=1.10,<2
+scikit-image>=0.21,<0.28
+tifffile>=2023.1.1
+imagecodecs>=2023.1.23
+nd2>=0.9,<1
+dask>=2023.1
+openpyxl>=3.1,<4
+# Qt core + widgets only (no web engine): half the download of the full PySide6
+PySide6-Essentials>=6.5,<7
+pyqtgraph>=0.13,<0.15
+matplotlib>=3.7,<4
+pillow>=9

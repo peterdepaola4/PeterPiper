@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use PeterPiper in your research, please cite it as below and name the version you used."
+title: "PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies"
+version: 1.0.1
+date-released: 2026-11-10
+license: MIT
+repository-code: "https://github.com/peterdepaola4/PeterPiper"
+url: "https://github.com/peterdepaola4/PeterPiper"
+doi: "10.5281/zenodo.24120837"
+authors:
+  - family-names: DePaola
+    given-names: Peter
+    name-suffix: IV
+    orcid: "https://orcid.org/0000-0003-4264-0375"
+    affiliation: "Schmitt Lab, University of California, Los Angeles"
+keywords:
+  - fluorescence microscopy
+  - live-cell imaging
+  - single-cell analysis
+  - cell tracking
+  - ratiometric imaging
+  - Nikon ND2
+  - GraphPad Prism
+abstract: >-
+  PeterPiper (formerly PD4nav; version 1.0 continues PD4nav 3.0) measures fluorescence in single cells over time in Nikon NIS-Elements
+  .nd2 time-lapse movies. Regions of interest (nucleus, cytoplasm, whole cell,
+  mitochondria) are drawn from the image, followed through every timepoint by
+  redrawing them from that timepoint's pixels, measured in every channel with a
+  per-timepoint background, and exported to Excel, GraphPad Prism (with the
+  graphs made), CSV and images, together with a methods text and full
+  provenance. Saved runs can be compared and averaged as replicate dishes
+  (mean of dish means, n = dishes), one measure can be plotted against another,
+  and response kinetics (t1/2, initial slope) are computed per dish.

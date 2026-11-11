@@ -1,5 +1,23 @@
 # Changelog
 
+## PeterPiper 1.0.2 (2026-11-10)
+
+**PeterPiper for Mac.**
+
+- `PeterPiper.app` for macOS 14 or newer, Apple-chip and Intel Macs: drag into
+  Applications and double-click; it carries its own Python and the tested packages.
+  Built for each release on GitHub's Mac machines (`.github/workflows/mac-app.yml`,
+  `build/peterpiper_app.spec`): the developer tests run on macOS, the finished app runs
+  its self-test, and the `.dmg` files are attached to the release.
+- `PeterPiper --selftest [folder [movie.nd2]]` (both systems): every module and library,
+  the complete .nd2 reader, then a whole analysis of a built-in synthetic movie with
+  known answers and an export of every file type.
+- Compare recognises the same .nd2 whatever the case and slash direction of its saved
+  path, on every system.
+- macOS details: files open with their Mac program, Mac fonts, the Windows-only
+  long-path check is skipped, crash reports in ~/Library/Logs/PeterPiper, the Mac icon.
+- On Windows nothing else changes (same launcher, same install).
+
 ## PeterPiper 1.0.1 (2026-11-10)
 
 The program works exactly as 1.0.0 (same methods, same numbers).

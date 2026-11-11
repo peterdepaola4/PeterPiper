@@ -556,6 +556,10 @@ def part_g():
     from peterpiper import syscheck as SC
     from peterpiper.gui.syscheckdlg import ComputerCheckDialog
     items = SC.run_checks()
+    if sys.platform != "win32":                # macOS: no long-path setting to check
+        ok("G one check off Windows: Python", [i.key for i in items] == ["python"])
+        ok("G Python: a tested version", items[0].status == "ok", items[0].found)
+        return
     ok("G two checks: long paths and Python", [i.key for i in items] == ["long_paths", "python"])
     lp, py = items
     real = SC.long_paths_enabled()

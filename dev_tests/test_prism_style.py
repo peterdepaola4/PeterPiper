@@ -91,6 +91,11 @@ def error_half(y, kind):
 
 
 # ------------------------------------------------------------- run Prism
+def have_prism() -> bool:
+    """GraphPad Prism for Windows is here (it draws the files to check them)."""
+    return sys.platform == "win32" and PRISM.exists()
+
+
 def render(folder: Path, names, batch_name: str, timeout=900) -> str:
     lines = [f'SetPath "{folder}"']
     for n in names:

@@ -19,6 +19,11 @@ HISTORY_REPO = Path(os.environ.get("PD4NAV_HISTORY_REPO") or labdata.T("t01"))
 OLD_PACKAGE = "app/roinav"
 
 
+def available() -> bool:
+    """PD4nav's history is on this computer (a git repository at HISTORY_REPO)."""
+    return (HISTORY_REPO / ".git").exists()
+
+
 def show(commit: str, rel: str) -> bytes:
     """The file <package>/<rel> as it was at `commit` (PD4nav's app/roinav)."""
     return subprocess.run(["git", "-C", str(HISTORY_REPO), "show", f"{commit}:{OLD_PACKAGE}/{rel}"],

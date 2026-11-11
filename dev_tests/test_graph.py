@@ -196,6 +196,9 @@ def test_csv_files_vs_v22() -> None:
         import pd4nav_history                       # PD4nav's history (PeterPiper's earlier name)
         src = pd4nav_history.show("8e31298", "export.py")
     except Exception as e:                                  # noqa: BLE001
+        if not pd4nav_history.available():
+            print("     (PD4nav's history is not here - the comparison with V2.2 is skipped)")
+            return
         ok("CSV files vs V2.2 export.py", False, f"could not read V2.2 from git: {e}")
         return
     p = OUT / "export_v22.py"

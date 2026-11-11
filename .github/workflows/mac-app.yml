@@ -31,7 +31,7 @@ jobs:
       matrix:
         include:
           - label: Apple chip
-            runner: macos-14          # Apple silicon (arm64)
+            runner: macos-15          # Apple silicon (arm64)
             tag: AppleChip
           - label: Intel
             runner: macos-15-intel    # Intel (x86_64)
@@ -43,9 +43,9 @@ jobs:
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"      # the version the Windows install was tested with
 
@@ -96,7 +96,7 @@ jobs:
           shasum -a 256 "$NAME" | tee "$NAME.sha256"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: PeterPiper-macOS-${{ matrix.tag }}
           path: |

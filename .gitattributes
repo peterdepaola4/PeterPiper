@@ -12,3 +12,4 @@
 *.ico binary
 # the launcher's terminal logo is UTF-16: never convert its line endings
 app/peterpiper/assets/logo_*.txt binary
+*.icns binary

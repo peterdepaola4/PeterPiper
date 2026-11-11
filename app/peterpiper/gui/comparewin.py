@@ -1005,7 +1005,13 @@ class CompareWindow(QDialog):
             self.add_run_file(p, quiet=True, check=False)
 
     def _norm(self, p: str) -> str:
-        return os.path.normcase(os.path.abspath(plain_path(str(p))))
+        """A path as a key: case and slash direction ignored on every system
+        (Windows and Mac disks both ignore case; a run saved on Windows may be
+        compared on a Mac, where its 'E:\\...' path is kept as written)."""
+        s = plain_path(str(p)).replace("\\", "/")
+        if not re.match(r"^[A-Za-z]:/|^//", s):         # this computer's own kind of path
+            s = os.path.abspath(s).replace("\\", "/")
+        return s.casefold()
 
     def add_run_file(self, path: str, quiet: bool = False, check: bool = True) -> bool:
         """Add a run to the list (ticked when check). False + a plain message

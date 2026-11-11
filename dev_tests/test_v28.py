@@ -329,6 +329,9 @@ def part_bc(r1):
 def part_d(prisms):
     print("\n=== D) Prism 11 ===", flush=True)
     import test_prism_style as TPS
+    if not TPS.have_prism():
+        print("     (no GraphPad Prism for Windows here - opening the files in Prism skipped)")
+        return
     d = OUT / "prism"
     d.mkdir(exist_ok=True)
     for f in prisms:

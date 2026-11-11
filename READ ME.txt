@@ -6,7 +6,16 @@ It explains every step, how every number is made, every output file, and
 what to write in a paper.
 Project page: https://github.com/peterdepaola4/PeterPiper
 
-START IT
+ON A MAC (macOS 14 or newer)
+  Drag PeterPiper onto Applications (from the .dmg) and double-click it -
+  nothing else to install. The FIRST time macOS blocks it (PeterPiper is not
+  registered with Apple): click Done, open System Settings > Privacy &
+  Security, scroll down and click 'Open Anyway', then Open. After that it
+  opens with a double-click. Everything below works the same on a Mac,
+  except the .bat, the terminal window and the long-path note (Windows only).
+  Manual: README.html (section 3.7 for the Mac).
+
+START IT (Windows)
   Double-click  "PeterPiperV1.0.bat".  That is the only file you ever open.
   Its window shows the PeterPiper logo; the first time, it also puts a
   PeterPiper shortcut with the logo on your Desktop, in the Start menu and in

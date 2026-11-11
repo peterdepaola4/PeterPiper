@@ -1,6 +1,6 @@
 # PeterPiper - single-cell fluorescence time courses from Nikon .nd2 movies
 
-**Free and open source (MIT) · Windows 10 / 11 · runs entirely on your own computer.**
+**Free and open source (MIT) · Windows 10 / 11 and macOS 14+ · runs entirely on your own computer.**
 By Peter DePaola IV, Schmitt Lab, University of California, Los Angeles.
 
 PeterPiper was called **PD4nav** up to version 3.0. **PeterPiper 1.0 continues PD4nav V3.0**: the same methods and the same numbers, a new name and logo, and a fresh start on every computer (section 15). Version tags such as *(V2.9)* or *(V3.0)* in this manual mark the PD4nav version a feature arrived in.
@@ -12,11 +12,19 @@ PeterPiper was called **PD4nav** up to version 3.0. **PeterPiper 1.0 continues P
 - It **exports** Excel workbooks (live formulas), GraphPad Prism files with the graph already made, CSV tables, graphs, ROI pictures and a **ready-to-edit methods text** with every value used.
 - Saved runs can be **compared and averaged as replicate dishes** (mean of dish means, n = dishes), with kinetics (t½, initial slope).
 
-**Download and install**
+**Download and install** - from the project's **Releases** page (https://github.com/peterdepaola4/PeterPiper/releases)
 
-1. Download `PeterPiperV1.0.zip` from the project's **Releases** page (https://github.com/peterdepaola4/PeterPiper/releases).
+*Windows 10 / 11:*
+
+1. Download `PeterPiperV1.0.zip`.
 2. Right-click it > *Extract All...* into a simple local folder (not OneDrive or a network drive).
 3. Double-click **`PeterPiperV1.0.bat`**. The first time it installs its own private Python packages (about 5 minutes, internet once); after that it opens straight away. It needs 64-bit Python 3.11 - 3.14 from python.org (section 3).
+
+*macOS 14 (Sonoma) or newer:*
+
+1. Download `PeterPiper-...-macOS-AppleChip.dmg` (Macs with an Apple M chip) or `PeterPiper-...-macOS-Intel.dmg` (older Intel Macs; *Apple menu > About This Mac* says which).
+2. Open it and drag **PeterPiper** onto **Applications**.
+3. Double-click PeterPiper in Applications. Nothing else to install: the app carries its own Python. The first time, macOS says it cannot check PeterPiper for malicious software (PeterPiper is not registered with Apple): click **Done**, open **System Settings > Privacy & Security**, scroll down to *"PeterPiper" was blocked...* and click **Open Anyway**, then **Open** (and your Mac password). From then on it opens with a double-click like any app. (section 3.7)
 
 **Quick start** (section 5 has more)
 
@@ -91,8 +99,8 @@ What PeterPiper is **not**:
 
 | What | Requirement |
 |---|---|
-| Operating system | Windows 10 or Windows 11, 64-bit. **Windows only** - there is no Mac or Linux launcher. |
-| Python | 64-bit Python **3.11, 3.12, 3.13 or 3.14** from python.org, installed with "Add python.exe to PATH" ticked. Python 3.10 also works, but gets compatible package versions instead of the exact tested ones (the launcher says so). Python 3.9 and older are not accepted. |
+| Operating system | Windows 10 or Windows 11, 64-bit; or **macOS 14 (Sonoma) or newer** on Apple-chip or Intel Macs (the Mac app, section 3.7). No Linux launcher. |
+| Python | Windows: 64-bit Python **3.11, 3.12, 3.13 or 3.14** from python.org, installed with "Add python.exe to PATH" ticked. Python 3.10 also works, but gets compatible package versions instead of the exact tested ones (the launcher says so). Python 3.9 and older are not accepted. Mac: none - the app carries its own. |
 | Disk space | About 0.5 GB for the private Python environment (the tested install was about 460 MB); keep 1 GB free. Plus space for results (below). |
 | Internet | Once, for the first-time install: about 250 MB of packages from the official Python package index (https://pypi.org). Never again after that. |
 | Memory (RAM) | See below: 8 GB minimum, 16 GB recommended for large multi-channel movies. |
@@ -205,6 +213,19 @@ Exit codes of the launcher: 0 = OK; 1 = not extracted, no Python, unsuitable Pyt
 - **Coming from PD4nav**: PeterPiper starts empty - its users, settings and run list are its own, and PD4nav's (`%USERPROFILE%\PD4nav data`, `.PD4navV...` folders) are left untouched. Your analyses next to the movies are still there: *Earlier analyses of this file* and Compare > *Find my runs in a folder...* find them. To take a whole PD4nav profile over, export it in PD4nav (*Export my profile...*) and import it in PeterPiper (*Import a profile...*).
 - **Fresh install** (e.g. after a broken download): delete `%USERPROFILE%\.PeterPiperV1.0\venv` and double-click the `.bat` again.
 - **Uninstalling**: delete the program folder, `%USERPROFILE%\.PeterPiperV1.0` (the private Python) and the *PeterPiper* shortcuts (Desktop, Start menu). **`%USERPROFILE%\PeterPiper data` holds every user's profile, settings and run list** - keep it if anyone may use PeterPiper again; delete it only to remove PeterPiper and everyone's settings completely. PeterPiper makes no registry entries or system-wide installs (only the three shortcuts). Your results (`OUTPUT_...` folders, including `PeterPiper_sessions`) are not touched; delete them by hand if you wish. Python itself is removed through Windows Settings > Apps.
+
+### 3.7 macOS
+
+PeterPiper for Mac is one app, **PeterPiper.app**, that carries its own Python and every package (the exact versions in `app/requirements.txt`), so nothing has to be installed and no internet is needed after the download. It is the same program as on Windows - the same code, the same numbers - built on GitHub's Mac machines for each release (`.github/workflows/mac-app.yml`, `build/peterpiper_app.spec`), where the developer tests run on macOS and the finished app checks itself before it is published (below).
+
+1. **Which download**: `PeterPiper-...-macOS-AppleChip.dmg` for Macs with an Apple M chip (M1 - M4 ...), `PeterPiper-...-macOS-Intel.dmg` for Intel Macs. *Apple menu > About This Mac* shows *Chip: Apple M...* or *Processor: ... Intel ...*. Needs **macOS 14 (Sonoma) or newer** (the tested package versions exist for macOS 14 and newer only).
+2. **Install**: open the `.dmg`, drag **PeterPiper** onto **Applications**, eject the `.dmg`.
+3. **First start**: The first time, macOS says it cannot check PeterPiper for malicious software (PeterPiper is not registered with Apple): click **Done**, open **System Settings > Privacy & Security**, scroll down to *"PeterPiper" was blocked...* and click **Open Anyway**, then **Open** (and your Mac password). From then on it opens with a double-click like any app. After that you can keep it in the Dock (right-click its icon > *Options > Keep in Dock*).
+4. **Where things are**: your profiles, settings and run list in `PeterPiper data` in your home folder (Finder > Go > Home); results next to each movie in `OUTPUT_<movie>/<your name>`, as on Windows. If the app ever closes unexpectedly, the report is in `~/Library/Logs/PeterPiper` (Finder > Go > Go to Folder...).
+5. **Check an installation**: in Terminal, `/Applications/PeterPiper.app/Contents/MacOS/PeterPiper --selftest` runs a whole analysis of a small built-in synthetic movie and checks the numbers (add a folder and the path of one of your `.nd2` files to also open that movie, read only); it ends with *SELF-TEST PASSED*.
+6. **Updating**: drag the new version onto Applications and replace the old one; your data stays. **Uninstalling**: move PeterPiper from Applications to the Bin; delete `PeterPiper data` in your home folder only to remove everyone's settings too.
+
+Differences from Windows: there is no `.bat` and no terminal window (no block-character logo) - the app opens straight to *Who is using PeterPiper?*; the Windows long-path setting does not exist on a Mac; *Saved files...* and the Prism style templates open files with their Mac program (GraphPad Prism for Mac opens `.prism` files). Keyboard shortcuts use Cmd where Windows uses Ctrl.
 
 ## 4. Privacy: everything runs on your computer
 

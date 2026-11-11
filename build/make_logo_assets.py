@@ -8,7 +8,7 @@ app/peterpiper/assets/:
 
   logo_black.png, logo_white.png   the whole logo on a transparent background
                                    (black for the light theme, white for the dark)
-  PeterPiper.ico, piper_256.png    the piper alone, black, in a white rounded
+  PeterPiper.ico / .icns, piper_256.png  the piper alone, black, in a white rounded
                                    square (16 - 256 px) - window, taskbar, shortcuts
   logo_116.txt, logo_100.txt,      the logo drawn with half-block characters for
   logo_72.txt                      the launcher's terminal window, UTF-16 (116 / 100 / 72
@@ -109,6 +109,9 @@ def main() -> int:
     big.save(OUT / "piper_256.png", optimize=True)
     big.save(OUT / "PeterPiper.ico", sizes=[(s, s) for s in sizes],
              append_images=[tile(fig, s) for s in sizes if s != 256])
+    # macOS: the app's icon (Finder, Dock), 16 - 1024 px
+    tile(fig, 1024).save(OUT / "PeterPiper.icns",
+                         append_images=[tile(fig, s) for s in (16, 32, 64, 128, 256, 512)])
     raw = 1.0 - np.asarray(Image.open(SRC).convert("L"), float) / 255.0   # plain ink level
     ry, rx = np.nonzero(raw > 0.5)
     box = (ry.min() - 6, ry.max() + 6, rx.min() - 6, rx.max() + 6)

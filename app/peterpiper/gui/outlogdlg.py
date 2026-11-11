@@ -23,10 +23,7 @@ KINDS = {"export": "Export", "compare": "Compare / average", "graph": "Graph",
 
 
 def _open(path: str) -> None:
-    try:
-        os.startfile(plain_path(path))                     # noqa: S606 (Windows)
-    except OSError:
-        pass
+    W.open_path(path)                                       # Windows and macOS
 
 
 class OutputsDialog(QDialog):

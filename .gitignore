@@ -12,3 +12,6 @@ PeterPiper.lnk
 dev_tests/lab_paths.json
 # test logs (made by the tests; may hold local paths)
 dev_tests/logs/
+# the app builder's output (PyInstaller)
+build/dist/
+build/work/

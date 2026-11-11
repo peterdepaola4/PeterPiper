@@ -17,7 +17,8 @@ from . import widgets as W
 
 
 def _open(path) -> None:
-    os.startfile(str(path))                               # noqa: S606  (Windows: opens Prism)
+    if not W.open_path(path):                             # opens GraphPad Prism (Windows / macOS)
+        raise OSError("no program to open it was found")
 
 
 class TemplateDialog(QDialog):

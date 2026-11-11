@@ -1,0 +1,112 @@
+# PeterPiper for macOS: builds PeterPiper.app on GitHub's Mac machines (a Mac app
+# has to be built on a Mac), one for Apple-chip Macs and one for Intel Macs.
+# Each build: the exact tested packages (app/requirements.txt), the developer tests
+# that run anywhere, the app (build/peterpiper_app.spec), its self-test INSIDE the
+# finished app, then a .dmg to drag into Applications. Published releases get the
+# .dmg files attached; any run keeps them as downloadable artifacts for 30 days.
+#
+# Run it by hand: GitHub > Actions > "Mac app" > Run workflow. It also runs by
+# itself when a release is published.
+name: Mac app
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write          # to attach the .dmg files to a release
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: macOS (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Apple chip
+            runner: macos-14          # Apple silicon (arm64)
+            tag: AppleChip
+          - label: Intel
+            runner: macos-15-intel    # Intel (x86_64)
+            tag: Intel
+    env:
+      QT_QPA_PLATFORM: offscreen
+      MPLBACKEND: Agg
+      PYTHONIOENCODING: utf-8
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"      # the version the Windows install was tested with
+
+      - name: The tested packages and PyInstaller
+        run: |
+          python -m pip install --only-binary=:all: -r app/requirements.txt "pyinstaller==6.22.3"
+          python -c "import platform, sys; print(sys.version, platform.machine(), platform.mac_ver()[0])"
+          python -m pip freeze > installed_versions.txt
+
+      - name: Developer tests (the ones that run anywhere; lab-data tests skip)
+        run: |
+          set -o pipefail
+          fail=0
+          for t in test_peterpiper test_v29 test_v30 test_rules_unit test_graph test_v26_kinetics \
+                   test_compare_groups test_v28 test_v27; do
+            echo "::group::$t"
+            if ! PETERPIPER_HOME="$RUNNER_TEMP/home_$t" python "dev_tests/$t.py" 2>&1 | tee "$RUNNER_TEMP/$t.txt"; then
+              echo "::error::$t failed"; fail=1
+            fi
+            echo "::endgroup::"
+            tail -n 3 "$RUNNER_TEMP/$t.txt"
+          done
+          exit $fail
+
+      - name: Self-test from the code
+        run: python app/PeterPiper.py --selftest "$RUNNER_TEMP/selftest_code"
+
+      - name: Build PeterPiper.app
+        run: |
+          python -m PyInstaller --noconfirm --log-level WARN --distpath build/dist --workpath build/work build/peterpiper_app.spec
+          du -sh build/dist/PeterPiper.app
+          lipo -archs build/dist/PeterPiper.app/Contents/MacOS/PeterPiper
+          codesign --verify --deep --strict --verbose=2 build/dist/PeterPiper.app
+
+      - name: Self-test INSIDE the finished app
+        run: build/dist/PeterPiper.app/Contents/MacOS/PeterPiper --selftest "$RUNNER_TEMP/selftest_app"
+
+      - name: Make the .dmg (drag PeterPiper into Applications)
+        id: dmg
+        run: |
+          VER=$(python -c "import re;print(re.search(r'__version__ = \"([^\"]+)\"', open('app/peterpiper/__init__.py').read()).group(1))")
+          NAME="PeterPiper-$VER-macOS-${{ matrix.tag }}.dmg"
+          mkdir -p dmg
+          cp -R build/dist/PeterPiper.app dmg/
+          ln -s /Applications dmg/Applications
+          cp "READ ME.txt" "dmg/READ ME.txt"
+          hdiutil create -volname "PeterPiper $VER" -srcfolder dmg -ov -format UDZO "$NAME"
+          shasum -a 256 "$NAME" | tee "$NAME.sha256"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PeterPiper-macOS-${{ matrix.tag }}
+          path: |
+            ${{ steps.dmg.outputs.name }}
+            ${{ steps.dmg.outputs.name }}.sha256
+            installed_versions.txt
+          retention-days: 30
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ steps.dmg.outputs.name }}" --clobber

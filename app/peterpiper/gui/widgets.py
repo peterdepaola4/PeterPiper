@@ -8,6 +8,7 @@ BLOCK: add a new control type here and use it in the window that needs it.
 """
 from __future__ import annotations
 
+import sys
 from typing import Callable, Iterable, Optional, Tuple
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
@@ -123,6 +124,25 @@ def row(*widgets: QWidget) -> QWidget:
 
 # PeterPiper 1.0: the logo (assets/: the lockup in black and in white, the icon)
 ASSETS = __import__("pathlib").Path(__file__).resolve().parents[1] / "assets"
+
+
+def open_path(path) -> bool:
+    """Open a file or folder with its own program (Explorer / Finder, Excel,
+    GraphPad Prism ...), on Windows and macOS. False if that failed."""
+    import os
+    import subprocess
+    p = str(path)
+    try:
+        if sys.platform == "win32":
+            from ..safety import plain_path
+            os.startfile(plain_path(p))                    # noqa: S606
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", p])                  # noqa: S603, S607
+        else:
+            subprocess.Popen(["xdg-open", p])              # noqa: S603, S607
+        return True
+    except OSError:
+        return False
 
 
 def app_icon():

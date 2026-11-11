@@ -64,7 +64,9 @@ def current() -> Theme:
 
 def font_family() -> str:
     fams = set(QFontDatabase.families())
-    for f in ("Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Inter", "Arial"):
+    for f in ("Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI",       # Windows
+              ".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue",              # macOS
+              "Inter", "Arial"):
         if f in fams:
             return f
     return QFont().family()

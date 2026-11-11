@@ -95,8 +95,20 @@ def check_python() -> Item:
     return Item("python", title, "ok", found + " - a tested version.")
 
 
+def check_bundled() -> Item:
+    """The Mac / Windows app carries its own Python and packages."""
+    v = sys.version_info
+    return Item("python", "Python", "ok",
+                f"Built into the app (Python {v.major}.{v.minor}.{v.micro}, with the tested "
+                f"package versions) - nothing to install.")
+
+
 def run_checks() -> List[Item]:
-    return [check_long_paths(), check_python()]
+    items = []
+    if sys.platform == "win32":                    # a Windows setting (macOS has no such limit)
+        items.append(check_long_paths())
+    items.append(check_bundled() if getattr(sys, "frozen", False) else check_python())
+    return items
 
 
 # ------------------------------------------------------------ when to show it

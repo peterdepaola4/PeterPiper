@@ -25,7 +25,8 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFileDialog
 from .. import APP_NAME, __version__
 from ..config import Experiment, Settings, load_settings, save_settings
 from ..nd2io import ND2Source, describe, open_source
-from ..safety import error_text, long_path, validate_filename_part
+from ..safety import (error_text, folder_problem, long_path, looks_read_only,
+                      validate_filename_part)
 from . import widgets as W
 
 
@@ -279,11 +280,16 @@ class SetupDialog(QDialog):
         self.source = src
         from .. import users                       # V2.9: OUTPUT_<movie>/<user>
         default_out = users.output_dir(path)
+        moved = looks_read_only(default_out)       # 1.0.3: a read-only drive
+        if moved:
+            default_out = users.fallback_output_dir(path)
         self.experiment = describe(src, out_dir=default_out)
         self._last_dir = str(Path(path).parent)
 
         self.lbl_file.setText(f"{Path(path).name}\n{Path(path).parent}")
-        self.lbl_out.setText(default_out)
+        self.lbl_out.setText(default_out + (
+            "\n(the movie's drive is read-only here, so the results go to your "
+            f"{users.RESULTS_DIR_NAME} folder; the movie is only read)" if moved else ""))
         size_gb = os.stat(long_path(path)).st_size / 1e9
         mins = self.experiment.recorded_minutes()       # V3.0: as recorded
         self._show_gaps()
@@ -390,8 +396,53 @@ class SetupDialog(QDialog):
         s.seg_timepoint = int(min(max(1, s.seg_timepoint), T))
         s.baseline_timepoint = int(min(max(1, s.baseline_timepoint), T))
         s.ref_channel = int(min(max(0, s.ref_channel), C - 1))
+        if not self._results_folder_ok():
+            return
         save_settings(s, e)
         self.accept()
+
+    # 1.0.3: a results folder that cannot be written (e.g. a Windows-formatted
+    # drive on a Mac) - say why and offer another place, instead of an error
+    # after Start
+    def _results_folder_ok(self) -> bool:
+        from .. import users
+        e = self.experiment
+        while True:
+            why = folder_problem(e.out_dir)
+            if why is None:
+                return True
+            alt = users.fallback_output_dir(e.nd2_path)
+            choice = self._ask_results_folder(e.out_dir, why, alt)
+            if choice == "alt":
+                folder = alt
+            elif choice == "pick":
+                folder = QFileDialog.getExistingDirectory(
+                    self, "Select the results folder", str(users.results_home().parent))
+                if not folder:
+                    continue
+            else:
+                return False
+            e.out_dir = folder
+            self.lbl_out.setText(folder)
+
+    def _ask_results_folder(self, folder: str, why: str, alt: str) -> str:
+        """'alt', 'pick' or '' (cancel)."""
+        same = os.path.normcase(os.path.abspath(folder)) == os.path.normcase(os.path.abspath(alt))
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("The results cannot be saved there")
+        box.setText(f"PeterPiper cannot write the results in\n{folder}\n\nbecause {why}.")
+        box.setInformativeText(
+            "The movie is only read, so it can stay where it is - only the results need "
+            "a folder that can be written."
+            + ("" if same else f"\n\nSuggested: {alt}"))
+        b_alt = None if same else box.addButton("Save the results there", QMessageBox.AcceptRole)
+        b_pick = box.addButton("Choose another folder...", QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(b_alt or b_pick)
+        box.exec()
+        hit = box.clickedButton()
+        return "alt" if (b_alt is not None and hit is b_alt) else "pick" if hit is b_pick else ""
 
     @property
     def result_tuple(self):

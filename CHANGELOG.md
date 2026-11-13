@@ -1,5 +1,21 @@
 # Changelog
 
+## PeterPiper 1.0.3 (2026-11-12)
+
+**Movies on a drive PeterPiper cannot write to** (e.g. a Windows-formatted external
+drive on a Mac, which macOS can read but not write).
+
+- Before: *Start* ended in an error (`Read-only file system`), because the results
+  folder next to the movie could not be made.
+- Now the start window checks that the results folder can be written before anything
+  starts (on every system: read-only drive, full drive, no permission), says why in
+  plain words, and offers `PeterPiper results/OUTPUT_<movie>/<user>` in the home
+  folder or another folder. On a Mac a read-only drive is recognised as soon as the
+  movie is chosen, and that folder is suggested at once. The movie is only read.
+- Batch runs: such a movie's results and the batch log go there (the log says so).
+- Compare saves there instead of the home folder; earlier runs saved there are found.
+- Methods and numbers unchanged.
+
 ## PeterPiper 1.0.2 (2026-11-10)
 
 **PeterPiper for Mac.**

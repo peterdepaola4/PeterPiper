@@ -554,6 +554,7 @@ def _roots(nd2: Path, out_dir) -> list:
     if nd2.stem[:40] != nd2.stem:
         roots.append((here / f"OUTPUT_{nd2.stem[:40]}", 4))
     roots.append((here / "ROInav_results", 1))
+    roots.append((users.results_home() / f"OUTPUT_{nd2.stem}", 4))   # 1.0.3: read-only drives
     try:
         with os.scandir(long_path(here)) as it:
             for e in it:

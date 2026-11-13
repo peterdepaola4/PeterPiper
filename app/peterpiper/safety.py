@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Optional
 
 # --------------------------------------------------------------------------
 #  Long paths (Windows). Without the extended-length form a path longer than
@@ -59,6 +61,62 @@ def error_text(exc: BaseException) -> str:
 def make_dirs(path) -> None:
     """Create a folder (and its parents) - long paths included."""
     os.makedirs(long_path(path), exist_ok=True)
+
+
+# --------------------------------------------------------------------------
+#  Results folders that cannot be written (1.0.3). The usual case: a drive
+#  formatted for Windows (NTFS) on a Mac - macOS reads it but cannot write to
+#  it, so OUTPUT_<movie> cannot be made next to the movie. The movie itself is
+#  only ever read, so it can stay where it is; only the results move.
+# --------------------------------------------------------------------------
+_EROFS = 30                       # errno: read-only file system
+_WRITE_PROTECT = 19               # winerror: the media is write protected
+
+
+def write_problem(exc: BaseException, path="") -> str:
+    """Why a folder cannot be written, in plain words."""
+    import errno
+    err = getattr(exc, "errno", None)
+    if err == _EROFS or getattr(exc, "winerror", None) == _WRITE_PROTECT:
+        text = "the drive is read-only"
+        if sys.platform == "darwin" and str(path).startswith("/Volumes/"):
+            text += (" on this Mac. Drives formatted for Windows (NTFS) can be read "
+                     "by macOS but not written to")
+        return text
+    if err in (errno.EACCES, errno.EPERM):
+        return "you do not have permission to write there"
+    if err == errno.ENOSPC:
+        return "the drive is full"
+    return error_text(exc)
+
+
+def folder_problem(path) -> Optional[str]:
+    """None if results can be written in `path`; else why not, in plain words.
+    Creates the folder (as starting an analysis does anyway) and a small test
+    file in it, which is removed again."""
+    try:
+        make_dirs(path)
+        fd, probe = tempfile.mkstemp(prefix=".peterpiper_write_test_", dir=long_path(path))
+        os.close(fd)
+        os.remove(probe)
+    except OSError as exc:
+        return write_problem(exc, path)
+    return None
+
+
+def looks_read_only(path) -> bool:
+    """A quick check that writes nothing: the nearest existing folder above
+    `path` is on a drive mounted read-only (macOS, Linux). Always False on
+    Windows, where folder_problem() is the real test."""
+    if os.name == "nt" or not path:
+        return False
+    p = Path(os.path.abspath(os.fspath(path)))
+    while not p.exists() and p != p.parent:
+        p = p.parent
+    try:
+        return bool(os.statvfs(p).f_flag & os.ST_RDONLY)
+    except (OSError, AttributeError):
+        return False
 
 
 def exists(path) -> bool:

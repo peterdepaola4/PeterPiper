@@ -308,6 +308,23 @@ def output_dir(nd2_path) -> str:
     return str(out / _folder_of(_current)) if _current else str(out)
 
 
+RESULTS_DIR_NAME = "PeterPiper results"
+
+
+def results_home() -> Path:
+    """Where results go when the movie's own folder cannot be written (a
+    read-only drive): $PETERPIPER_RESULTS, else <home>/PeterPiper results."""
+    custom = os.environ.get("PETERPIPER_RESULTS")
+    return Path(custom) if custom else Path.home() / RESULTS_DIR_NAME
+
+
+def fallback_output_dir(nd2_path) -> str:
+    """The results folder of a movie whose own folder cannot be written:
+    <results home>/OUTPUT_<movie>/<user folder> - laid out like output_dir()."""
+    out = results_home() / f"OUTPUT_{Path(str(nd2_path)).stem}"
+    return str(out / _folder_of(_current)) if _current else str(out)
+
+
 def _folders() -> Dict[str, str]:
     """{folder name (lower case): user} for every user, removed ones included."""
     return {_folder_of(u).lower(): u for u in all_users()}

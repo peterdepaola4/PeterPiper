@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QL
 
 from .. import presets as PR
 from ..config import Settings
-from ..safety import error_text, new_output_file, plain_path
+from ..safety import error_text, folder_problem, new_output_file, plain_path
 from . import widgets as W
 
 LOG_HEADERS = ["File", "Status", "Cells found", "Cells included", "Background note",
@@ -108,7 +108,15 @@ def analyse_one(path: str, s: Settings, progress: Optional[Callable[[str], None]
         with _quiet(msgs):
             src = open_source(path)
             from .. import users               # V2.9: OUTPUT_<movie>/<user>
-            exp = describe(src, out_dir=out_dir or users.output_dir(path))
+            out = out_dir or users.output_dir(path)
+            why = folder_problem(out)          # 1.0.3: a read-only drive
+            if why is not None and not out_dir:
+                alt = users.fallback_output_dir(path)
+                if folder_problem(alt) is None:
+                    msgs.append(f"The results could not be written next to the movie "
+                                f"({why}); they are in {plain_path(alt)}")
+                    out = alt
+            exp = describe(src, out_dir=out)
             w = ClickWindow(src, exp, Settings(**vars(s)))
             w._offered = True                          # no 'earlier analyses?' question
             _settle(w)                                 # jobs the window starts by itself
@@ -175,6 +183,9 @@ def write_log(folder: str, rows: Sequence[dict], settings_name: str) -> str:
     for r in rows:
         wr.writerow([r.get(h, "") if h != "Settings" else settings_name for h in LOG_HEADERS])
     stamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    if folder_problem(folder) is not None:     # 1.0.3: a read-only drive
+        from .. import users
+        folder = str(users.results_home())
     with new_output_file(Path(folder) / f"PeterPiper batch {stamp}.csv") as (used, stream):
         stream.write(buf.getvalue().encode("utf-8-sig"))
     return str(used)

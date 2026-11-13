@@ -2733,11 +2733,12 @@ class CompareWindow(QDialog):
         return str(Path(runs[0].path).parent / "Comparisons") if runs else str(Path.home())
 
     def _ask_save_path(self, folder: str, name: str) -> str:
-        from ..safety import make_dirs
-        try:
-            make_dirs(folder)
-        except OSError:
-            folder = str(Path.home())
+        from ..safety import folder_problem
+        if folder_problem(folder) is not None:     # 1.0.3: e.g. a read-only drive
+            from .. import users
+            folder = str(users.results_home() / "Comparisons")
+            if folder_problem(folder) is not None:
+                folder = str(Path.home())
         path, _f = QFileDialog.getSaveFileName(
             self, "Save (the name is used for every file)",
             str(Path(folder) / f"{name}.prism"), "Prism project (*.prism)",

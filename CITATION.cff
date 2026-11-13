@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use PeterPiper in your research, please cite it as below and name the version you used."
 title: "PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies"
-version: 1.0.2
+version: 1.0.3
 date-released: 2026-11-10
 license: MIT
 repository-code: "https://github.com/peterdepaola4/PeterPiper"

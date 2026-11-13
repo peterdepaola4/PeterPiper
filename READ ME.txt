@@ -13,6 +13,9 @@ ON A MAC (macOS 14 or newer)
   Security, scroll down and click 'Open Anyway', then Open. After that it
   opens with a double-click. Everything below works the same on a Mac,
   except the .bat, the terminal window and the long-path note (Windows only).
+  External drives formatted for Windows (NTFS) can be read by a Mac but not
+  written to: PeterPiper then saves the results in 'PeterPiper results' in
+  your home folder (it asks first); the movie can stay on the drive.
   Manual: README.html (section 3.7 for the Mac).
 
 START IT (Windows)

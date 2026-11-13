@@ -23,6 +23,12 @@ D) the logo: the files are there; the start windows show it (white on the dark
    PETERPIPER_NO_SHORTCUTS, never in install-only runs.
 E) the launcher's logo routine in a real console window reads the width and
    chooses the art that fits (116 characters in a 120-wide window).
+F) 1.0.3, results folders that cannot be written (a Windows-formatted drive on a
+   Mac is read-only): the reason in plain words (read-only drive, the NTFS note
+   on a Mac, no permission); the write test leaves nothing behind; Start offers
+   <home>/PeterPiper results/OUTPUT_<movie>/<user> or another folder, and Cancel
+   keeps the start window; the batch log moves there too; earlier runs saved
+   there are found.
 """
 from __future__ import annotations
 
@@ -42,6 +48,7 @@ OUT = REPO / "_out" / "peterpiper"
 shutil.rmtree(OUT, ignore_errors=True)
 OUT.mkdir(parents=True)
 os.environ["PETERPIPER_HOME"] = str(OUT / "home")
+os.environ["PETERPIPER_RESULTS"] = str(OUT / "PeterPiper results")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("MPLBACKEND", "Agg")
 sys.path.insert(0, str(REPO / "app"))
@@ -87,9 +94,9 @@ ALLOWED = re.compile(r"PD4nav (?:older|V\{|V2|profile - |saved settings|trained 
 
 
 def part_a():
-    ok("A APP_NAME PeterPiperV1.0, APP_TITLE PeterPiper, version 1.0.2",
+    ok("A APP_NAME PeterPiperV1.0, APP_TITLE PeterPiper, version 1.0.3",
        (peterpiper.APP_NAME, peterpiper.APP_TITLE, peterpiper.__version__)
-       == ("PeterPiperV1.0", "PeterPiper", "1.0.2"))
+       == ("PeterPiperV1.0", "PeterPiper", "1.0.3"))
     stray = []
     for p in sorted((REPO / "app").rglob("*.py")):
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -104,7 +111,7 @@ def part_a():
     c = (REPO / "CITATION.cff").read_text(encoding="utf-8")
     ok("A quick start and citation: PeterPiper 1.0 (formerly PD4nav)",
        q.startswith("PeterPiper 1.0") and "PD4nav" in q.splitlines()[2]
-       and "version: 1.0.2" in c and "formerly PD4nav" in c)
+       and "version: 1.0.3" in c and "formerly PD4nav" in c)
 
 
 # ===================================================================== B
@@ -315,8 +322,70 @@ def part_e():
         ok("E ... the screen could be read", False, "no screen file")
 
 
+# ===================================================================== F
+def part_f():
+    import errno
+    import types
+    from peterpiper import safety as S
+    ro = OSError(errno.EROFS, "Read-only file system")
+    ok("F a read-only drive is said in words", S.write_problem(ro, "C:/x") == "the drive is read-only")
+    real_sys = S.sys
+    S.sys = types.SimpleNamespace(platform="darwin")
+    try:
+        mac = S.write_problem(ro, "/Volumes/External/data/OUTPUT_movie")
+    finally:
+        S.sys = real_sys
+    ok("F ... on a Mac drive it explains NTFS", "NTFS" in mac and "read-only" in mac, mac)
+    ok("F no permission is said in words",
+       "permission" in S.write_problem(PermissionError(errno.EACCES, "denied"), "x"))
+    good = OUT / "writable" / "OUTPUT_movie"
+    ok("F a writable folder passes and is left empty",
+       S.folder_problem(good) is None and good.is_dir() and not any(good.iterdir()))
+    block = OUT / "a file, not a folder"
+    block.write_text("x")
+    bad = block / "OUTPUT_movie"
+    ok("F a folder that cannot be made fails, with the reason", bool(S.folder_problem(bad)),
+       str(S.folder_problem(bad)))
+    ok("F the quick check writes nothing and is False on a normal folder",
+       S.looks_read_only(OUT / "not yet" / "made") is False and not (OUT / "not yet").exists())
+
+    if "Read Only Rita" not in users.all_users():
+        users.add_user("Read Only Rita")
+    users.activate("Read Only Rita")
+    alt = users.fallback_output_dir(str(bad.parent / "movie 1.nd2"))
+    ok("F the other place is <home>/PeterPiper results/OUTPUT_<movie>/<user>",
+       Path(alt) == OUT / "PeterPiper results" / "OUTPUT_movie 1" / users._folder_of("Read Only Rita"),
+       alt)
+
+    from peterpiper.gui.setup import SetupDialog
+    d = SetupDialog()
+    d.experiment = types.SimpleNamespace(out_dir=str(bad), nd2_path=str(block.parent / "movie 1.nd2"))
+    asked = []
+    d._ask_results_folder = lambda folder, why, a: asked.append((folder, why, a)) or ""
+    ok("F Start with an unwritable folder asks; Cancel keeps the start window",
+       d._results_folder_ok() is False and len(asked) == 1 and asked[0][2] == alt
+       and d.experiment.out_dir == str(bad))
+    d._ask_results_folder = lambda folder, why, a: "alt"
+    ok("F ... 'Save the results there' uses the other place and makes it",
+       d._results_folder_ok() is True and d.experiment.out_dir == alt and Path(alt).is_dir()
+       and d.lbl_out.text() == alt)
+    d.experiment.out_dir = str(good)
+    d._ask_results_folder = lambda *a: asked.append(a) or ""
+    ok("F a writable folder is not asked about", d._results_folder_ok() is True and len(asked) == 1)
+    d.close()
+
+    from peterpiper.gui.batchdlg import write_log
+    log = Path(write_log(str(bad), [{"File": "movie 1.nd2", "Status": "x"}], "test"))
+    ok("F the batch log goes to the PeterPiper results folder when the movie folder is read-only",
+       log.parent == OUT / "PeterPiper results" and log.exists(), str(log))
+    roots = [r for r, _depth in H._roots(Path(block.parent / "movie 1.nd2"), "")]
+    ok("F earlier runs saved there are looked for",
+       OUT / "PeterPiper results" / "OUTPUT_movie 1" in roots)
+    users.deactivate()
+
+
 def main():
-    for part in (part_a, part_b, part_c, part_d, part_e):
+    for part in (part_a, part_b, part_c, part_d, part_e, part_f):
         try:
             part()
         except Exception as exc:                                   # noqa: BLE001

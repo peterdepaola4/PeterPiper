@@ -11,22 +11,99 @@ from __future__ import annotations
 import sys
 from typing import Callable, Iterable, Optional, Tuple
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
                                QFrame, QGroupBox, QHBoxLayout, QLabel, QMenu,
                                QProgressBar, QPushButton, QSpinBox, QToolButton,
                                QVBoxLayout, QWidget)
 
-# one colour per cell, shared by the image outlines and the trace lines, so a
-# trace and its cell are easy to match (bright on black, readable on white)
-PALETTE = ["#3fa9ff", "#ff4b4b", "#2ecc40", "#ffa31a", "#d65cff", "#00c8c8",
-           "#ff5fb0", "#b8b800", "#ff7f50", "#8c8cff"]
+# ---------------------------------------------------------------- cell colours
+# PeterPiper 1.1: one colour per cell, shared by the outlines on the image, the
+# trace lines and the swatches in the cell list, so a trace and its cell are easy
+# to match. FIXED: the same in every theme / palette (nothing here reads the theme).
+#
+# How the six were chosen (dev_tests/test_v11_looks.py checks every point):
+#  - the hue set of Okabe & Ito's colour-blind-safe palette (sky blue, vermillion,
+#    blue, orange, reddish purple, bluish green - Okabe & Ito 2008; cf. Paul Tol's
+#    'bright' scheme), each moved into a mid-luminance window (WCAG relative
+#    luminance 0.11 - 0.28) and then fine-tuned by a search that maximised the
+#    smallest CIEDE2000 distance between any two of them;
+#  - mid luminance makes every colour >= 3:1 (WCAG 2 contrast) against BOTH the
+#    white trace plot (PLOT_BG, white in every theme) and black (the dark image
+#    behind the outlines) - and so also against bright cells;
+#  - distinct for everyone: with normal vision and with protanopia, deuteranopia
+#    and tritanopia simulated (Machado, Oliveira & Fernandes 2009, severity 1.0),
+#    every PAIR of the six is >= CELL_MIN_DE2000 CIEDE2000 apart (measured 14.4;
+#    neighbours in the list 16.8; normal vision 30.9); a difference of about 10
+#    is clearly seen side by side;
+#  - kept clear of the selected-trace orange and the blue mean line.
+# After six cells the colours repeat with another line style (cell_pen_style):
+# solid, dashed, dotted, dash-dot - 24 different looks before any repeats; the
+# cells' numbers on the image tell repeated outline colours apart.
+PALETTE = ["#2299CC",      # sky blue
+           "#BB2200",      # vermillion red
+           "#5533FF",      # blue violet
+           "#AA8844",      # ochre
+           "#EE3388",      # reddish purple (pink)
+           "#007755"]      # bluish green
+CELL_MIN_DE2000 = 12.0     # the smallest allowed CIEDE2000 distance (tested)
+CELL_MIN_CONTRAST = 3.0    # vs the white plot and vs black (tested)
+PLOT_BG = "#FFFFFF"        # the trace plot's background - white in every theme
 
 
 def cell_colour(k: int) -> str:
-    """The colour of cell k (0-based) - outline and trace."""
-    return PALETTE[k % len(PALETTE)]
+    """The colour of cell k (0-based) - outline, trace and list swatch. The same
+    whatever theme is in use."""
+    return PALETTE[int(k) % len(PALETTE)]
+
+
+_PEN_STYLES = (Qt.SolidLine, Qt.DashLine, Qt.DotLine, Qt.DashDotLine)
+
+
+def cell_pen_style(k: int):
+    """The line style of cell k's trace: solid for the first len(PALETTE) cells,
+    then dashed, dotted, dash-dot (so cells whose colour repeats still differ)."""
+    return _PEN_STYLES[(int(k) // len(PALETTE)) % len(_PEN_STYLES)]
+
+
+_SWATCHES: dict = {}
+SWATCH_SIZE = QSize(40, 14)           # the cell list's icon size for cell_swatch()
+
+
+def cell_swatch(k: int, included: bool = True):
+    """A small picture for the cell list: a square of the cell's colour and a
+    short line in its line style (an excluded cell: a light grey outline only).
+    The cell's name next to it keeps the normal text colour."""
+    from PySide6.QtCore import QPointF, QRectF
+    from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+    key = (cell_colour(k), int(cell_pen_style(k).value), bool(included))
+    if key in _SWATCHES:
+        return _SWATCHES[key]
+    ratio = 2
+    pm = QPixmap(40 * ratio, 14 * ratio)
+    pm.fill(Qt.transparent)
+    g = QPainter(pm)
+    g.setRenderHint(QPainter.Antialiasing)
+    g.scale(ratio, ratio)
+    col = QColor(cell_colour(k)) if included else QColor(170, 170, 170)
+    if included:
+        g.setPen(QPen(QColor(0, 0, 0, 90), 0.8))
+        g.setBrush(col)
+    else:
+        g.setPen(QPen(col, 1.2))
+        g.setBrush(Qt.NoBrush)
+    g.drawRoundedRect(QRectF(1, 1, 12, 12), 2.5, 2.5)
+    pen = QPen(col, 2.2)
+    pen.setStyle(cell_pen_style(k))
+    pen.setCapStyle(Qt.FlatCap)
+    g.setPen(pen)
+    g.drawLine(QPointF(17, 7), QPointF(39, 7))
+    g.end()
+    pm.setDevicePixelRatio(ratio)
+    icon = QIcon(pm)
+    _SWATCHES[key] = icon
+    return icon
 
 
 def group(title: str) -> tuple[QGroupBox, QFormLayout]:
@@ -151,15 +228,183 @@ def app_icon():
     return QIcon(str(ASSETS / "PeterPiper.ico"))
 
 
+class ClickStreak:
+    """Counts clicks that follow each other closely: click() returns how many
+    clicks in a row this one is, each within `gap` seconds of the one before (a
+    longer pause starts counting again at 1). After `top` it starts again."""
+
+    def __init__(self, gap: float = 1.5, top: int = 100) -> None:
+        self.gap, self.top = float(gap), int(top)
+        self.count = 0
+        self._last: Optional[float] = None
+
+    def click(self, now: Optional[float] = None) -> int:
+        import time
+        now = time.monotonic() if now is None else float(now)
+        if self._last is None or now - self._last > self.gap or self.count >= self.top:
+            self.count = 0
+        self._last = now
+        self.count += 1
+        return self.count
+
+
+# ------------------------------------------------------------ hidden extras
+# Harmless fun (PeterPiper 1.1), for anyone reading the code: the logo counts
+# clicks in a row and a few typed letters are watched for one word. The only
+# effect is a line in the user's achievements.json (achievements.py) - which
+# shows more themes in the theme lists, or a crown before the user's name in
+# "Who is using PeterPiper?". No setting, data, measurement or number changes,
+# no key is ever taken away from the window it was meant for, no network.
+PALETTE_CLICKS = 20          # clicks in a row: the colour palettes
+CROWN_CLICKS = 100           # clicks in a row: a crown before your name
+CROWN_WORD = "peter"         # ... or this word typed (anywhere) after 20 clicks in a row
+CLICK_GAP_S = 1.5            # at most this long between two clicks of a streak
+_EXTRAS = {"streak20": False}          # this session: 20 clicks in a row reached
+_LOGOS: list = []                      # weak references to the logos shown (for a reveal)
+
+REVEAL_TEXT = {
+    ("palettes", True): "You found the colour palettes! Choose one under Theme - it is "
+                        "saved in your profile.",
+    ("palettes", False): "The colour palettes are yours already - choose one under Theme.",
+    ("crown", True): "A crown for you - it now sits before your name.",
+    ("crown", False): "You have your crown already - it sits before your name.",
+}
+
+
+def found_extra(key: str, logo: Optional["LogoLabel"] = None) -> bool:
+    """Unlock a hidden extra (achievements.unlock) and say so with a small note
+    (under `logo`, else under the newest logo still on screen, else at the top of
+    the active window). True when it is new."""
+    new = True
+    try:
+        from .. import achievements
+        new = achievements.unlock(key)
+    except Exception:                                              # noqa: BLE001
+        pass
+    if logo is None:
+        for ref in reversed(_LOGOS):
+            lg = ref()
+            try:
+                if lg is not None and lg.isVisible():
+                    logo = lg
+                    break
+            except RuntimeError:
+                continue
+    try:
+        if logo is not None:
+            logo.show_reveal(key, new)
+        else:
+            from PySide6.QtWidgets import QApplication
+            win = QApplication.activeWindow()
+            if win is not None:
+                _Reveal(win, None, REVEAL_TEXT[(key, bool(new))])
+    except RuntimeError:
+        pass
+    return bool(new)
+
+
+class _WordWatch(QObject):
+    """Watches the letters typed anywhere in the app for CROWN_WORD (it only
+    looks: every key still goes where it was going). Counts a key once - when it
+    reaches the focused widget (or the window, with nothing focused)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._typed = ""
+
+    def eventFilter(self, obj, ev) -> bool:                       # noqa: N802
+        if ev.type() != QEvent.KeyPress:
+            return False
+        try:
+            from PySide6.QtWidgets import QApplication
+            if not isinstance(obj, QWidget) or ev.isAutoRepeat():
+                return False
+            focus = QApplication.focusWidget()
+            if obj is not focus and not (focus is None and obj.isWindow()):
+                return False
+            ch = ev.text()
+            if not ch:
+                return False
+            self._typed = (self._typed + ch.lower())[-len(CROWN_WORD):]
+            if self._typed == CROWN_WORD:
+                self._typed = ""
+                if self.allowed():
+                    QTimer.singleShot(0, lambda: found_extra("crown"))
+        except Exception:                                          # noqa: BLE001
+            pass
+        return False                                   # never takes the key
+
+    @staticmethod
+    def allowed() -> bool:
+        """The word counts after 20 clicks in a row on the logo (this session) or
+        once the palettes were found."""
+        if _EXTRAS["streak20"]:
+            return True
+        try:
+            from .. import achievements
+            return achievements.unlocked("palettes")
+        except Exception:                                          # noqa: BLE001
+            return False
+
+
+_WATCH: list = []
+
+
+def install_word_watch() -> bool:
+    """Start watching for CROWN_WORD (once per app; True if it is installed).
+    Done only when the word can count (see _maybe_watch): most people never get
+    the small cost of an app-wide event filter."""
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        return False
+    if _WATCH and _WATCH[0][1] is app:
+        return True
+    w = _WordWatch()
+    app.installEventFilter(w)
+    _WATCH[:] = [(w, app)]
+    return True
+
+
+def _maybe_watch() -> None:
+    """Watch for the word only while it can still give a crown."""
+    try:
+        from .. import achievements
+        if _WordWatch.allowed() and not achievements.unlocked("crown"):
+            install_word_watch()
+    except Exception:                                              # noqa: BLE001
+        pass
+
+
 class LogoLabel(QLabel):
     """The PeterPiper logo, black on a light theme and white on a dark one (it
-    follows a theme change), at most `height` pixels high."""
+    follows a theme change), at most `height` pixels high.
+
+    Hidden extras, harmless (PeterPiper 1.1 - see 'hidden extras' above): clicking
+    the logo 20 times in a row (each click within 1.5 s of the one before) reveals
+    the extra colour palettes for this user (achievements.unlock("palettes");
+    theme.available_names() then offers every theme); 100 in a row - or 20 and
+    then typing "peter" - gives a crown before the user's name. Each stores one
+    fact in the user's achievements.json; nothing at all is shown before the 20th
+    click."""
+
+    CLICKS = PALETTE_CLICKS
+    GAP_S = CLICK_GAP_S
+    found_palettes = Signal(bool)          # True: newly found, False: found before
+    found_crown = Signal(bool)
 
     def __init__(self, height: int = 90, parent=None) -> None:
         super().__init__(parent)
         self._h = int(height)
         self.setAlignment(Qt.AlignCenter)
         self.setAccessibleName("PeterPiper")
+        self._streak = ClickStreak(CLICK_GAP_S, CROWN_CLICKS)
+        self._sparkle_left = 0                 # frames of the little sparkle still to draw
+        self._sparkle_timer: Optional[QTimer] = None
+        self.reveal: Optional[QFrame] = None   # the note shown when an extra is found
+        import weakref
+        _LOGOS[:] = [r for r in _LOGOS if r() is not None][-7:] + [weakref.ref(self)]
+        _maybe_watch()
         self._load()
 
     def _load(self) -> None:
@@ -182,6 +427,157 @@ class LogoLabel(QLabel):
                          QEvent.ApplicationPaletteChange):
             QTimer.singleShot(0, self._load)
         return super().event(ev)
+
+    # ---- the hidden extra (see the class text)
+    def mouseReleaseEvent(self, ev) -> None:                     # noqa: N802
+        if ev.button() == Qt.LeftButton and self.rect().contains(ev.position().toPoint()):
+            self.logo_clicked()
+        super().mouseReleaseEvent(ev)
+
+    def logo_clicked(self, now: Optional[float] = None) -> str:
+        """One click on the logo (now: a time in seconds, for tests). Returns the
+        extra this click completed ("palettes" on the 20th in a row, "crown" on
+        the 100th) or ""."""
+        n = self._streak.click(now)
+        if n >= PALETTE_CLICKS and not _EXTRAS["streak20"]:
+            _EXTRAS["streak20"] = True             # "peter" may now be typed
+            _maybe_watch()
+        if n == PALETTE_CLICKS:
+            self.found_palettes.emit(found_extra("palettes", self))
+            return "palettes"
+        if n == CROWN_CLICKS:
+            self.found_crown.emit(found_extra("crown", self))
+            return "crown"
+        return ""
+
+    def show_reveal(self, key: str, new: bool) -> None:
+        """The small note under the logo (and a little sparkle on it)."""
+        text = REVEAL_TEXT.get((key, bool(new)), "")
+        if self.reveal is not None:
+            try:
+                self.reveal.close()
+            except RuntimeError:
+                pass
+        self.reveal = _Reveal(self.window(), self, text)
+        self._sparkle_left = SPARKLE_FRAMES
+        if self._sparkle_timer is None:
+            self._sparkle_timer = QTimer(self)
+            self._sparkle_timer.setInterval(33)
+            self._sparkle_timer.timeout.connect(self._sparkle_step)
+        self._sparkle_timer.start()
+        self.update()
+
+    def _sparkle_step(self) -> None:
+        self._sparkle_left -= 1
+        if self._sparkle_left <= 0 and self._sparkle_timer is not None:
+            self._sparkle_timer.stop()
+        self.update()
+
+    def paintEvent(self, ev) -> None:                             # noqa: N802
+        super().paintEvent(ev)
+        if self._sparkle_left > 0:
+            _paint_sparkle(self, SPARKLE_FRAMES - self._sparkle_left)
+
+
+SPARKLE_FRAMES = 48                        # about 1.6 s at 30 frames a second
+
+
+def _paint_sparkle(logo: QLabel, age: int) -> None:
+    """A few little four-point stars twinkling over the logo (age: frames since
+    the 20th click)."""
+    import math
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QPainter, QPainterPath
+    from . import theme as TH
+    t = TH.current()
+    g = QPainter(logo)
+    g.setRenderHint(QPainter.Antialiasing)
+    g.setPen(Qt.NoPen)
+    w, h = logo.width(), logo.height()
+    pm = logo.pixmap()
+    pw = (pm.width() / max(1.0, pm.devicePixelRatio())) if pm is not None and not pm.isNull() \
+        else w * 0.5
+    x0 = (w - pw) / 2
+    for i in range(9):
+        cx = x0 + pw * ((i * 0.37 + 0.08) % 1.0)
+        cy = h * (0.18 + 0.64 * ((i * 0.61 + 0.2) % 1.0))
+        phase = (age - i * 3) / 18.0
+        if not 0.0 < phase < 1.0:
+            continue
+        s = math.sin(math.pi * phase)
+        r = 3.0 + 6.0 * s
+        col = QColor(t.accent if i % 2 else t.warn)
+        col.setAlphaF(max(0.0, min(1.0, s)))
+        g.setBrush(col)
+        path = QPainterPath()
+        for j in range(8):
+            rr = r if j % 2 == 0 else r * 0.28
+            a = math.pi / 4 * j
+            pt = QPointF(cx + rr * math.cos(a), cy + rr * math.sin(a))
+            if j == 0:
+                path.moveTo(pt)
+            else:
+                path.lineTo(pt)
+        path.closeSubpath()
+        g.drawPath(path)
+    g.end()
+
+
+class _Reveal(QFrame):
+    """The small friendly note shown under the logo on the 20th click; it goes
+    away by itself (or with its x)."""
+
+    def __init__(self, win: QWidget, logo: Optional[QWidget], text: str,
+                 ms: int = 12000) -> None:
+        super().__init__(win)
+        from . import theme as TH
+        t = TH.current()
+        self.setObjectName("reveal")
+        self.setStyleSheet(
+            f"QFrame#reveal {{ background: {t.surface2}; border: 1px solid {t.accent}; "
+            f"border-radius: 12px; }} QFrame#reveal QLabel {{ background: transparent; "
+            f"color: {t.text}; }}")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(14, 10, 8, 10)
+        lay.setSpacing(10)
+        star = QLabel("★")                        # a star, in the accent colour
+        star.setStyleSheet(f"QLabel {{ color: {t.accent}; font-size: 16pt; }}")
+        lay.addWidget(star)
+        self.label = QLabel(text)
+        self.label.setWordWrap(True)
+        lay.addWidget(self.label, 1)
+        x = QToolButton()
+        x.setText("✕")
+        x.setAutoRaise(True)
+        x.setToolTip("Close")
+        x.clicked.connect(self.close)
+        lay.addWidget(x)
+        self._logo = logo
+        win.installEventFilter(self)
+        self._place()
+        self.show()
+        self.raise_()
+        QTimer.singleShot(int(ms), self.close)
+
+    def _place(self) -> None:
+        win = self.parentWidget()
+        if win is None:
+            return
+        w = int(min(520, max(280, win.width() - 40)))
+        self.setFixedWidth(w)
+        self.adjustSize()
+        try:
+            y = (self._logo.mapTo(win, self._logo.rect().bottomLeft()).y() + 4
+                 if self._logo is not None else 8)
+        except RuntimeError:
+            y = 8
+        self.move(max(8, (win.width() - w) // 2),
+                  max(4, min(y, win.height() - self.height() - 4)))
+
+    def eventFilter(self, obj, ev) -> bool:                       # noqa: N802
+        if obj is self.parentWidget() and ev.type() == QEvent.Resize:
+            self._place()
+        return False
 
 
 class FitLabel(QLabel):

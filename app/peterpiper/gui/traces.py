@@ -35,7 +35,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QMetaMethod, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QFontDatabase
+from PySide6.QtGui import QColor, QFont, QFontDatabase
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
                                QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
                                QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel,
@@ -47,7 +47,7 @@ from ..config import Experiment
 from ..graphstyle import GraphStyle
 from ..measure import Measurements
 from . import widgets as W
-from .widgets import cell_colour
+from .widgets import cell_colour, cell_pen_style
 
 EXCLUDED = QColor(200, 200, 200, 150)
 HILITE = QColor(255, 140, 0)
@@ -920,8 +920,9 @@ class TracePanel(QWidget):
         if self._view == VIEW_EXPORTED:
             return pg.mkPen(QColor(self._style.cell_colour),
                             width=max(self._style.cell_width * PX, 0.5))
-        if k in self._inc:
-            return pg.mkPen(QColor(cell_colour(k)), width=1.6)
+        if k in self._inc:                 # 1.1: fixed colour-blind-safe colours; past
+            return pg.mkPen(QColor(cell_colour(k)), width=1.6,      # the 6th: other dashes
+                            style=cell_pen_style(k))
         return pg.mkPen(EXCLUDED, width=1.0)
 
     def _z(self, k: int) -> int:
@@ -979,6 +980,8 @@ class TracePanel(QWidget):
         t = self.table
         t.blockSignals(True)
         t.setRowCount(len(self._cells))
+        if t.iconSize() != W.SWATCH_SIZE:
+            t.setIconSize(W.SWATCH_SIZE)           # the colour swatches, not squeezed
         bold = QFont()
         bold.setBold(True)
         for row, k in enumerate(self._cells):
@@ -988,9 +991,13 @@ class TracePanel(QWidget):
             chk.setData(Qt.UserRole, k)
             t.setItem(row, 0, chk)
             name = QTableWidgetItem(f"Cell {k + 1}")
-            name.setForeground(QBrush(QColor(cell_colour(k)) if k in self._inc
-                                      else QColor(150, 150, 150)))
-            name.setFont(bold)
+            # 1.1: the cell's colour (and line style) as a swatch; the name keeps
+            # the theme's text colour (coloured text is hard to read for some)
+            name.setIcon(W.cell_swatch(k, k in self._inc))
+            name.setToolTip("Its outline in the image and its trace have this colour"
+                            + ("" if k in self._inc else " (excluded: grey)") + ".")
+            if k in self._inc:
+                name.setFont(bold)
             t.setItem(row, 1, name)
             note = self._why.get(k, "")
             t.setItem(row, 2, QTableWidgetItem("" if note == "included" else note))

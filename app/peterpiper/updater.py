@@ -64,11 +64,39 @@ def repo() -> str:
 
 
 # ------------------------------------------------------------------ network (only here)
+_CTX = None
+
+
+def _ssl_context():
+    """The certificates to trust. The Mac app carries its own Python, which may not
+    find the system's certificates: there the ones macOS itself trusts are used
+    (exported read-only with Apple's 'security' tool). Elsewhere: Python's default."""
+    global _CTX
+    if _CTX is not None:
+        return _CTX
+    import ssl
+    ctx = ssl.create_default_context()
+    if sys.platform == "darwin":
+        try:
+            import subprocess
+            pem = subprocess.run(
+                ["/usr/bin/security", "find-certificate", "-a", "-p",
+                 "/System/Library/Keychains/SystemRootCertificates.keychain"],
+                capture_output=True, text=True, timeout=20).stdout
+            if "BEGIN CERTIFICATE" in pem:
+                ctx.load_verify_locations(cadata=pem)
+        except Exception:                                          # noqa: BLE001
+            pass
+    _CTX = ctx
+    return ctx
+
+
 def _get(url: str, accept: str = "application/vnd.github+json") -> bytes:
     import urllib.request
     req = urllib.request.Request(url, headers={"Accept": accept,
                                                "User-Agent": "PeterPiper-update-check"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:       # noqa: S310 (https only)
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S,              # noqa: S310 (https only)
+                                context=_ssl_context()) as r:
         return r.read()
 
 
@@ -93,7 +121,7 @@ def download(url: str, dest: Path, size: int = 0,
         raise RuntimeError("Refusing a download that is not https.")
     req = urllib.request.Request(url, headers={"User-Agent": "PeterPiper-update-check"})
     done = 0
-    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r, open(dest, "wb") as f:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S, context=_ssl_context()) as r,             open(dest, "wb") as f:                                   # noqa: S310
         while True:
             b = r.read(1 << 20)
             if not b:

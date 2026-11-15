@@ -191,7 +191,7 @@ def part_f():
         def __exit__(self, *a):
             return False
     old = urllib.request.urlopen
-    urllib.request.urlopen = lambda req, timeout=0: Fake(b"12345")
+    urllib.request.urlopen = lambda req, timeout=0, **k: Fake(b"12345")
     try:
         U.download("https://x/z", OUT / "ok.bin", 5)
         ok("F a complete download", (OUT / "ok.bin").read_bytes() == b"12345")
@@ -200,7 +200,7 @@ def part_f():
             ok("F an incomplete download is refused", False)
         except RuntimeError:
             ok("F an incomplete download is refused", True)
-        urllib.request.urlopen = lambda req, timeout=0: Fake(
+        urllib.request.urlopen = lambda req, timeout=0, **k: Fake(
             b'{"tag_name": "v1.2.0", "body": "notes", "html_url": "https://x", "assets": []}')
         r = U.fetch_latest()
         ok("F the release list is read", r["version"] == "1.2.0" and r["notes"] == "notes")

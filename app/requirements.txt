@@ -1,6 +1,6 @@
 # PeterPiper - exact package versions (the environment the app was tested with).
 #
-# Installed once, from PyPI wheels only, by PeterPiperV1.0.bat into a private
+# Installed once, from PyPI wheels only, by PeterPiperV1.1.bat into a private
 # virtual environment. Tested with Python 3.11.9 on Windows 11. These exact
 # versions have ready-made packages (wheels) for 64-bit Windows with
 # Python 3.11, 3.12, 3.13 and 3.14 (not 3.14.1: networkx 3.6.1 excludes it). If they cannot be installed on a computer

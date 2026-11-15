@@ -94,9 +94,9 @@ ALLOWED = re.compile(r"PD4nav (?:older|V\{|V2|profile - |saved settings|trained 
 
 
 def part_a():
-    ok("A APP_NAME PeterPiperV1.0, APP_TITLE PeterPiper, version 1.0.3",
+    ok("A APP_NAME PeterPiperV1.1, APP_TITLE PeterPiper, version 1.1.0",
        (peterpiper.APP_NAME, peterpiper.APP_TITLE, peterpiper.__version__)
-       == ("PeterPiperV1.0", "PeterPiper", "1.0.3"))
+       == ("PeterPiperV1.1", "PeterPiper", "1.1.0"))
     stray = []
     for p in sorted((REPO / "app").rglob("*.py")):
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -104,14 +104,14 @@ def part_a():
                 stray.append(f"{p.relative_to(REPO)}:{i}: {line.strip()[:80]}")
     ok("A no 'PD4nav' left in the app's own text (only where it means PD4nav)",
        not stray, "; ".join(stray[:6]))
-    bat = (REPO / "PeterPiperV1.0.bat").read_text(encoding="ascii")
-    ok("A the launcher: PeterPiperV1.0, its own install folder .PeterPiperV1.0",
-       'set "HOME_DIR=%USERPROFILE%\\.PeterPiperV1.0"' in bat and "title PeterPiper 1.0" in bat)
+    bat = (REPO / "PeterPiperV1.1.bat").read_text(encoding="ascii")
+    ok("A the launcher: PeterPiperV1.1, its own install folder .PeterPiperV1.1",
+       'set "HOME_DIR=%USERPROFILE%\\.PeterPiperV1.1"' in bat and "title PeterPiper 1.1" in bat)
     q = (REPO / "READ ME.txt").read_text(encoding="utf-8")
     c = (REPO / "CITATION.cff").read_text(encoding="utf-8")
-    ok("A quick start and citation: PeterPiper 1.0 (formerly PD4nav)",
-       q.startswith("PeterPiper 1.0") and "PD4nav" in q.splitlines()[2]
-       and "version: 1.0.3" in c and "formerly PD4nav" in c)
+    ok("A quick start and citation: PeterPiper 1.1 (formerly PD4nav)",
+       q.startswith("PeterPiper 1.1") and "PD4nav" in q.splitlines()[2]
+       and "version: 1.1.0" in c and "formerly PD4nav" in c)
 
 
 # ===================================================================== B
@@ -148,8 +148,8 @@ def part_b():
                    n_cells=s2["n_cells"], comps=list(s2["comps"]), tracked=s2["tracked"],
                    n_timepoints=s2["n_timepoints"], rules=list(s2["rules"]), nd2_name="m",
                    match="same file", app=s2["app"])
-    ok("B earlier-runs labels: 'PeterPiper 1.0' and 'PD4nav 3.0'",
-       "PeterPiper 1.0" in r1.label() and "PD4nav 3.0" in r2.label(), f"{r1.label()} | {r2.label()}")
+    ok("B earlier-runs labels: 'PeterPiper 1.1' and 'PD4nav 3.0'",
+       "PeterPiper 1.1" in r1.label() and "PD4nav 3.0" in r2.label(), f"{r1.label()} | {r2.label()}")
     blob = RF.session_blob(rois, bg, (64, 64), 0, dict(st), {}, None)
     k_new = RF.content_key(blob, dict(st))
     k_old = RF.content_key(blob, {k: v for k, v in st.items() if k != "app"})
@@ -252,7 +252,7 @@ def part_d():
     ok("D 'Who is using PeterPiper?' shows the logo", u.findChild(W.LogoLabel) is not None)
     u.grab().save(str(OUT / "who_is_using.png"))
     u.close()
-    bat = (REPO / "PeterPiperV1.0.bat").read_text(encoding="ascii")
+    bat = (REPO / "PeterPiperV1.1.bat").read_text(encoding="ascii")
     launch = bat[bat.index(":launch"):bat.index(":installonly")]
     ok("D launcher: logo at every start, then the shortcuts; install-only stops before both",
        launch.index("if defined ONLY goto installonly") < launch.index("call :logo")
@@ -278,7 +278,7 @@ def part_e():
     if sys.platform != "win32":
         print("     (E: Windows only - skipped)")
         return
-    bat = (REPO / "PeterPiperV1.0.bat").read_text(encoding="ascii").replace("\r\n", "\n")
+    bat = (REPO / "PeterPiperV1.1.bat").read_text(encoding="ascii").replace("\r\n", "\n")
     logo = bat[bat.index("\n:logo\n") + 1:bat.index("\n:logotext\n")]
     num = bat[bat.index("\n:modenum\n") + 1:]
     num = num[:num.index("exit /b 0\n", num.index("if not defined ROWS")) + len("exit /b 0\n")]

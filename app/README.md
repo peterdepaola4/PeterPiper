@@ -1,9 +1,9 @@
-# PeterPiperV1.0
+# PeterPiperV1.1
 
 Click-to-draw (plus 'auto-select the obvious ones') ROI tracking for Nikon .nd2
-fluorescence time series. See `READ ME.txt` next to `PeterPiperV1.0.bat` for how to use it.
+fluorescence time series. See `READ ME.txt` next to `PeterPiperV1.1.bat` for how to use it.
 
-Install: `PeterPiperV1.0.bat` makes a private Python environment in
+Install: `PeterPiperV1.1.bat` makes a private Python environment in
 `%USERPROFILE%\.PD4navV3.0\venv` from the exact versions in `requirements.txt`
 (fallback: `requirements-compatible.txt`); what was really installed is written to
 `venv\installed_versions.txt`. After that everything runs locally (see `SECURITY.md`).

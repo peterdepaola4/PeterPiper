@@ -1,4 +1,4 @@
-PeterPiper 1.0  -  quick start
+PeterPiper 1.1  -  quick start
 ==============================
 (PeterPiper was called PD4nav up to version 3.0; 1.0 continues PD4nav V3.0.)
 Full manual: README.html (double-click it - it opens in your web browser).
@@ -19,17 +19,17 @@ ON A MAC (macOS 14 or newer)
   Manual: README.html (section 3.7 for the Mac).
 
 START IT (Windows)
-  Double-click  "PeterPiperV1.0.bat".  That is the only file you ever open.
+  Double-click  "PeterPiperV1.1.bat".  That is the only file you ever open.
   Its window shows the PeterPiper logo; the first time, it also puts a
   PeterPiper shortcut with the logo on your Desktop, in the Start menu and in
   this folder - use that from then on (a .bat file cannot have its own icon).
   First time on a computer it installs itself (about 5 minutes, internet once,
-  about 250 MB) into its own folder  %USERPROFILE%\.PeterPiperV1.0 ; after that it
+  about 250 MB) into its own folder  %USERPROFILE%\.PeterPiperV1.1 ; after that it
   opens straight away and everything runs on this computer - nothing is
-  uploaded. It installs the exact package versions PeterPiperV1.0 was tested with
+  uploaded. It installs the exact package versions PeterPiperV1.1 was tested with
   (app\requirements.txt); if this computer cannot use them it installs
   compatible versions instead and says so. The versions really installed are
-  listed in  %USERPROFILE%\.PeterPiperV1.0\venv\installed_versions.txt .
+  listed in  %USERPROFILE%\.PeterPiperV1.1\venv\installed_versions.txt .
   "Cannot run from inside the zip"?  Right-click the zip > Extract All... first.
   "Python is missing"?  Install 64-bit Python 3.13 (or 3.12 / 3.11) from
   python.org and tick "Add python.exe to PATH" on the first screen.

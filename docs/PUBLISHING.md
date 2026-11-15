@@ -5,7 +5,7 @@ download, and getting a DOI to cite. Nothing here needs to be done in code.
 
 ## What the repository already has
 
-- **The program**: `app/` (Python package `peterpiper`), `PeterPiperV1.0.bat` (launcher and
+- **The program**: `app/` (Python package `peterpiper`), `PeterPiperV1.1.bat` (launcher and
   installer), `build/` (zip builder, manual builder, `set_github.py`).
 - **Every validation test**: `dev_tests/` (see `CONTRIBUTING.md`).
 - **Documentation**: `README.md` (the full manual; GitHub shows it on the front page),
@@ -61,9 +61,9 @@ This puts the address in Help > About PeterPiper, `CITATION.cff`, the manual's c
 1. Build and check the zip: `python build/build_zip.py --out release --unzip release`
    (it says "byte-identical to the repository" when the zip matches the code).
 2. GitHub > **Releases > Draft a new release**: tag `v1.0.0`, title `PeterPiper 1.0`, paste the
-   PeterPiper 1.0 part of `CHANGELOG.md`, attach `release\PeterPiperV1.0.zip`, **Publish**.
+   PeterPiper 1.0 part of `CHANGELOG.md`, attach `release\PeterPiperV1.1.zip`, **Publish**.
 3. Users download the zip from the release page, extract it and double-click
-   `PeterPiperV1.0.bat` (`READ ME.txt` says the rest).
+   `PeterPiperV1.1.bat` (`READ ME.txt` says the rest).
 
 ## Get a DOI for papers (recommended)
 

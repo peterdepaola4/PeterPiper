@@ -98,6 +98,14 @@ class TrainDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Train auto-detect - teach it the cells you pick")
         self.resize(1400, 900)
+        # 1.1: never bigger than the screen (a 1366 x 768 laptop: maximized instead)
+        from PySide6.QtWidgets import QApplication
+        scr = QApplication.primaryScreen()
+        if scr is not None:
+            g = scr.availableGeometry()
+            if g.width() < 1400 or g.height() < 900:
+                self.resize(min(1400, g.width()), min(900, max(400, g.height() - 40)))
+                self.setWindowState(self.windowState() | Qt.WindowMaximized)
         self.channels = [str(c) for c in channels]
         self.movies: List[DT.Movie] = []
         self.limits: Optional[dict] = None

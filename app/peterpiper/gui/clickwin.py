@@ -31,6 +31,17 @@ is saved automatically into <results folder>/PeterPiper_sessions as you work (on
 file per window session, replaced in one step - never anyone else's file), and
 when an .nd2 analysed before is opened, the earlier runs are offered
 (historydlg.PreviousRunsDialog; File > Earlier analyses of this file...).
+
+PeterPiper 1.1: opens maximized and needs no scroll bar at 1366 x 768 - the side panel
+shows ONE step page at a time (the step bar switches pages; rarely used things are in
+step 2's More menu and the File menu), with SAVE (+ an optional note, kept in the saved
+file's summary) and EXPORT always at its foot, and an empty extras row (extras_bar /
+add_extra) for other parts. A top row: Another file, Open results folder, Compare, Undo
+and - for a movie in the queue (batchqueue.py) - 'Movie 2 of 5', Skip, Next movie.
+Hand-over to the app: next_request = {"nd2", "run"} ("close me and open this"),
+load_run_file(path); Compare's openRequested(dict) is followed. Events (events.py):
+main_window_ready, movie_opened, roi_added, roi_removed, saved, exported, movie_closed.
+Smart auto-select (smartselect.py, optional) sits beside AUTO-DETECT, locked until earned.
 """
 from __future__ import annotations
 
@@ -129,6 +140,12 @@ TOOL_HELP = {
 }
 
 
+AUTO_TIP = ("Detects the well-defined (high-confidence) ROIs of the chosen compartment on its "
+            "rule's image in a second or two (clearly above background, normal size and shape, "
+            "separate). Under an IF rule, cells without signal in the second channel are "
+            "skipped. Fix the rest by hand; Undo removes them all.")
+STEP_NAMES = ("Rules", "ROIs", "Track", "Check", "Export")   # the step bar (one page each)
+
 AUTOSAVE_MS = 2000          # autosave this long after the last change (milestones: at once)
 _INDEX_LOCK = threading.Lock()   # run_history.json is written from several threads
 
@@ -211,6 +228,35 @@ class _SessionWriter(QObject):
             t.join(0.05)
 
 
+class _ExtrasBar(QWidget):
+    """1.1: a row for optional extras (e.g. part charlotte's button), at the foot of the
+    side panel under SAVE / EXPORT. Empty and hidden until a widget is put in it
+    (extras_bar.layout().addWidget(w) or ClickWindow.add_extra(w)); hidden again when
+    it is empty."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        self.setObjectName("extras_bar")
+        self.hide()
+
+    def childEvent(self, ev) -> None:                              # noqa: N802
+        super().childEvent(ev)
+        if ev.added() or ev.removed():
+            QTimer.singleShot(0, self._sync)
+
+    def _sync(self) -> None:
+        try:
+            lay = self.layout()
+            has = any(lay.itemAt(i).widget() is not None and not lay.itemAt(i).widget().isHidden()
+                      for i in range(lay.count()))
+            self.setVisible(has)
+        except RuntimeError:                       # the window is gone
+            pass
+
+
 def _has_outline(r) -> bool:
     o = getattr(r, "outline", None)
     return o is not None and bool(np.any(o))
@@ -224,7 +270,18 @@ class ClickWindow(QMainWindow):
         from .. import users
         self.setWindowTitle(f"{APP_NAME} {__version__}  -  {Path(exp.nd2_path).name}"
                             + (f"  ({users.current()})" if users.current() else ""))
-        self.resize(1600, 960)
+        # 1.1: opens maximized (a size set by the caller - resize() - wins); the size it
+        # gets back to is the old one, at most the screen
+        scr = QApplication.primaryScreen()
+        avail = scr.availableGeometry() if scr is not None else None
+        QMainWindow.resize(self, min(1600, avail.width()) if avail else 1600,
+                           min(960, avail.height()) if avail else 960)
+        self.setWindowState(self.windowState() | Qt.WindowMaximized)
+        # 1.1 hand-over to the app (app.py): "close me and open this movie (and run)"
+        self.next_request: Optional[dict] = None
+        self._since_save = False                     # changed since the last SAVE / export
+        self._last_loaded: Optional[str] = None      # the ROI file the last load put in
+        self._closed = False                         # movie_closed sent
         self.cells: List[Dict[str, Roi]] = []        # [cell][compartment] -> ROI
         self.excl: Dict[str, set] = {c: set() for c in COMPS}
         self.background: Optional[Roi] = None
@@ -313,6 +370,20 @@ class ClickWindow(QMainWindow):
         # place it (batch analysis, with nobody to click, still places it itself)
         if exp.export_tiffs:
             QTimer.singleShot(600, self._export_tiffs)
+        # 1.1: the queue line follows changes made elsewhere; other parts follow us
+        try:
+            from .. import events
+            events.on("queue_changed", self._update_queue)
+        except Exception:                                          # noqa: BLE001
+            pass
+        self._emit("main_window_ready", window=self)
+        self._emit("movie_opened", nd2=str(exp.nd2_path), window=self)
+        self._refresh_smart()                        # its status can change per movie
+
+    def resize(self, *a) -> None:                                  # noqa: D401
+        """An explicit size (a caller, the tests) replaces the maximized start."""
+        self.setWindowState(self.windowState() & ~Qt.WindowMaximized)
+        super().resize(*a)
 
     # ================================================================== UI
     def _build_ui(self) -> None:
@@ -339,7 +410,7 @@ class ClickWindow(QMainWindow):
         nav = QWidget()
         nl = QHBoxLayout(nav)
         nl.setContentsMargins(2, 0, 2, 0)
-        nl.addWidget(QLabel("Timepoint"))
+        nl.setSpacing(4)
         nl.addWidget(W.button("◀", lambda: self._step(-1), "Previous timepoint"))
         self.btn_play = QPushButton("▶  Play")
         self.btn_play.setCheckable(True)
@@ -351,9 +422,12 @@ class ClickWindow(QMainWindow):
         self.slider.setRange(1, max(1, self.exp.n_timepoints))
         self.slider.setEnabled(self.exp.n_timepoints > 1)
         self.slider.valueChanged.connect(self._on_slider)
+        self.slider.setToolTip("Timepoint: drag to move through the movie.")
+        self.slider.setMinimumWidth(90)             # 1.1: never squeezed away
         nl.addWidget(self.slider, 1)
         self.lbl_t = QLabel("")
-        self.lbl_t.setMinimumWidth(190)
+        self.lbl_t.setMinimumWidth(110)
+        self.lbl_t.setToolTip("Timepoint shown / all timepoints (time from the baseline).")
         self.lbl_t.setAlignment(Qt.AlignCenter)
         nl.addWidget(self.lbl_t)
         self.cmb_fps = QComboBox()
@@ -394,10 +468,28 @@ class ClickWindow(QMainWindow):
         dl.addWidget(self.chk_numbers)
         dl.addStretch(1)
         ll.addWidget(disp)
+        # the progress bar with Stop beside it (Stop only matters while a job runs)
+        prow = QWidget()
+        pl = QHBoxLayout(prow)
+        pl.setContentsMargins(2, 0, 2, 0)
+        pl.setSpacing(6)
         self.progress = W.ProgressStrip()
-        ll.addWidget(self.progress)
+        pl.addWidget(self.progress, 1)
+        self.btn_stop = W.button("Stop", self._cancel, "Stop the job that is running.")
+        self.btn_stop.setEnabled(False)
+        pl.addWidget(self.btn_stop, 0, Qt.AlignTop)
+        ll.addWidget(prow)
+        # 1.1: what just happened, under the image - a long message takes its lines
+        # from the image, so the side panel never needs a scroll bar
+        self.lbl_status = W.wrapped_label("Ready.")
+        self.lbl_status.setContentsMargins(4, 0, 4, 2)
+        ll.addWidget(self.lbl_status)
         splitter.addWidget(left)
+        self._splitter = splitter
 
+        # 1.1: the side panel shows ONE step at a time (the step bar switches pages), with
+        # SAVE / EXPORT always at its foot - it fits the screen at 1366 x 768. The scroll
+        # area stays only as a safety net for very large text (Ctrl +).
         scroll = QScrollArea()
         self._side_scroll = scroll
         scroll.setWidgetResizable(True)
@@ -405,15 +497,15 @@ class ClickWindow(QMainWindow):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # never hide anything
         panel = QWidget()
         self.side = QVBoxLayout(panel)
-        self.side.setContentsMargins(6, 6, 6, 6)
+        self.side.setContentsMargins(6, 4, 6, 6)
         self.side.setSpacing(5)
         scroll.setWidget(panel)
         from PySide6.QtWidgets import QSizePolicy
         # never squeezed shorter than its contents (that cut off the last line of
-        # some boxes): it scrolls instead
+        # some boxes)
         panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        self._build_toolbar()
         self._build_side()
-        self.side.addStretch(1)
         splitter.addWidget(scroll)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
@@ -437,40 +529,102 @@ class ClickWindow(QMainWindow):
         self._dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         self.addDockWidget(Qt.RightDockWidgetArea, self._dock)
         self.resizeDocks([self._dock], [int(self.width() * 0.33)], Qt.Horizontal)
+        # 1.1: nothing to show before TRACK & MEASURE - the image gets the room until then
+        # (View > Traces panel shows it at any time)
+        self._dock.hide()
+        self._act_traces = self._dock.toggleViewAction()
+        self._act_traces.setText("Traces panel")
+        self._act_traces.setToolTip("Show / hide the traces panel (include / exclude cells, "
+                                    "the live graph).")
+        self._view_menu.insertAction(self._view_sep, self._act_traces)
+
+    def _show_traces(self) -> None:
+        """The traces panel appears (after tracking), a third of the window wide."""
+        if not self._dock.isVisible() and not self._dock.isFloating():
+            self._dock.show()
+            self.resizeDocks([self._dock], [int(self.width() * 0.31)], Qt.Horizontal)
+        else:
+            self._dock.show()
+
+    # ------------------------------------------------------- 1.1 toolbar
+    def _build_toolbar(self) -> None:
+        """One row over everything: back to the start window, the results folder, Compare,
+        Undo - and, for a movie in the queue, 'Movie 2 of 5' with Skip / Next movie."""
+        from PySide6.QtWidgets import QSizePolicy, QToolBar
+        tb = QToolBar("Main", self)
+        tb.setObjectName("main_toolbar")
+        tb.setMovable(False)
+        tb.setFloatable(False)
+        tb.toggleViewAction().setVisible(False)      # never hidden by a right-click
+        tb.setContextMenuPolicy(Qt.PreventContextMenu)
+        self.addToolBar(Qt.TopToolBarArea, tb)
+        self._toolbar = tb
+        self.btn_back = W.button("◂  Another file", self._go_back,
+                                 "Back to the start window to choose another .nd2 (your work "
+                                 "here is saved automatically first).")
+        self.btn_folder = W.button("Open results folder", self._open_results_folder,
+                                   "Open this movie's results folder (exports, saved ROIs, "
+                                   "autosaved sessions) in Explorer / Finder.")
+        self.btn_compare = W.button("Compare / average runs...", self._compare_runs, COMPARE_TIP)
+        self.btn_undo = W.button("Undo", self._undo, "Take back the last change (Ctrl+Z).")
+        self.btn_undo.setEnabled(False)
+        for b in (self.btn_back, self.btn_folder, self.btn_compare, self.btn_undo):
+            tb.addWidget(b)
+        gap = QWidget()
+        gap.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        tb.addWidget(gap)
+        # the movie queue (batchqueue.py) - shown only for a movie in the queue
+        self.queue_box = QWidget()
+        ql = QHBoxLayout(self.queue_box)
+        ql.setContentsMargins(0, 0, 4, 0)
+        ql.setSpacing(6)
+        self.lbl_queue = QLabel("")
+        self.lbl_queue.setToolTip("This movie is in your queue of movies to analyse one after "
+                                  "another (chosen in the start window).")
+        ql.addWidget(self.lbl_queue)
+        self.btn_skip = W.button("Skip", lambda: self._next_movie(skip=True),
+                                 "Leave this movie for now (marked 'skipped' in the queue) and "
+                                 "open the next one. Your work here is saved automatically.")
+        ql.addWidget(self.btn_skip)
+        self.btn_next = W.button("Next movie  ▸", lambda: self._next_movie(skip=False),
+                                 "Open the next movie of the queue (asks to SAVE first if you "
+                                 "changed something since the last SAVE).", strong=True)
+        ql.addWidget(self.btn_next)
+        self._queue_act = tb.addWidget(self.queue_box)
+        self._update_queue()
 
     def _build_side(self) -> None:
-        # V2.9 step bar: where you are; click a step to go there
+        # V2.9 step bar: where you are; click a step to go there. 1.1: it switches pages -
+        # only the step shown has its controls on screen
+        from PySide6.QtWidgets import QGridLayout, QLineEdit, QToolButton
         self._step_btns: List[QPushButton] = []
         self._step_boxes: List = []
         self._step_now = -1
+        self._page = 0
         bar = QWidget()
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(0, 0, 0, 2)
         bl.setSpacing(4)
-        for i, name in enumerate(("Rules", "ROIs", "Track", "Check", "Export")):
+        for i, name in enumerate(STEP_NAMES):
             b = QPushButton(f"{i + 1} {name}")
             b.setProperty("step", "todo")
-            b.setToolTip(f"Step {i + 1}: go to '{name}' (and open it).")
+            b.setToolTip(f"Step {i + 1}: show '{name}'.")
+            b.setMinimumWidth(30)
             b.clicked.connect(lambda _c=False, k=i: self._goto_step(k, user=True))
             bl.addWidget(b, 1)
             self._step_btns.append(b)
         self.side.addWidget(bar)
         self.lbl_next = W.FitLabel("")
         self.lbl_next.setWordWrap(True)
-        from . import theme as TH
-        t_ = TH.current()
-        self.lbl_next.setStyleSheet(f"QLabel {{ background: {t_.select}; color: {t_.text}; "
-                                    f"font-weight: 600; padding: 10px 12px; border-radius: 10px; "
-                                    f"border-left: 4px solid {t_.accent}; }}")
+        self._style_next_box()
         self.side.addWidget(self.lbl_next)
 
         # ---- 1  tracking rules
         box, form = W.group("1   Tracking rules")
         self._step_boxes.append(box)
         intro = W.wrapped_label("How each kind of ROI is found and followed: on its main "
-                                "channel, helped by any helper channels (they choose which "
-                                "cells AUTO-DETECT picks and help follow them). Every channel "
-                                "is measured in every ROI - always.", muted=True)
+                                "channel, helped by any helper channels. Every channel is "
+                                "measured in every ROI - always.", muted=True)
         intro.setToolTip(self._rules_tip())
         form.addRow(intro)
         self._rows_box = QWidget()
@@ -485,6 +639,7 @@ class ClickWindow(QMainWindow):
         form.addRow(self.btn_row)
         self.lbl_rows = W.wrapped_label("", muted=True)
         form.addRow(self.lbl_rows)
+        form.addRow(self._page_next(1, "Rules look right - add ROIs  ▸"))
         self.side.addWidget(box)
 
         # ---- 2  add ROIs
@@ -501,21 +656,24 @@ class ClickWindow(QMainWindow):
                                  "on while tracking - set by its rule in step 1. Every channel "
                                  "is still measured in every ROI.")
         form.addRow(self.lbl_seen)
+        # what to click (shown for the background; for cells it is the Add button's tip)
         self.lbl_hint = W.wrapped_label("", muted=True)
         form.addRow(self.lbl_hint)
-        from PySide6.QtWidgets import QGridLayout
         tools = QWidget()
-        tl = QGridLayout(tools)                   # two rows of two: never too wide
+        tl = QGridLayout(tools)                   # two rows of three: never too wide
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(4)
         self._tool_btn = {}
+        from PySide6.QtWidgets import QSizePolicy
         for i, (key, (label, _col, _txt)) in enumerate(TOOLS.items()):
             b = QPushButton(label)
             b.setCheckable(True)
             b.setToolTip(TOOL_HELP[key] + "  Click again to turn it off.")
             b.clicked.connect(lambda _c=False, k=key: self._tool_clicked(k))
+            b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)   # never widens the panel
+            b.setMinimumWidth(40)
             self._tool_btn[key] = b
-            tl.addWidget(b, i // 2, i % 2)
+            tl.addWidget(b, i // 3, i % 3)
         form.addRow(tools)
         self.chk_resize_all = QCheckBox("Resize all cells together")
         self.chk_resize_all.setToolTip("Scrolling then redraws every ROI of this compartment "
@@ -526,26 +684,34 @@ class ClickWindow(QMainWindow):
         self.lbl_tool = W.FitLabel("")
         self.lbl_tool.setWordWrap(True)
         form.addRow(self.lbl_tool)
-        self.btn_auto = W.button("AUTO-DETECT", self._auto_select,
-                                 "Detects the well-defined (high-confidence) ROIs of the chosen "
-                                 "compartment on its rule's image in a second or two (clearly "
-                                 "above background, normal size and shape, separate). Under an "
-                                 "IF rule, cells without signal in the second channel are "
-                                 "skipped. Fix the rest by hand; Undo removes them all.",
-                                 strong=True)
+        self.btn_auto = W.button("AUTO-DETECT", self._auto_select, AUTO_TIP, strong=True)
         self.btn_auto.setMinimumHeight(34)         # V2.9: a primary button of the theme
-        form.addRow(self.btn_auto)
+        self.btn_auto.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        # 1.1: Smart auto-select (smartselect.py) beside it - shown to everyone, locked until
+        # earned; kept enabled-looking so its directions always show on hover
+        self.btn_smart = QPushButton("")
+        self.btn_smart.setMinimumHeight(34)
+        self.btn_smart.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.btn_smart.setMinimumWidth(60)
+        self.btn_smart.clicked.connect(self._smart_clicked)
+        self.btn_smart.hide()
+        self._smart_state: Optional[dict] = None
+        self._smart_pop = None
+        arow = QWidget()
+        arl = QHBoxLayout(arow)
+        arl.setContentsMargins(0, 0, 0, 0)
+        arl.setSpacing(6)
+        arl.addWidget(self.btn_auto, 1)
+        arl.addWidget(self.btn_smart, 1)
+        form.addRow(arow)
         # V3.0: your trained auto-detects (only those that fit this movie's channels)
         self.det_box = QWidget()
         self._det_lay = QVBoxLayout(self.det_box)
         self._det_lay.setContentsMargins(0, 0, 0, 0)
         self._det_lay.setSpacing(3)
+        self.det_box.hide()
         form.addRow(self.det_box)
-        self.btn_train = W.button("Train auto-detect from my runs...", self._train_detector,
-                                  "Teach AUTO-DETECT which cells you pick: choose saved runs "
-                                  "you outlined by hand, watch it learn, answer a short "
-                                  "keep / skip quiz, and save it as your own button here.")
-        form.addRow(self.btn_train)
+        self._n_detectors = None                      # trained auto-detects listed (None: not yet)
         self._detector_used = None                    # the trained auto-detect used (methods)
         self._auto_det = None
         QTimer.singleShot(0, self._fill_detectors)
@@ -564,17 +730,35 @@ class ClickWindow(QMainWindow):
         al.addWidget(self.sl_auto)
         self.auto_row.hide()
         form.addRow(self.auto_row)
-        self.btn_undo = W.button("Undo  (Ctrl+Z)", self._undo, "Take back the last change.")
-        self.btn_undo.setEnabled(False)
-        form.addRow(self.btn_undo)
-        self.btn_load = W.button("Load saved ROIs...", self._load_rois,
-                                 "Open an ROI file saved earlier (..._ROIs.npz, or an "
-                                 "autosaved ..._session_....npz) - with its tracking when it "
-                                 "was saved. File > Earlier analyses of this file... lists the "
-                                 "ones found for this .nd2.")
-        form.addRow(self.btn_load)
         self.lbl_counts = QLabel("")             # short lines: no wrapping, always fully shown
         form.addRow(self.lbl_counts)
+        # rarely used: in a small menu (also in the File menu)
+        more = QToolButton()
+        more.setText("More")
+        more.setPopupMode(QToolButton.InstantPopup)
+        more.setToolTip("Load saved ROIs, earlier analyses of this file, train your own "
+                        "auto-detect.")
+        mm = QMenu(more)
+        self.btn_load = QAction("Load saved ROIs...", self)
+        self.btn_load.setToolTip("Open an ROI file saved earlier (..._ROIs.npz, or an "
+                                 "autosaved ..._session_....npz) - with its tracking when it "
+                                 "was saved.")
+        self.btn_load.triggered.connect(self._load_rois)
+        mm.addAction(self.btn_load)
+        a = QAction("Earlier analyses of this file...", self)
+        a.triggered.connect(self._earlier_analyses)
+        mm.addAction(a)
+        mm.addSeparator()
+        self.btn_train = QAction("Train auto-detect from my runs...", self)
+        self.btn_train.setToolTip("Teach AUTO-DETECT which cells you pick: choose saved runs "
+                                  "you outlined by hand, watch it learn, answer a short "
+                                  "keep / skip quiz, and save it as your own button here.")
+        self.btn_train.triggered.connect(self._train_detector)
+        mm.addAction(self.btn_train)
+        mm.setToolTipsVisible(True)
+        more.setMenu(mm)
+        self.btn_more = more
+        form.addRow(self._page_next(2, "Next: track  ▸", more))
         self.side.addWidget(box)
 
         # ---- 3  track
@@ -597,7 +781,7 @@ class ClickWindow(QMainWindow):
                              "EXACTLY the number of pixels you drew (the brightest connected "
                              "pixels of the redrawn outline).", 5,
                              lambda v: self._track_setting_changed("track_size_tol", v / 100.0))
-        self.sp_move = W.dspin(form, "Max movement between timepoints  µm",
+        self.sp_move = W.dspin(form, "Max move per timepoint  µm",
                                float(getattr(self.settings, "max_move_um", 3.0)), 0.5, 50.0,
                                "How far a cell may move from one timepoint to the next: each "
                                "ROI is looked for only within this distance of where it was. "
@@ -611,7 +795,7 @@ class ClickWindow(QMainWindow):
                                "around it (cells you click are kept). Older IF rules: cells "
                                "below it are excluded, with the reason shown.", 1, 0.5,
                                lambda v: self._track_setting_changed("gate_snr", v))
-        self.sp_and = W.dspin(form, "AND rule: pixel threshold  × noise",
+        self.sp_and = W.dspin(form, "AND rule: pixels above  × noise",
                               float(getattr(self.settings, "overlap_k", 3.0)), 0.5, 100.0,
                               "AND rule: inside the ROI, only pixels where the second channel "
                               "is above its background by more than this many times its noise "
@@ -641,9 +825,6 @@ class ClickWindow(QMainWindow):
         self._show_rule_settings()
         self.lbl_track = W.wrapped_label("Not tracked yet.", muted=True)
         form.addRow(self.lbl_track)
-        self.btn_stop = W.button("Stop", self._cancel, "Stop the job that is running.")
-        self.btn_stop.setEnabled(False)
-        form.addRow(self.btn_stop)
         self.side.addWidget(box)
 
         # ---- 4  check
@@ -665,6 +846,7 @@ class ClickWindow(QMainWindow):
                               "gives wild numbers. 0 = off. Used in the graphs, every export and "
                               "Compare.")
         self.sp_snr.valueChanged.connect(self._snr_changed)
+        form.addRow(self._page_next(4, "Next: export  ▸"))
         self.side.addWidget(box)
 
         # ---- 5  export
@@ -692,20 +874,12 @@ class ClickWindow(QMainWindow):
         dl.addWidget(self.sp_dto)
         dl.addStretch(1)
         form.addRow("Drift slope", drow)
-        self.btn_export = W.button("CHOOSE OUTPUTS\n&& EXPORT...", self._choose_outputs,
-                                   "Pick what you want on your export list (Excel, Prism, "
-                                   "graphs, ROI pictures, ...); only that is written.",
-                                   strong=True)
-        self.btn_export.setMinimumHeight(34)
-        self.btn_export.setEnabled(False)
-        form.addRow(self.btn_export)
-        self.btn_compare = W.button("Compare / average runs...", self._compare_runs, COMPARE_TIP)
-        form.addRow(self.btn_compare)
         out = Path(self.exp.out_dir)
         shown = (out.parent.name + os.sep + out.name                # V3.0: OUTPUT_<movie>/<user>
                  if out.parent.name.upper().startswith("OUTPUT_") else out.name)
-        lbl = W.wrapped_label("Each export goes into a new folder inside " +
-                              shown.replace("_", "_​") + " (next to the .nd2).",
+        lbl = W.wrapped_label("SAVE keeps this version of your work for Compare; EXPORT "
+                              "writes your export list into a new folder inside " +
+                              shown.replace("_", "_​") + " (Open results folder, at the top).",
                               muted=True)
         lbl.setToolTip(str(out))
         form.addRow(lbl)
@@ -713,14 +887,92 @@ class ClickWindow(QMainWindow):
 
         for b in self._step_boxes:
             W.make_foldable(b)
+            b.removeEventFilter(W._FOLD_FILTER)        # 1.1: pages, not folding titles
+            b._body.layout().setVerticalSpacing(3)     # 1.1: compact (fits 1366 x 768)
         self._step_boxes[0]._on_open = self._rules_opened
-        box, form = W.group("Status")
-        self.lbl_status = W.wrapped_label("Ready.")
-        form.addRow(self.lbl_status)
+        self.side.addStretch(1)
+
+        # ---- 1.1: SAVE and EXPORT, always at the foot of the panel
+        foot = QWidget()
+        fl = QVBoxLayout(foot)
+        fl.setContentsMargins(0, 4, 0, 0)
+        fl.setSpacing(4)
+        fl.addWidget(W.hline())
+        self.ed_note = QLineEdit()
+        self.ed_note.setPlaceholderText("Note (optional), e.g. 'without the dim cells'")
+        self.ed_note.setMaxLength(120)
+        self.ed_note.setClearButtonEnabled(True)
+        self.ed_note.setToolTip("A few words saved with SAVE, so you can tell your saves apart "
+                                "in the Compare window and the earlier-analyses list.")
+        self.ed_note.returnPressed.connect(self._save_clicked)
+        fl.addWidget(self.ed_note)
+        brow = QWidget()
+        bl = QHBoxLayout(brow)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(6)
+        self.btn_save = W.button("SAVE", self._save_clicked,
+                                 "Save this version of your work now - the ROIs, include / "
+                                 "exclude and the tracking - as an ROI file in the results "
+                                 "folder (Ctrl+S). It shows as 'Saved' (with your note) in the "
+                                 "Compare window and in File > Earlier analyses. Your work is "
+                                 "also saved automatically as you go.", strong=True)
+        self.btn_save.setMinimumHeight(34)
+        self.btn_save.setEnabled(False)
+        bl.addWidget(self.btn_save, 2)
+        self.btn_export = W.button("EXPORT...", self._choose_outputs,
+                                   "Choose what goes on your export list (Excel, Prism, graphs, "
+                                   "ROI pictures, ...); only that is written, into a new "
+                                   "folder.", strong=True)
+        self.btn_export.setMinimumHeight(34)
+        self.btn_export.setEnabled(False)
+        bl.addWidget(self.btn_export, 3)
+        fl.addWidget(brow)
+        # 1.1: optional extras from other parts (hidden while empty) - add_extra(widget)
+        self.extras_bar = _ExtrasBar()
+        fl.addWidget(self.extras_bar)
+        self.lbl_save_info = W.wrapped_label("Not saved yet.", muted=True)
+        fl.addWidget(self.lbl_save_info)
         self.lbl_saved = W.wrapped_label(self._saved_text(), muted=True)
         self.lbl_saved.setToolTip(str(history.session_dir(self.exp.out_dir)))
-        form.addRow(self.lbl_saved)
-        self.side.addWidget(box)
+        fl.addWidget(self.lbl_saved)
+        self.side.addWidget(foot)
+        self._show_page(0)
+
+    def add_extra(self, widget: QWidget) -> None:
+        """1.1: put an optional extra (a button of another part) in the extras row under
+        SAVE / EXPORT; the row shows itself."""
+        self.extras_bar.layout().addWidget(widget)
+        widget.show()
+        self.extras_bar._sync()
+
+    def _page_next(self, k: int, text: str, left: Optional[QWidget] = None) -> QWidget:
+        """A page's foot: [left]  ......  [Next step >]."""
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 2, 0, 0)
+        if left is not None:
+            lay.addWidget(left)
+        lay.addStretch(1)
+        b = QPushButton(text)
+        b.setToolTip(f"Show step {k + 1}, {STEP_NAMES[k]}.")
+        b.clicked.connect(lambda _c=False: self._goto_step(k, user=True))
+        lay.addWidget(b)
+        return w
+
+    def _style_next_box(self) -> None:
+        """The 'what to do next' box, in the theme's colours (again after a theme change)."""
+        from . import theme as TH
+        t_ = TH.current()
+        self.lbl_next.setStyleSheet(f"QLabel {{ background: {t_.select}; color: {t_.text}; "
+                                    f"font-weight: 600; padding: 8px 10px; border-radius: 10px; "
+                                    f"border-left: 4px solid {t_.accent}; }}")
+        if getattr(self, "_step_btns", None):
+            self._mark_page_button()
+
+    @staticmethod
+    def _warn_colour() -> str:
+        from . import theme as TH
+        return TH.current().warn if TH._current is not None else "#d04a00"
 
     def _compare_runs(self) -> None:
         """V2.4: the 'Compare runs' window (non-modal), in this window's graph look."""
@@ -734,7 +986,312 @@ class ClickWindow(QMainWindow):
         self._compare = CompareWindow(dict(getattr(self.settings, "graph_style", None) or {}),
                                       e.nd2_path, e.out_dir, (e.height, e.width),
                                       e.n_timepoints, self)
+        # 1.1: 'Open in analysis' on a run there (gui/comparewin, part compare)
+        sig = getattr(self._compare, "openRequested", None)
+        if sig is not None:
+            try:
+                sig.connect(self._compare_open_request)
+            except (RuntimeError, TypeError, AttributeError):
+                pass
         self._compare.show()
+
+    # --------------------------------------- 1.1 going back and forth
+    def load_run_file(self, path) -> bool:
+        """Load a saved run (an ROI file or an autosaved session) into this window -
+        what you have now is autosaved first. True if it was loaded."""
+        if self._busy_now() or not path:
+            return False
+        self._autosave()                        # what you have now is kept first
+        self._last_loaded = None
+        self._load_roi_file(path)
+        return self._last_loaded is not None
+
+    def _is_this_movie(self, nd2, run) -> bool:
+        """Does a run (and / or an .nd2 path) belong to the movie open here? The same
+        path, or - for a moved / renamed copy - the same .nd2 fingerprint."""
+        if nd2 and _same_path_key(nd2) == _same_path_key(self.exp.nd2_path):
+            return True
+        if run:
+            s = read_summary(run) or {}
+            fp = s.get("fingerprint") if isinstance(s.get("fingerprint"), dict) else {}
+            mine = self._fp()
+            if fp.get("quick") and mine.get("quick") and history.same_file(fp, mine):
+                return True
+            if not nd2 and s.get("nd2_path") and \
+                    _same_path_key(s["nd2_path"]) == _same_path_key(self.exp.nd2_path):
+                return True
+        return False
+
+    def _compare_open_request(self, req=None) -> None:
+        """The Compare window asks to open a run: one of this movie's is loaded here;
+        another movie's: this window closes (your work autosaved first) and the app
+        opens that movie with the run (next_request)."""
+        if not isinstance(req, dict):
+            req = getattr(getattr(self, "_compare", None), "open_request", None) or {}
+        nd2, run = req.get("nd2"), req.get("run")
+        if self._is_this_movie(nd2, run):
+            if run:
+                self.load_run_file(run)
+            self.raise_()
+            self.activateWindow()
+            return
+        if not nd2 and run:
+            nd2 = (read_summary(run) or {}).get("nd2_path") or None
+        if not nd2:
+            self.set_status("Could not tell which movie that run belongs to - open it from "
+                            "the start window.")
+            return
+        if self._busy_now():
+            QMessageBox.information(self, "Still working", "Wait for the current job to "
+                                                           "finish, or press Stop.")
+            return
+        self._autosave()
+        self._open_other(str(nd2), str(run) if run else None)
+
+    def _open_other(self, nd2: str, run: Optional[str]) -> None:
+        """Close this window so that the app opens another movie (and run)."""
+        self.next_request = {"nd2": str(nd2), "run": run}
+
+        def go() -> None:
+            self.close()
+            if self.isVisible():                     # closing was cancelled
+                self.next_request = None
+        QTimer.singleShot(0, go)
+
+    def _open_results_folder(self) -> None:
+        folder = self.exp.out_dir if is_dir(self.exp.out_dir) else \
+            str(Path(self.exp.nd2_path).parent)
+        if not W.open_path(folder):
+            self.set_status(f"Could not open {folder}.")
+
+    # ------------------------------------------------------ 1.1 SAVE
+    def _save_clicked(self):
+        """SAVE: the 'Save ROIs now' file (with the tracking) with your note."""
+        if self._busy_now():
+            self.set_status("Please wait - a job is running (see the bar under the image).")
+            return None
+        return self._save_rois(silent=False, note=self.ed_note.text())
+
+    def _unsaved(self) -> bool:
+        """Changed since the last SAVE (or export), with something to save."""
+        return bool(any(self.cells)) and bool(self._since_save)
+
+    # ------------------------------------------------- 1.1 movie queue
+    def _queue(self):
+        try:
+            from .. import batchqueue
+            return batchqueue
+        except Exception:                                          # noqa: BLE001
+            return None
+
+    def _queue_mark(self, status: str) -> None:
+        bq = self._queue()
+        try:
+            if bq is not None and bq.position(self.exp.nd2_path) is not None:
+                bq.mark(str(self.exp.nd2_path), status)
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def _update_queue(self, **_kw) -> None:
+        """'Movie 2 of 5' + Skip / Next movie, for a movie in the queue."""
+        bq = self._queue()
+        try:
+            pos = bq.position(self.exp.nd2_path) if bq is not None else None
+            left = [it for it in bq.items() if it["status"] == "todo"
+                    and _same_path_key(it["nd2"]) != _same_path_key(self.exp.nd2_path)] \
+                if pos else []
+        except Exception:                                          # noqa: BLE001
+            pos, left = None, []
+        try:
+            self._queue_act.setVisible(pos is not None)
+            if pos:
+                self.lbl_queue.setText(f"Movie {pos[0]} of {pos[1]}")
+                self.lbl_queue.setToolTip(
+                    f"This movie is number {pos[0]} of the {pos[1]} in your queue; "
+                    f"{len(left)} other(s) still to do.")
+                self.btn_next.setText("Next movie  ▸" if left else "Finish the queue")
+        except RuntimeError:                       # the window is gone (event after closing)
+            pass
+
+    def _ask_save_first(self) -> Optional[str]:
+        """Next movie with changes since the last SAVE: 'save' | 'go' | None (stay).
+        Tests replace this."""
+        box = QMessageBox(QMessageBox.Question, "Save first?",
+                          "You changed this movie's analysis since the last SAVE. Your work is "
+                          "kept by the autosave anyway - SAVE it now, so it shows as a saved "
+                          "version in Compare?", parent=self)
+        save = box.addButton("SAVE, then next movie", QMessageBox.AcceptRole)
+        go = box.addButton("Next movie without saving", QMessageBox.DestructiveRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(save)
+        box.exec()
+        c = box.clickedButton()
+        return "save" if c is save else "go" if c is go else None
+
+    def _next_movie(self, skip: bool = False) -> None:
+        """Next movie / Skip (the movie queue): mark this one, then close so that the
+        app opens the next movie still to do. The last one: say so."""
+        bq = self._queue()
+        if bq is None:
+            return
+        if self._busy_now():
+            QMessageBox.information(self, "Still working", "Wait for the current job to "
+                                                           "finish, or press Stop.")
+            return
+        nd2 = str(self.exp.nd2_path)
+        if skip:
+            self._queue_mark("skipped")
+        elif self._unsaved():
+            ans = self._ask_save_first()
+            if ans is None:
+                return
+            if ans == "save" and self._save_clicked() is None:
+                return
+        nxt = bq.next_after(nd2)
+        if not nxt:
+            self._queue_finished()
+            return
+        self._autosave()
+        self._open_other(str(nxt), None)
+
+    def _queue_finished(self) -> None:
+        msg = ("That was the last movie in your queue - every movie has been looked at. "
+               "Well done! (The start window shows the queue with what was saved, exported or "
+               "skipped.)")
+        self.set_status(msg)
+        W.Toast(self, "Queue finished", msg, ("Back to the start window", self._go_back),
+                ms=15000)
+        self._update_queue()
+
+    # ----------------------------------------------------- 1.1 events
+    def _n_cells(self) -> int:
+        return sum(1 for c in self.cells if c)
+
+    def _emit(self, name: str, **kw) -> None:
+        try:
+            from .. import events
+            events.emit(name, **kw)
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    # ------------------------------------------- 1.1 Smart auto-select
+    @staticmethod
+    def _smart_module():
+        """smartselect.py if it is installed (status() / run(window)), else None."""
+        try:
+            from .. import smartselect
+        except Exception:                                          # noqa: BLE001
+            return None
+        if not (callable(getattr(smartselect, "status", None))
+                and callable(getattr(smartselect, "run", None))):
+            return None
+        return smartselect
+
+    def _refresh_smart(self) -> None:
+        """Smart auto-select: hidden without smartselect.py; else locked / unlocked as
+        its status() says (asked again when a movie opens and after SAVE)."""
+        mod = self._smart_module()
+        st = None
+        if mod is not None:
+            try:
+                got = mod.status()
+                if isinstance(got, dict):
+                    st = dict(unlocked=bool(got.get("unlocked")), text=str(got.get("text") or ""),
+                              how=str(got.get("how") or ""))
+            except Exception:                                      # noqa: BLE001
+                st = None
+        self._smart_state = st
+        try:
+            self.btn_smart.setVisible(st is not None)
+            if st is not None:
+                self._style_smart()
+        except RuntimeError:
+            pass
+
+    def _style_smart(self) -> None:
+        """Accent gradient with a sparkle when unlocked; a calm locked look with a lock
+        (theme colours only - readable on every theme)."""
+        st = self._smart_state
+        if st is None:
+            return
+        from PySide6.QtGui import QColor
+        from . import theme as TH
+        t_ = TH.current()
+        b = self.btn_smart
+        if st["unlocked"]:
+            a = QColor(t_.accent)
+            b.setText("✦  Smart auto-select")
+            b.setStyleSheet(
+                f"QPushButton {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                f"stop:0 {a.lighter(118).name()}, stop:1 {a.darker(135).name()}); "
+                f"color: {t_.accent_text}; border: 1px solid {a.name()}; font-weight: 700; "
+                f"padding: 6px 4px; }}"
+                f"QPushButton:hover {{ background: {a.lighter(125).name()}; }}"
+                f"QPushButton:disabled {{ background: {t_.surface2}; color: {t_.muted}; }}")
+            b.setToolTip("Smart auto-select: picks the cells on this movie the way you pick "
+                         "them." + (f"\n{st['text']}" if st["text"] else "")
+                         + (f"\n{st['how']}" if st["how"] else ""))
+        else:
+            b.setText("🔒  Smart auto-select")
+            b.setStyleSheet(
+                f"QPushButton {{ background: {t_.surface2}; color: {t_.muted}; "
+                f"border: 1px dashed {t_.accent}; font-weight: 600; padding: 6px 4px; }}"
+                f"QPushButton:hover {{ color: {t_.text}; border: 1px solid {t_.accent}; }}")
+            b.setToolTip("Smart auto-select - locked." + (f"\n{st['text']}" if st["text"] else "")
+                         + (f"\n\nHow to unlock it: {st['how']}" if st["how"] else ""))
+        b.setProperty("locked", not st["unlocked"])
+
+    def _smart_clicked(self) -> None:
+        st = self._smart_state
+        mod = self._smart_module()
+        if st is None or mod is None:
+            return
+        if not st["unlocked"]:
+            self._show_smart_directions()
+            return
+        if self._busy_now():
+            self.set_status("Please wait - a job is running (see the bar under the image).")
+            return
+        self._show_page(1)
+        try:
+            mod.run(self)
+        except Exception as exc:                                   # noqa: BLE001
+            self.set_status(f"Smart auto-select stopped: {error_text(exc)}")
+        self._refresh_smart()
+
+    def _show_smart_directions(self) -> None:
+        """A locked Smart auto-select was clicked: the directions in a small popup under
+        the button (it closes with any click elsewhere)."""
+        from PySide6.QtWidgets import QFrame
+        st = self._smart_state or {}
+        short = str(st.get("text") or "").strip().rstrip(".")
+        text = "Smart auto-select is locked." + (f" {short}." if short else "") \
+            + (f"\n\nHow to unlock it: {st.get('how')}" if st.get("how") else "")
+        old = self._smart_pop
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:
+                pass
+        pop = QFrame(self, Qt.Popup)
+        pop.setObjectName("smartpop")
+        from . import theme as TH
+        t_ = TH.current()
+        pop.setStyleSheet(f"QFrame#smartpop {{ background: {t_.surface}; border: 1px solid "
+                          f"{t_.accent}; border-radius: 10px; }} QLabel {{ color: {t_.text}; "
+                          f"background: transparent; }}")
+        lay = QVBoxLayout(pop)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lab = QLabel(text)
+        lab.setWordWrap(True)
+        lab.setFixedWidth(max(260, min(420, self.btn_smart.width() * 2)))
+        lay.addWidget(lab)
+        pop.adjustSize()
+        g = self.btn_smart.mapToGlobal(self.btn_smart.rect().bottomLeft())
+        pop.move(g.x() - max(0, pop.width() - self.btn_smart.width()), g.y() + 4)
+        pop.show()
+        self._smart_pop = pop
+        self._smart_popup_text = text
 
     # ----------------------------------------------- V2.7 saved settings, batch
     def _save_analysis_settings(self) -> None:
@@ -811,12 +1368,6 @@ class ClickWindow(QMainWindow):
         from .syscheckdlg import ComputerCheckDialog
         ComputerCheckDialog(self).exec()
 
-    def _set_theme(self, key: str) -> None:
-        from . import theme as TH
-        TH.switch(key, self.settings)
-        for k, a in self._theme_acts.items():
-            a.setChecked(k == key)
-
     def _prism_templates(self) -> None:
         """V2.7: your Prism style templates (open in Prism, take the look over)."""
         from .templatedlg import TemplateDialog
@@ -827,12 +1378,75 @@ class ClickWindow(QMainWindow):
             self._graph_style_changed(new)
         TemplateDialog(take, self).exec()
 
+    def _set_theme(self, key: str) -> None:
+        from . import theme as TH
+        TH.switch(key, self.settings)
+        for k, a in self._theme_acts.items():
+            a.setChecked(k == key)
+        self._style_next_box()                  # colours made from the theme
+        self._style_smart()
+
+    def _fill_theme_menu(self) -> None:
+        """View > Theme, built each time it opens (1.1: a palette found while the app
+        runs appears at once)."""
+        from . import theme as TH
+        m = self._theme_menu
+        m.clear()
+        self._theme_acts = {}
+        cur = TH.current().name if TH._current is not None else ""
+        for key in TH.available_names():
+            a = QAction(TH.label(key), m, checkable=True)
+            a.setChecked(cur == key)
+            a.triggered.connect(lambda _c=False, k=key: self._set_theme(k))
+            m.addAction(a)
+            self._theme_acts[key] = a
+
+    @staticmethod
+    def _backup_fn():
+        """storagedlg.backup_dialog if that part is installed, else None."""
+        try:
+            from .storagedlg import backup_dialog
+            return backup_dialog
+        except Exception:                                          # noqa: BLE001
+            return None
+
+    def _backup(self) -> None:
+        fn = self._backup_fn()
+        if fn is not None:
+            fn(self, str(self.exp.nd2_path), str(self.exp.out_dir))
+
+    def _file_menu_opens(self) -> None:
+        self._act_backup.setVisible(self._backup_fn() is not None)
+
+    def _achievements_found(self) -> bool:
+        try:
+            from .. import achievements
+            if not achievements.found():
+                return False
+            from . import eggsdlg                                     # noqa: F401
+            return hasattr(eggsdlg, "show_achievements")
+        except Exception:                                          # noqa: BLE001
+            return False
+
+    def _help_menu_opens(self) -> None:
+        self._act_eggs.setVisible(self._achievements_found())
+
+    def _show_achievements(self) -> None:
+        try:
+            from .eggsdlg import show_achievements
+        except Exception:                                          # noqa: BLE001
+            return
+        show_achievements(self)
+
     def _build_menu(self) -> None:
         m = self.menuBar().addMenu("&File")
+        self._file_menu = m
         for label, fn in (("Choose another file...", self._go_back), (None, None),
                           ("Earlier analyses of this file...", self._earlier_analyses),
                           ("Load saved ROIs...", self._load_rois),
-                          ("Save ROIs now", lambda: self._save_rois(silent=False)),
+                          ("Save now (SAVE)", self._save_clicked),
+                          ("Open results folder", self._open_results_folder),
+                          ("Back up this analysis...", self._backup),
                           ("Export raw TIFFs...", self._export_tiffs), (None, None),
                           ("Compare / average runs...", self._compare_runs),
                           ("Prism style templates...", self._prism_templates), (None, None),
@@ -851,6 +1465,14 @@ class ClickWindow(QMainWindow):
             if fn == self._earlier_analyses:
                 a.setToolTip("The ROI files and autosaved sessions found for this .nd2 - "
                              "load one (with its tracking) to check or export it again.")
+            if fn == self._save_clicked:
+                a.setShortcut(QKeySequence.Save)
+                a.setToolTip("SAVE: this version of your work (ROIs, include / exclude, "
+                             "tracking) with the note typed under the steps.")
+                self.act_save = a
+            if fn == self._backup:
+                a.setToolTip("Copy this movie's analysis (results folder) somewhere safe.")
+                self._act_backup = a
         self.act_autosave = QAction("Save my work automatically", self, checkable=True)
         self.act_autosave.setChecked(bool(getattr(self.settings, "autosave_sessions", True)))
         self.act_autosave.toggled.connect(self._autosave_toggled)
@@ -864,23 +1486,15 @@ class ClickWindow(QMainWindow):
         a.triggered.connect(self.close)
         m.addAction(a)
         m.setToolTipsVisible(True)
+        m.aboutToShow.connect(self._file_menu_opens)
+        self._file_menu_opens()
         v = self.menuBar().addMenu("&View")
-        from . import theme as TH                  # V2.9: dark / light
-        tm = v.addMenu("Theme")
+        self._view_menu = v
+        self._theme_menu = v.addMenu("Theme")            # V2.9: dark / light (1.1: + found ones)
         self._theme_acts = {}
-        for key in TH.available_names():
-            a = QAction(TH.label(key), self, checkable=True)
-            a.setChecked(TH.current().name == key)
-            a.triggered.connect(lambda _c=False, k=key: self._set_theme(k))
-            tm.addAction(a)
-            self._theme_acts[key] = a
-        a = QAction("Fold finished steps", self, checkable=True)
-        a.setChecked(bool(getattr(self.settings, "ui_fold_steps", True)))
-        a.setToolTip("The steps you are not on fold to their title (click the title or the "
-                     "step bar to open one).")
-        a.toggled.connect(self._fold_toggled)
-        v.addAction(a)
-        v.addSeparator()
+        self._theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        self._fill_theme_menu()
+        self._view_sep = v.addSeparator()                # (the Traces panel item goes above)
         for label, keys, fn in (
                 ("Larger text", ["Ctrl++", "Ctrl+="],
                  lambda: self._set_text_size((self.settings.ui_font_pt or W.base_font_pt()) + 1)),
@@ -900,6 +1514,7 @@ class ClickWindow(QMainWindow):
         a.triggered.connect(lambda: self.btn_play.toggle())
         v.addAction(a)
         h = self.menuBar().addMenu("&Help")
+        self._help_menu = h
         a = QAction("How to use this window", self)
         a.triggered.connect(self._help)
         h.addAction(a)
@@ -910,6 +1525,12 @@ class ClickWindow(QMainWindow):
         a.setToolTip("Is this computer set up the way PeterPiper needs?")
         a.triggered.connect(self._computer_check)
         h.addAction(a)
+        # 1.1: shown only once a hidden extra has been found
+        self._act_eggs = QAction("Achievements...", self)
+        self._act_eggs.triggered.connect(self._show_achievements)
+        h.addAction(self._act_eggs)
+        h.aboutToShow.connect(self._help_menu_opens)
+        self._help_menu_opens()
 
     # ===================================================== tracking rules
     @staticmethod
@@ -1555,13 +2176,21 @@ class ClickWindow(QMainWindow):
             self.lbl_seen.setText(f"Drawn and followed on: {self._guide_name(self.comp)}")
             self.lbl_seen.setVisible(True)
         self.lbl_hint.setText(HINTS[self.comp].format(ch=ch))
+        # 1.1: the background's instructions on show; for cells, the line above and the
+        # tools' own lines say it (the hint is the Compartment / Add tooltip)
+        self.lbl_hint.setVisible(self.comp == "background")
+        self.cmb_comp.setToolTip("What Add / Remove / Draw act on. Also chooses which outlines "
+                                 "are highlighted and which traces are shown.\n"
+                                 + HINTS[self.comp].format(ch=ch))
         if self.tool:                             # keep the active tool's line current
             self.lbl_tool.setText(ACTIVE[self.tool].format(c=LABELS[self.comp].lower(), ch=ch))
         if hasattr(self, "btn_auto"):
             bg = self.comp == "background"
             self.btn_auto.setEnabled(not bg and not self._busy_now())
-            self.btn_auto.setText("AUTO-DETECT" if bg else
-                                  f"AUTO-DETECT\n{LABELS[self.comp]} on {ch}")
+            # 1.1: one line (Smart auto-select sits beside it); what and on what: tooltip
+            self.btn_auto.setText("AUTO-DETECT")
+            self.btn_auto.setToolTip(("" if bg else f"AUTO-DETECT {LABELS[self.comp].lower()} "
+                                      f"on {ch}.\n") + AUTO_TIP)
 
     def _pick_background(self) -> None:
         """V3.0: Compartment 'Background' with Add on - the next click places it."""
@@ -1597,6 +2226,8 @@ class ClickWindow(QMainWindow):
                 and self.cur_t != self.t0:
             self._stop_play()
             self.slider.setValue(self.t0 + 1)
+        if key is not None and getattr(self, "_page", 1) != 1:
+            self._show_page(1)                        # 1.1: the tools' page
         self.tool = key
         comp = LABELS[self.comp].upper()
         for k, b in self._tool_btn.items():
@@ -1605,7 +2236,8 @@ class ClickWindow(QMainWindow):
             b.setChecked(on)
             b.setText(active if on else label)
             b.setStyleSheet(f"QPushButton {{ background: {col}; color: white; font-weight: 800; "
-                            f"padding: 7px; border-radius: 4px; }}" if on else "")
+                            f"padding: 7px 2px; border-radius: 4px; }}" if on else
+                            "QPushButton { padding: 6px 2px; }")     # 1.1: three in a row
         self._link_from = None
         self._extend_k = None
         if key == "draw" and self.comp == "background":
@@ -1628,7 +2260,11 @@ class ClickWindow(QMainWindow):
                                   "DRAWING the background: hold the left button and draw around "
                                   "the region; release to finish. Click again (or Esc) to stop.")
             self.lbl_tool.setStyleSheet(f"color: {TOOLS[key][1]}; font-weight: 700;")
+            self.lbl_tool.setVisible(True)
         else:
+            # 1.1: no tool on - nothing to say here (the tools' tooltips and the blue box
+            # say how to start); the line comes back with a tool
+            self.lbl_tool.setVisible(False)
             self.lbl_tool.setText(TOOL_HELP[None])
             self.lbl_tool.setStyleSheet("")
             self.lbl_tool.setProperty("muted", True)
@@ -1763,7 +2399,19 @@ class ClickWindow(QMainWindow):
         nb = [k for k in sorted(self.boundaries) if self.boundaries[k]]
         if nb:
             txt += ("<br>Tracker boundary lines: cell " + ", ".join(str(k + 1) for k in nb))
-        self.lbl_counts.setText(txt)
+        # 1.1: two short lines on the page, everything on hover
+        short = f"<b>Cells: {n_cells}</b>"
+        many = [f"{LABELS[c].lower()} {len(self._live(c))}" for c in COMPS if self._live(c)]
+        if len(many) > 1:
+            short += " (" + ", ".join(many) + ")"
+        short += f"  ·  background: {bg}"
+        lost = [LABELS[c] for c in COMPS if self._live(c) and c not in self.follow]
+        if lost:
+            short += (f"<br>{', '.join(lost)}: NOT followed - add a rule in step 1")
+        self.lbl_counts.setText(short)
+        self.lbl_counts.setToolTip(txt)
+        if hasattr(self, "btn_save"):
+            self.btn_save.setEnabled(n_cells > 0 and not self._busy_now())
 
     def _update_next(self) -> None:
         if self._busy_now():
@@ -1786,7 +2434,7 @@ class ClickWindow(QMainWindow):
             msg = f"Exported to {Path(self._exported).name}. You can keep editing and export again."
         else:
             msg = ("Step 4: press ▶ Play to check the outlines follow the cells; include / "
-                   "exclude cells in the list by the traces. Then CHOOSE OUTPUTS & EXPORT.")
+                   "exclude cells in the list by the traces. Then SAVE and EXPORT.")
         self.lbl_next.setText(self._breakable(msg))
         self._set_step((1 if self._rules_seen else 0) if n == 0 else
                        2 if self.track is None else 4 if self._exported else 3)
@@ -1817,13 +2465,16 @@ class ClickWindow(QMainWindow):
             return f"{what}: {nm(int(r.a))}"
         return f"{what}: {nm(int(r.a))} {MODE_LABELS[m]} {nm(int(r.b))}"
 
-    # V2.9 step bar + focus
+    # V2.9 step bar + focus; 1.1: one page per step
     def _set_step(self, k: int) -> None:
-        """The step you are on: lit in the bar; on a change of step it is opened (and,
-        with View > Fold finished steps, the ones before it are folded)."""
+        """The step you are on (lit in the bar). 1.1: the page shown follows it only at
+        milestones - tracked (or a tracked run loaded): Check; the work went back to an
+        earlier step than the page shown (e.g. ROIs changed after tracking): that step.
+        Otherwise the page you chose stays."""
         if not getattr(self, "_step_btns", None):
             return
-        changed = k != self._step_now
+        prev = self._step_now
+        changed = k != prev
         self._step_now = k
         for i, b in enumerate(self._step_btns):
             st = "current" if i == k else "done" if i < k else "todo"
@@ -1837,28 +2488,51 @@ class ClickWindow(QMainWindow):
                 box.setProperty("active", act)
                 box.style().unpolish(box)
                 box.style().polish(box)
-        if changed and getattr(self.settings, "ui_fold_steps", True):
-            # rules stay open until there are cells; check and export are one stage
-            for i, box in enumerate(self._step_boxes):
-                W.set_folded(box, not (i == k or (k >= 3 and i >= 3) or (k <= 1 and i <= 1)
-                                       or (k == 2 and i == 1)))
+        if changed and prev >= 0:
+            if k == 3 and prev < 3:
+                self._show_page(3)
+            elif k < prev and 1 <= k < self._page:     # went back (not: you looked ahead)
+                self._show_page(k)
         self._rules_note()
+
+    def _show_page(self, k: int) -> None:
+        """Show step k's page (only that step's controls are on screen)."""
+        if not getattr(self, "_step_boxes", None):
+            return
+        k = int(min(max(0, k), len(self._step_boxes) - 1))
+        self._page = k
+        for i, box in enumerate(self._step_boxes):
+            if i != k:
+                box.setVisible(False)
+                W.set_folded(box, True)          # (its title keeps a short summary)
+        box = self._step_boxes[k]
+        W.set_folded(box, False)
+        box.setVisible(True)
+        self._mark_page_button()
+
+    def _mark_page_button(self) -> None:
+        """The step bar button of the page shown gets a frame (theme colours)."""
+        from . import theme as TH
+        t_ = TH.current()
+        for i, b in enumerate(self._step_btns):
+            b.setStyleSheet(f"QPushButton {{ border: 2px solid {t_.accent}; }}"
+                            if i == self._page else "")
 
     def _goto_step(self, k: int, user: bool = False) -> None:
         if not (0 <= k < len(self._step_boxes)):
             return
-        if k == 0 and user:
+        if user and (k == 0 or self._page == 0):
+            # looking at the rules (or leaving their page yourself): step 1 is done
             self._rules_opened()
+        self._show_page(k)
         box = self._step_boxes[k]
-        W.set_folded(box, False)
         QTimer.singleShot(0, lambda: self._side_scroll.ensureWidgetVisible(box, 0, 0))
 
     def _fold_toggled(self, on: bool) -> None:
+        """V2.9 'Fold finished steps' (1.1: the steps are pages - only the setting is
+        kept, for older versions)."""
         self.settings.ui_fold_steps = bool(on)
         save_settings(self.settings)
-        if not on:
-            for box in self._step_boxes:
-                W.set_folded(box, False)
 
     def _eta_s(self, n: int) -> int:
         T = self.exp.n_timepoints
@@ -2017,6 +2691,7 @@ class ClickWindow(QMainWindow):
     def _auto_select(self) -> None:
         if self._busy_now() or self.comp == "background":
             return
+        self._show_page(1)                              # 1.1: its slider is on that page
         self._stop_play()
         if self.t0 is not None and self.cur_t != self.t0:
             self.slider.setValue(self.t0 + 1)              # ROIs live on one timepoint
@@ -2059,6 +2734,10 @@ class ClickWindow(QMainWindow):
             b.setMinimumWidth(60)
             self._det_lay.addWidget(b)
         self.det_box.setVisible(bool(dets))
+        # 1.1: a newly trained auto-detect - show its button
+        if self._n_detectors is not None and len(dets) > self._n_detectors:
+            self._show_page(1)
+        self._n_detectors = len(dets)
 
     def _use_detector(self, det) -> None:
         """A trained auto-detect: the full preset - its compartment's rule becomes its main
@@ -2083,6 +2762,7 @@ class ClickWindow(QMainWindow):
         i = self.cmb_comp.findData(det.comp)
         if i >= 0:
             self.cmb_comp.setCurrentIndex(i)
+        self._show_page(1)
         self._stop_play()
         if self.t0 is not None and self.cur_t != self.t0:
             self.slider.setValue(self.t0 + 1)
@@ -2155,6 +2835,9 @@ class ClickWindow(QMainWindow):
                              f"ROIs - ") + "add the rest by clicking." + skipped)
             self._refresh()
             return
+        for _k in range(added):                        # 1.1: found by AUTO-DETECT
+            self._emit("roi_added", nd2=str(self.exp.nd2_path), manual=False,
+                       n_cells=self._n_cells())
         self.sl_auto.blockSignals(True)
         self.sl_auto.setRange(1, len(cands))
         self.sl_auto.setValue(len(cands))
@@ -2214,9 +2897,11 @@ class ClickWindow(QMainWindow):
             return
         n, m = self.sl_auto.value(), len(B["cands"])
         cut = B["bright"][n - 1] if 0 < n <= m else 0.0
-        self.lbl_auto.setText(f"Keep the {n} brightest of the {m} found "
-                              f"({len(B['placed'])} placed; dimmest kept: {cut:.0f} counts above "
-                              f"background). Slide left to drop the dimmest.")
+        self.lbl_auto.setText(f"Keep the {n} brightest of {m} found  (slide left: fewer)")
+        self.lbl_auto.setToolTip(f"{len(B['placed'])} placed. Slide left to drop the dimmest. "
+                                 f"The dimmest one kept: {cut:.0f} counts above background "
+                                 f"(mean inside the ROI minus the background, on the image "
+                                 f"the cells were detected on).")
 
     def _auto_keep(self, n: int) -> None:
         if self._auto_batch is None or self._busy_now():
@@ -2269,6 +2954,7 @@ class ClickWindow(QMainWindow):
         self.selected = k
         self._structure_changed()
         trimmed = "" if frac > 0.98 else f" Trimmed where it touched other cells ({frac:.0%} kept)."
+        self._emit("roi_added", nd2=str(self.exp.nd2_path), manual=True, n_cells=self._n_cells())
         self.set_status(f"{LABELS[comp]} added to {where}, {how}.{trimmed} Wrong cell? "
                         f"Right-click it. Wrong shape? Undo, then Draw by hand.")
         return k
@@ -2389,6 +3075,7 @@ class ClickWindow(QMainWindow):
             self.excl[comp].add(nk)
         self.selected = nk
         self._structure_changed()
+        self._emit("roi_added", nd2=str(self.exp.nd2_path), manual=True, n_cells=self._n_cells())
         self.set_status(f"Cell {k + 1}'s {LABELS[comp].lower()} split in two: cell {k + 1} and "
                         f"new cell {nk + 1}. Draw another line to split more; Undo takes it back.")
 
@@ -2453,6 +3140,7 @@ class ClickWindow(QMainWindow):
             self.t0 = None
         self.selected = None
         self._structure_changed()
+        self._emit("roi_removed", nd2=str(self.exp.nd2_path), n_cells=self._n_cells())
         self.set_status(f"Removed cell {k + 1}'s {LABELS[comp].lower()}. Undo brings it back.")
 
     def _move(self, k: int, comp: str, target: Optional[int]) -> None:
@@ -2749,10 +3437,12 @@ class ClickWindow(QMainWindow):
 
     # ============================================================== jobs
     def _busy(self, on: bool) -> None:
-        for w in (self.btn_track, self.btn_load, self.cmb_comp, self.btn_row, self._rows_box,
-                  self.btn_auto, *self._tool_btn.values()):
+        for w in (self.btn_track, self.btn_load, self.btn_train, self.cmb_comp, self.btn_row,
+                  self._rows_box, self.btn_auto, self.det_box, self.btn_next, self.btn_skip,
+                  *self._tool_btn.values()):
             w.setEnabled(not on)
         self.btn_export.setEnabled(not on and self.track is not None)
+        self.btn_save.setEnabled(not on and any(self.cells))
         self.btn_undo.setEnabled(not on and bool(self._undo_stack))
         self.btn_stop.setEnabled(on)
         if not on:
@@ -2894,12 +3584,13 @@ class ClickWindow(QMainWindow):
                                f"ROIs redrawn at every timepoint ({pct}); where a redraw "
                                f"looked wrong the previous outline was moved with the cell "
                                f"instead (noted per cell in QC)." + gate_txt
-                               + (f"<br><b style='color:#d04a00'>{warn}</b>" if warn else ""))
+                               + (f"<br><b style='color:{self._warn_colour()}'>{warn}</b>"
+                                  if warn else ""))
         self.progress.reset("Tracking finished.")
         self.btn_export.setEnabled(True)
         self._refresh()
         self._sync_traces(full=True)
-        self._dock.show()
+        self._show_traces()
         self.set_status("Tracked. Press ▶ Play to watch the outlines follow the cells. "
                         "Switch Compartment to see each one's traces." + gate_txt)
         if warn:                          # V2.7: an object in the background region - redraw?
@@ -3125,6 +3816,10 @@ class ClickWindow(QMainWindow):
         self._notify("Exported", f"{n} file(s) written to {out['folder']}", out["folder"])
         self.set_status(f"Exported {n} file(s) to {out['folder']}")
         self._autosave()                        # a milestone (if anything changed)
+        self._since_save = False                # the export has the ROI file with the tracking
+        self.lbl_save_info.setText(f"Exported {datetime.now():%H:%M} (with its ROI file).")
+        self._queue_mark("exported")
+        self._emit("exported", nd2=str(self.exp.nd2_path), folder=str(out["folder"]))
         self._update_next()
 
     # ======================================================== live graph
@@ -3267,12 +3962,18 @@ class ClickWindow(QMainWindow):
         return state, anchors, comps, self.background, (e.height, e.width), \
             int(self.t0 or 0)
 
-    def _save_rois(self, silent: bool = False):
+    def _save_rois(self, silent: bool = False, note: Optional[str] = None):
+        """SAVE / Save ROIs now: the ROI file with the tracking (kind "saved"); 1.1:
+        with your short note (note None: the one typed under the steps)."""
         if not any(self.cells):
             if not silent:
                 QMessageBox.information(self, "No ROIs", "There are no ROIs to save yet.")
             return None
+        if note is None:
+            note = self.ed_note.text() if hasattr(self, "ed_note") else ""
+        note = " ".join(str(note or "").split())[:120]
         state, anchors, comps, bg, shape, t0 = self._roi_state("saved")
+        state["note"] = note
         try:
             path = save_roi_file(roi_path(self.exp.out_dir, self.exp.nd2_path), anchors, bg,
                                  shape, t0 + 1, state=state, comps=comps, track=self.track)
@@ -3280,11 +3981,22 @@ class ClickWindow(QMainWindow):
             QMessageBox.critical(self, "Could not save the ROIs", error_text(exc))
             return None
         record_run(self.exp.nd2_path, path)
+        self._since_save = False
+        shown = f"Saved: {note}" if note else "Saved"
+        info = f"Saved {datetime.now():%H:%M} - in Compare as '{shown}'."
+        self.lbl_save_info.setText(info)
+        self.lbl_save_info.setToolTip(str(path))
+        if note and hasattr(self, "ed_note"):
+            self.ed_note.clear()
+            self.ed_note.setPlaceholderText(f"Note (optional) - last: {note}")
+        self._queue_mark("saved")
+        self._emit("saved", nd2=str(self.exp.nd2_path), path=str(path), n_cells=self._n_cells())
+        self._refresh_smart()                   # a SAVE can unlock Smart auto-select
         if not silent:
-            what = ("with their tracking (every ROI at every timepoint)" if self.track is not None
-                    else "without tracking (press TRACK & MEASURE, then save again to keep it)")
-            self._notify("ROIs saved", f"Saved {what}: {path} - reload it with 'Load saved "
-                                       f"ROIs...' or File > Earlier analyses of this file.",
+            what = ("with the tracking (every ROI at every timepoint)" if self.track is not None
+                    else "without tracking (press TRACK & MEASURE, then SAVE again to keep it)")
+            self._notify("ROIs saved", f"{info} The ROIs {what}: {path} - File > Earlier "
+                                       f"analyses of this file loads it again.",
                          str(Path(path).parent))
         return path
 
@@ -3319,7 +4031,7 @@ class ClickWindow(QMainWindow):
             keep = ("It is then saved automatically with this run (in the PeterPiper_sessions "
                     "folder), so next time it loads with its tracking." if
                     getattr(self.settings, "autosave_sessions", True) else
-                    "Use File > Save ROIs now (or export) afterwards to keep it.")
+                    "Use SAVE (or export) afterwards to keep it.")
             ans = QMessageBox.question(
                 self, "No tracking to show",
                 f"{problem}\n\nUntil it is tracked, the outlines stay where they were drawn "
@@ -3461,7 +4173,9 @@ class ClickWindow(QMainWindow):
                 self.session_id = f"{old}_2"
             self._session_file = None
         self._based_on = str(path)
+        self._last_loaded = str(path)                  # 1.1: load_run_file
         self._dirty = False                            # nothing of yours to save yet
+        self._since_save = False
         try:                                           # V2.5: saved again only if it changes
             self._last_key = (read_summary(path) or {}).get("content_key") or None
         except Exception:                                          # noqa: BLE001
@@ -3551,6 +4265,7 @@ class ClickWindow(QMainWindow):
         if self._restoring:
             return
         self._dirty = True
+        self._since_save = True                       # 1.1: SAVE has something new
         if getattr(self.settings, "autosave_sessions", True):
             self._save_timer.start()                  # restarts: debounced
 
@@ -3600,20 +4315,17 @@ class ClickWindow(QMainWindow):
                 break
         if err:
             self.lbl_saved.setText(f"Could not save your work automatically ({err}). Use "
-                                   f"File > Save ROIs now.")
+                                   f"SAVE.")
             return
         with_trk = "with the tracking" if self._save_log and self._save_log[-1].get("tracked") \
             else "ROIs only - not tracked yet"
-        self.lbl_saved.setText(f"Your work was saved automatically at "
-                               f"{datetime.now():%H:%M:%S} ({with_trk}).")
+        self.lbl_saved.setText(f"Autosaved at {datetime.now():%H:%M:%S} ({with_trk}).")
         self.lbl_saved.setToolTip(path)
 
     def _saved_text(self) -> str:
         if getattr(self.settings, "autosave_sessions", True):
-            return ("Your work is saved automatically as you go (PeterPiper_sessions in the "
-                    "results folder) - File > Earlier analyses of this file... brings it back.")
-        return ("Automatic saving is off (File > Save my work automatically). Export, or "
-                "File > Save ROIs now, keeps your ROIs and tracking.")
+            return "Autosave is on: your work is kept as you go."
+        return "Autosave is off (File menu): SAVE or EXPORT keeps your work."
 
     def _autosave_toggled(self, on: bool) -> None:
         self.settings.autosave_sessions = bool(on)
@@ -3729,8 +4441,29 @@ class ClickWindow(QMainWindow):
             self.go_back = False
 
     def _help(self) -> None:
-        QMessageBox.information(
-            self, "How to use this window",
+        """Help > How to use this window (1.1: a window that fits the screen - the text
+        scrolls - instead of a message box taller than a laptop screen)."""
+        from PySide6.QtWidgets import QDialogButtonBox, QTextBrowser
+        d = QDialog(self)
+        d.setWindowTitle("How to use this window")
+        lay = QVBoxLayout(d)
+        tb = QTextBrowser()
+        tb.setPlainText(self._help_text())
+        lay.addWidget(tb, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb.rejected.connect(d.reject)
+        lay.addWidget(bb)
+        scr = QApplication.primaryScreen()
+        g = scr.availableGeometry() if scr is not None else None
+        d.resize(min(820, g.width() - 40) if g else 820, min(640, g.height() - 80) if g else 640)
+        d.exec()
+
+    @staticmethod
+    def _help_text() -> str:
+        return (
+            "The steps are pages: click 1 Rules ... 5 Export in the step bar (the blue box "
+            "says what to do next). SAVE and EXPORT are always at the foot of the panel; "
+            "Open results folder, Compare and Undo are in the row at the top.\n\n"
             "1  TRACKING RULES - one rule per kind of ROI: 'Auto-detect [Nucleus] using "
             "[GFP]' (the main channel), with optional helper channels ('+ helper channel', "
             "e.g. 'helped by Cy5'):\n"
@@ -3744,7 +4477,7 @@ class ClickWindow(QMainWindow):
             "    Runs made before V3.0 with ONLY / WITH / AND / IF load and are applied "
             "exactly; a note says what the older rule did. Changing it turns it into the "
             "new form (track again).\n"
-            "    'Train auto-detect from my runs...' (under AUTO-DETECT) learns from runs "
+            "    'Train auto-detect from my runs...' (step 2, More) learns from runs "
             "whose ROIs you drew yourself which cells you pick, and saves a button.\n"
             "Cells move with the first rule's compartment. Whatever the rules, EVERY channel "
             "is measured in EVERY ROI (all ratios are available). Changing a rule after "
@@ -3787,6 +4520,12 @@ class ClickWindow(QMainWindow):
             "a new folder inside OUTPUT_<file name>. Time 0 = the baseline timepoint. "
             "'Methods (text file)' writes a ready-to-edit methods paragraph with every "
             "setting used.\n\n"
+            "SAVE - keeps this version of your work (ROIs, include / exclude, tracking) as an "
+            "ROI file in the results folder, with an optional short note; it shows as 'Saved: "
+            "<note>' in the Compare window and in File > Earlier analyses (Ctrl+S).\n"
+            "    MOVIE QUEUE - movies chosen together in the start window are done one after "
+            "another: 'Movie 2 of 5' at the top right, Next movie (asks to SAVE first if you "
+            "changed something) and Skip.\n\n"
             "YOUR WORK IS KEPT - the ROIs, the tracking (every ROI at every timepoint), "
             "include / exclude, baseline and graph look are saved automatically as you work "
             "(a file in PeterPiper_sessions inside the results folder; File > Save my work "
@@ -3820,6 +4559,14 @@ class ClickWindow(QMainWindow):
         self._save_timer.stop()
         self._autosave(even_if_busy=True)          # the last changes (if any)...
         self._writer.flush()                       # ...are on disk before the window goes
+        if not self._closed:                       # 1.1
+            self._closed = True
+            try:
+                from .. import events
+                events.off("queue_changed", self._update_queue)
+            except Exception:                                      # noqa: BLE001
+                pass
+            self._emit("movie_closed", nd2=str(self.exp.nd2_path))
         try:
             save_settings(self.settings, self.exp)
         except Exception:                                          # noqa: BLE001

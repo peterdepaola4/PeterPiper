@@ -270,6 +270,7 @@ def part_a():
     pzt = pz[0].read_text(encoding="utf-8", errors="replace") if pz else ""
     ok("Prism .pzfx notes carry the rule", "Cy5 ONLY" in pzt, pz[0].name if pz else "-")
     # ---- V2.4: the tracking settings in step 3 (each change clears the tracking)
+    w._goto_step(2)              # 1.1: one step page at a time - show the Track page
     ok("V2.4 settings: movement spin shown; IF / AND hidden under ONLY",
        w.sp_move.isVisibleTo(w) and not w.sp_gate.isVisibleTo(w) and not w.sp_and.isVisibleTo(w))
     kept = w.track

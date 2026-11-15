@@ -76,8 +76,8 @@ class SetupDialog(QDialog):
             "what to find are set in the next window, next to the image."))
         from . import theme as TH                  # V2.9: text size + theme in one row
         self.cmb_theme = QComboBox()
-        for key, text in TH.LABELS.items():
-            self.cmb_theme.addItem(text, key)
+        for key in TH.available_names():
+            self.cmb_theme.addItem(TH.label(key), key)
         self.cmb_theme.setCurrentIndex(max(0, self.cmb_theme.findData(TH.current().name)))
         self.cmb_theme.setToolTip("The look of every window - remembered.")
         self.cmb_theme.currentIndexChanged.connect(

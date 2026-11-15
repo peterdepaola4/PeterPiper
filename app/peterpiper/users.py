@@ -302,10 +302,24 @@ def deactivate() -> None:
 # ------------------------------------------------------------ whose run is it
 def output_dir(nd2_path) -> str:
     """The default results folder of a movie: OUTPUT_<movie>/<user folder> (next
-    to it); OUTPUT_<movie> with no user chosen."""
+    to it); OUTPUT_<movie> with no user chosen. 1.1: if this user chose a results
+    location (e.g. a folder in their OneDrive / Box / Google Drive - storage.json,
+    key "results_root"), OUTPUT_<movie> goes there instead of next to the movie."""
     p = Path(str(nd2_path))
-    out = p.parent / f"OUTPUT_{p.stem}"
+    root = _results_root()
+    out = (Path(root) if root else p.parent) / f"OUTPUT_{p.stem}"
     return str(out / _folder_of(_current)) if _current else str(out)
+
+
+def _results_root() -> str:
+    """The results location this user chose (1.1, storage.json), or ''."""
+    if not _current:
+        return ""
+    try:
+        from . import userprefs
+        return str(userprefs.load("storage").get("results_root") or "")
+    except Exception:                                              # noqa: BLE001
+        return ""
 
 
 RESULTS_DIR_NAME = "PeterPiper results"

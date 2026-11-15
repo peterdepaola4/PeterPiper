@@ -286,6 +286,25 @@ def palette(t: Theme) -> QPalette:
 
 
 LABELS = {"midnight": "Midnight (dark)", "daylight": "Daylight (light)"}
+BASIC = ("midnight", "daylight")      # always offered; the others are hidden extras (1.1)
+
+
+def available_names() -> list:
+    """The themes this user can choose, in menu order (1.1: the basic two, plus the
+    extra palettes once found - achievements.py). Build theme menus from this
+    each time they are shown, so a newly found palette appears at once."""
+    names = [n for n in BASIC if n in THEMES]
+    try:
+        from .. import achievements
+        if achievements.unlocked("palettes"):
+            names += [n for n in THEMES if n not in names]
+    except Exception:                                              # noqa: BLE001
+        pass
+    return names
+
+
+def label(name: str) -> str:
+    return LABELS.get(name) or name.replace("_", " ").title()
 
 
 def switch(name: str, settings=None) -> Theme:

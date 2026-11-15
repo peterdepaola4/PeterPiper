@@ -868,8 +868,8 @@ class ClickWindow(QMainWindow):
         from . import theme as TH                  # V2.9: dark / light
         tm = v.addMenu("Theme")
         self._theme_acts = {}
-        for key, text in TH.LABELS.items():
-            a = QAction(text, self, checkable=True)
+        for key in TH.available_names():
+            a = QAction(TH.label(key), self, checkable=True)
             a.setChecked(TH.current().name == key)
             a.triggered.connect(lambda _c=False, k=key: self._set_theme(k))
             tm.addAction(a)

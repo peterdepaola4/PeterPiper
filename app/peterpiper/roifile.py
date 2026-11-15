@@ -333,8 +333,9 @@ def _blob(nuclei: Sequence[Roi], background: Optional[Roi], shape: Tuple[int, in
 # ------------------------------------------------- v2.5: identical sessions
 # State keys that say WHEN / BY WHAT a file was saved, not what it holds: two
 # files that differ only in these hold the same analysis.
+# (1.1: "note" - the short note typed with SAVE - says nothing about the analysis either)
 VOLATILE_STATE = ("saved", "session_id", "kind", "based_on", "version", "app", "content_key",
-                  "nd2_path")
+                  "nd2_path", "note")
 
 
 def _norm_state(state: Optional[dict]) -> str:
@@ -601,7 +602,8 @@ def _read_summary(path) -> Optional[dict]:
 
     {path, version, saved, nd2, nd2_path, fingerprint, image_shape, n_cells, comps,
      tracked, n_timepoints, rules (texts), kind, t0, prefix, + session_id,
-     channels, track_shape {comp: (T, N)}, baseline, size, mtime}
+     channels, track_shape {comp: (T, N)}, baseline, size, mtime,
+     note (1.1: the short note typed with SAVE, "" if none)}
     """
     p = Path(path)
     try:
@@ -692,7 +694,7 @@ def _read_summary(path) -> Optional[dict]:
                 rules=rules, kind=kind, t0=t0, prefix=str(state.get("prefix") or ""),
                 session_id=str(state.get("session_id") or ""), channels=channels,
                 track_shape=trk, baseline=state.get("baseline"),
-                user=str(state.get("user") or ""),
+                user=str(state.get("user") or ""), note=str(state.get("note") or ""),
                 size=int(st_.st_size), mtime=float(st_.st_mtime), content_key=ckey)
 
 

@@ -12,8 +12,8 @@ C) the ratio check (a channel below k x the noise of the ROI's mean at baseline:
    collapses left out; k = 0 off; old results without noise untouched) on numbers
    with a known answer; mean ± SD the default, a saved SEM moved to SD once.
 D) the main window: no automatic background (the next-step box and TRACK lead you
-   to place it); the step bar starts on Rules, which shows the active rule when
-   folded; a channel with no signal has its F/F0 left out with the reason; Save
+   to place it); the step bar starts on Rules (1.1: one step page at a time), which
+   shows the active rule when folded; a channel with no signal has its F/F0 left out with the reason; Save
    ROIs shows a fading note; an export with short names (workbook / methods keep
    the movie name), SD in the CSV and workbook, Noise sheets and MinSNR; the
    methods text; the long-path estimate.
@@ -246,8 +246,11 @@ def part_d():
        "BACKGROUND" in w.lbl_next.text())
     ok("D step bar: Rules is current until looked at", w._step_now == 0 and
        [b.property("step") for b in w._step_btns] == ["current", "todo", "todo", "todo", "todo"])
-    ok("D steps 1-2 open, 3-5 folded", [bool(b.property("folded")) for b in w._step_boxes]
-       == [False, False, True, True, True])
+    # PeterPiper 1.1: one step page at a time (was: steps 1-2 open, 3-5 folded)
+    ok("D one step page at a time: Rules shown, 2-5 not", [bool(b.property("folded"))
+                                                          for b in w._step_boxes]
+       == [False, True, True, True, True] and [b.isVisibleTo(w) for b in w._step_boxes]
+       == [True, False, False, False, False])
     ok("D the learning controls are gone", not hasattr(w, "chk_learned")
        and not hasattr(w, "btn_learn"))
     w._goto_step(0, user=True)

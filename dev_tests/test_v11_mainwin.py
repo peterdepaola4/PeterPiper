@@ -35,10 +35,14 @@ G) menus: View > Theme is rebuilt each time it opens (a palette found while runn
    (and calls backup_dialog(parent, nd2, out_dir)); File > Open results folder.
 H) names the lab-data GUI tests use on the window still exist.
 I) Smart auto-select (smartselect.py, guarded): hidden without the module; with it,
-   shown beside AUTO-DETECT, locked (lock, tooltip with the status text and the
-   directions, a click shows the directions in a small popup and runs nothing) or
-   unlocked (sparkle, accent gradient from the theme; a click calls run(window)); the
-   state is asked again after SAVE.
+   status(channels=<this movie's>) is asked; shown beside AUTO-DETECT, locked (lock,
+   tooltip with the status text and the directions, a click shows the directions in a
+   small popup and runs nothing) or unlocked (sparkle + status label, accent gradient
+   from the theme, tooltip with each bin's n; one bin: a click calls
+   run(window, bin_name); several bins: a menu, one entry per bin with its n, and
+   'Your bins...' -> review_dialog(window), also in step 2's More menu); asked again
+   after SAVE; use_detector(None) ends a learner's busy state.
+B) also: extras_bar (2 buttons put in on main_window_ready) shows itself and still fits.
 """
 from __future__ import annotations
 
@@ -608,16 +612,24 @@ def part_h():
 def part_i():
     w = make_window("movie_i")
     ok("I Smart auto-select hidden without smartselect.py", not w.btn_smart.isVisibleTo(w)
-       and w._smart_state is None)
+       and w._smart_state is None and not w.act_bins.isVisible())
     w._dirty = False
     w.close()
     pump(0.2)
+    how = "Draw the cells by hand on 3 movies of a queue and SAVE each."
+    bins = [{"name": "gfp_cy5_nuclei", "label": "GFP/Cy5 nuclei", "n_movies": 44,
+             "n_rois": 1250, "channels": ["Cy5", "GFP", "mCherry"]}]
     state = {"unlocked": False, "text": "Locked - 1 of 3 hand-drawn queued movies",
-             "how": "Draw the cells by hand on 3 movies of a queue and SAVE each."}
-    runs = []
+             "how": how, "label": "Smart auto-select (locked)", "bins": []}
+    asked, runs, reviews = [], [], []
+
+    def status(channels=None):
+        asked.append(channels)
+        return dict(state, bins=[dict(b) for b in state["bins"]])
     mod = types.ModuleType("peterpiper.smartselect")
-    mod.status = lambda: dict(state)
-    mod.run = lambda window: runs.append(window)
+    mod.status = status
+    mod.run = lambda window, bin_name=None: runs.append((window, bin_name))
+    mod.review_dialog = lambda window: (reviews.append(window), True)[1]
     sys.modules["peterpiper.smartselect"] = mod
     import peterpiper
     peterpiper.smartselect = mod
@@ -626,28 +638,38 @@ def part_i():
         w._show_page(1)
         pump(0.2)
         b = w.btn_smart
+        ok("I status() is asked with this movie's channel names",
+           asked and asked[-1] == ["Cy5", "GFP", "mCherry"], str(asked[-1:]))
         ok("I with smartselect.py: shown beside AUTO-DETECT, locked (lock, still clickable "
            "so its directions show on hover)", b.isVisible() and b.isEnabled()
            and "\U0001F512" in b.text() and b.property("locked") is True, b.text())
         tip = b.toolTip()
         ok("I the tooltip has the status text and the directions",
-           state["text"] in tip and state["how"] in tip, tip)
+           state["text"] in tip and how in tip, tip[:120])
+        ok("I 'Your bins...' in step 2's More menu", w.act_bins.isVisible())
         b.click()
         pump(0.2)
         pop = w._smart_pop
         ok("I clicking it while locked shows the directions in a small popup, runs nothing",
-           pop is not None and pop.isVisible() and state["how"] in w._smart_popup_text
+           pop is not None and pop.isVisible() and how in w._smart_popup_text
            and runs == [], getattr(w, "_smart_popup_text", "")[:80])
         shot(w, "smart_locked")
         pop.close()
-        state["unlocked"], state["text"] = True, "Unlocked"
+        # unlocked, one bin fits
+        state.update(unlocked=True, text="Ready", bins=bins,
+                     label="Smart auto-select: GFP/Cy5 nuclei (n=44)")
+        n_asked = len(asked)
         auto_and_track(w)
         w._save_rois(silent=True)                    # a SAVE asks status() again
         w._show_page(1)
         pump(0.2)
-        ok("I after SAVE the state is asked again: unlocked, with the sparkle",
-           b.property("locked") is False and "✦" in b.text()
-           and "\U0001F512" not in b.text(), b.text())
+        ok("I after SAVE status() is asked again: unlocked, with the sparkle and the label",
+           len(asked) > n_asked and b.property("locked") is False
+           and b.full_text() == "✦  Smart auto-select: GFP/Cy5 nuclei (n=44)"
+           and "✦" in b.text() and b.menu() is None, b.text())
+        tip = b.toolTip()
+        ok("I ... the tooltip has the directions and each bin's n",
+           how in tip and "GFP/Cy5 nuclei: n=44" in tip, tip[:160])
         ok("I ... its look comes from the theme (accent gradient, accent text colour)",
            TH.current().accent_text.lower() in b.styleSheet().lower()
            and "qlineargradient" in b.styleSheet())
@@ -664,7 +686,27 @@ def part_i():
         w._style_smart()
         b.click()
         pump(0.2)
-        ok("I clicking it when unlocked calls run(window)", runs == [w])
+        ok("I one bin: a click calls run(window, bin_name=that bin)",
+           runs == [(w, "gfp_cy5_nuclei")], str(runs))
+        # two bins fit: a small menu
+        state["bins"] = bins + [{"name": "cy5_only", "label": "Cy5 nuclei", "n_movies": 7,
+                                 "n_rois": 210, "channels": ["Cy5"]}]
+        w._refresh_smart()
+        m = b.menu()
+        texts = [a.text() for a in m.actions()] if m is not None else []
+        ok("I two bins fit: a menu, one entry per bin with its n, and 'Your bins...'",
+           texts[:2] == ["GFP/Cy5 nuclei  (n=44)", "Cy5 nuclei  (n=7)"]
+           and texts[-1] == "Your bins...", str(texts))
+        m.actions()[1].trigger()
+        pump(0.1)
+        ok("I ... choosing one runs that bin", runs[-1] == (w, "cy5_only"))
+        m.actions()[-1].trigger()
+        pump(0.1)
+        ok("I ... 'Your bins...' opens review_dialog(window)", reviews == [w])
+        w.act_bins.trigger()
+        ok("I ... so does More > Smart auto-select: your bins...", reviews == [w, w])
+        ok("I use_detector(None) ends a learner's busy state cleanly",
+           (w.use_detector(None), not w._busy_now() and w.btn_auto.isEnabled())[1])
         w._dirty = False
         w.close()
         pump(0.2)

@@ -65,6 +65,36 @@ from .safety import long_path, make_dirs, new_output_file
 # one colour per run (colour-blind friendly order); the user can change each
 PALETTE = ("#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#000000",
            "#F0E442")
+
+
+def contrast_on_white(colour: str) -> float:
+    """1.1 (looks only): the contrast of a colour against the graphs' white
+    background (WCAG ratio: 1 = invisible, 21 = black). 1.0 for a bad colour."""
+    try:
+        rgb = [int(str(colour).lstrip("#")[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+    except (ValueError, TypeError):
+        return 1.0
+    lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    return 1.05 / (lum + 0.05)
+
+
+# 1.1: the Okabe-Ito colours a line gets when no cell-line colour applies - without
+# the yellow (too pale on the white graph background)
+PLOT_PALETTE = tuple(c for c in PALETTE if contrast_on_white(c) >= 2.0)
+
+
+def edge_colour(colour: str) -> Optional[str]:
+    """1.1 (looks only): a darker edge for a symbol whose colour is pale on the white
+    graph (contrast below 2:1, e.g. a light shade), so every dot can be seen; None
+    when the colour is dark enough by itself."""
+    if contrast_on_white(colour) >= 2.0:
+        return None
+    try:
+        rgb = [int(str(colour).lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    except (ValueError, TypeError):
+        return None
+    return "#" + "".join(f"{int(c * 0.55):02X}" for c in rgb)
 KINDS = ("R/R0", "F/F0", "Ratio", "Intensity")       # list order of the quantities
 COMP_LABELS = {"nucleus": "Nucleus", "cell": "Whole cell", "cytoplasm": "Cytoplasm",
                "mito": "Mitochondria"}

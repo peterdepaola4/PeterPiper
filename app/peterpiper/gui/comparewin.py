@@ -56,6 +56,26 @@ V2.6:
     as a dot plot - each dish a dot, the group mean with the chosen error across
     the dishes. Save writes the ticked kinetics graphs (every ticked picture
     format and .prism, the graph made) and the kinetics tables.
+PeterPiper 1.1:
+  * Opens maximized; nothing needs a scroll bar at 1366 x 768 (the plot settings
+    are a compact grid whose box is always as tall as it needs; only the run list
+    scrolls inside itself when it is long).
+  * A few grouped buttons instead of twenty: 'Add runs ▾' (run file, find my runs
+    in a folder, my data is in), 'Groups ▾', 'Open in analysis', 'Output files ▾',
+    'List ▾' (remove from list - also the Delete key -, untick all, open / close all
+    folders, columns shown) above the list; 'Save...' and 'More ▾' (plot settings,
+    batch save, Prism templates) under the graph; a right-click menu on the list.
+  * Clearer list: taller rows, plainer titles, new columns 'Save' (Saved: <your
+    note> / Autosave / Export - which save to pick) and 'User'; rarely needed
+    columns start hidden (right-click a column title to show them).
+  * 'Open in analysis' (or double-click a run): the run's movie is found (where it
+    was saved, else where that movie - its fingerprint - was last opened, else next
+    to the run's OUTPUT_ folder, else the user is asked), open_request = {"nd2",
+    "run"} is set, openRequested(dict) emitted and the window closes.
+  * 'Output files ▾': open the run's results folder, or a short list of its
+    exports (Export_...), autosaves and comparisons, each opened with a click.
+  * Lines with no cell-line colour get Okabe-Ito colours without the pale yellow;
+    pale dots get a darker edge on the white graph (compare.edge_colour).
 """
 from __future__ import annotations
 
@@ -68,13 +88,14 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QStringListModel, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QPalette
+from PySide6.QtCore import QSize, QStringListModel, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QColorDialog, QComboBox, QDialog,
-                               QFileDialog, QGridLayout, QHeaderView, QInputDialog, QLabel,
-                               QLineEdit, QMenu, QMessageBox, QPushButton, QSpinBox, QSplitter,
-                               QScrollArea, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem,
-                               QVBoxLayout, QWidget)
+                               QFileDialog, QGridLayout, QGroupBox, QHeaderView, QInputDialog,
+                               QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu,
+                               QMessageBox, QPushButton, QSpinBox, QSplitter, QScrollArea,
+                               QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+                               QWidget)
 
 from .. import celllines as CL
 from .. import compare as C
@@ -87,9 +108,33 @@ from .measurerow import MeasureRow
 
 PX = GS.PX_PER_PT
 (COL_USE, COL_COLOUR, COL_LABEL, COL_VER, COL_SAVED, COL_GROUP, COL_LINE, COL_FILE, COL_SAME,
- COL_CELLS, COL_BASE, COL_INT) = range(12)
+ COL_CELLS, COL_BASE, COL_INT, COL_KIND, COL_USER) = range(14)
+# HEADERS: the column keys (remembered order / widths / sort use them - never rename);
+# TITLES: what the list shows (1.1: shorter, plainer)
 HEADERS = ["Use", "Colour", "Name in the graph", "Version", "Saved", "Group (replicate dishes)",
-           "Cell line", ".nd2 file", "Movie folder", "Cells", "Baseline", "Frame interval"]
+           "Cell line", ".nd2 file", "Movie folder", "Cells", "Baseline", "Frame interval",
+           "Kind of save", "User"]
+TITLES = {"Use": "Use", "Colour": "", "Name in the graph": "Movie (name in the graph)",
+          "Saved": "Date saved", "Group (replicate dishes)": "Group", "Kind of save": "Save"}
+HEADER_TIPS = {
+    "Name in the graph": "The movie's name as the graph's legend shows it - double-click to "
+                         "rename it.",
+    "Saved": "When this analysis was saved.",
+    "Kind of save": "Saved = you pressed SAVE (with your note, if you wrote one); Autosave = "
+                    "saved by itself while you worked; Export = the ROI file of an export.",
+    "User": "Who made this analysis.",
+    "Version": "The app version that saved it, and for a movie analysed more than once which "
+               "analysis it is (newest / older).",
+    "Cell line": "Read from the name, or chosen by you - sets the colour family.",
+    "Colour": "Its colour in the graph - double-click to change it.",
+}
+# 1.1: the order a new list starts with, and the columns hidden until shown
+# (right-click a column title)
+DEFAULT_ORDER = ["Use", "Colour", "Name in the graph", "Kind of save", "Saved", "Cells", "User",
+                 "Cell line", "Version", ".nd2 file", "Group (replicate dishes)", "Movie folder",
+                 "Baseline", "Frame interval"]
+DEFAULT_HIDDEN = ("Group (replicate dishes)", "Movie folder", "Baseline", "Frame interval")
+KIND_TEXT = {"saved": "Saved", "session": "Autosave", "export": "Export"}
 COL_DIR = COL_SAME            # V2.8: the .nd2's folder (the tree shows which runs are one movie)
 FOLDER_ROLE = int(Qt.UserRole) + 3        # a movie folder row: its key
 GROUP_ROLE = int(Qt.UserRole) + 4         # a group folder row: the group name ('' = none)
@@ -204,6 +249,80 @@ def update_prefs(**parts) -> None:
         _prefs_file().write_text(json.dumps(d, indent=1), encoding="utf-8")
     except OSError:
         pass
+
+
+def note_of(path: str, s: dict) -> str:
+    """1.1: the short note saved with a run (SAVE in the analysis window): the
+    summary's 'note', else read from the file's state (summaries made before the
+    note was read). '' = none."""
+    n = s.get("note")
+    if isinstance(n, str):
+        return n.strip()
+    if str(s.get("kind") or "") != "saved":
+        return ""
+    try:
+        import zipfile
+        from ..roifile import _state_from_zip                  # noqa: PLC2701 (read only)
+        from ..safety import long_path
+        with zipfile.ZipFile(long_path(Path(path))) as zf:
+            st = _state_from_zip(zf) or {}
+        n = st.get("note")
+        return n.strip() if isinstance(n, str) else ""
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
+SESSION_DIRS = ("PeterPiper_sessions", "PD4nav_sessions")
+
+
+def results_folder(run_path: str) -> Path:
+    """1.1: the folder holding a run's files - its results folder (OUTPUT_<movie>/
+    <user>): the folder of a saved run, the parent of an autosave's
+    PeterPiper_sessions or of an export's Export_... folder."""
+    p = Path(plain_path(str(run_path))).parent
+    if p.name in SESSION_DIRS or p.name.startswith("Export_"):
+        p = p.parent
+    return p
+
+
+def _export_when(name: str) -> str:
+    """'Export_2026-11-01_10-00-30' -> '1 Nov 2026 10:00:30' ('' if not dated)."""
+    m = re.match(r"Export_(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)-(\d\d)", name)
+    if not m:
+        return ""
+    y, mo, d, hh, mi, ss = m.groups()
+    months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    return f"{int(d)} {months[int(mo) - 1]} {y} {hh}:{mi}:{ss}"
+
+
+def output_folders(run_path: str) -> List[Tuple[str, Path]]:
+    """1.1: a run's output folders, for a short list: [(text, folder)] - its
+    exports (newest first, the one holding this run marked), its autosaves and
+    its comparisons. Never raises."""
+    root = results_folder(run_path)
+    here = Path(plain_path(str(run_path))).parent
+    out: List[Tuple[str, Path]] = []
+    try:
+        dirs = sorted((d for d in root.iterdir() if d.is_dir()), key=lambda d: d.name,
+                      reverse=True)
+    except OSError:
+        return out
+    for d in dirs:
+        if not d.name.startswith("Export_"):
+            continue
+        try:
+            n = sum(1 for _f in d.rglob("*") if _f.is_file())
+        except OSError:
+            n = 0
+        when = _export_when(d.name)
+        out.append((f"Export {when or d.name[7:]} - {n} file{'' if n == 1 else 's'}"
+                    + ("   (this run's export)" if d == here else ""), d))
+    for d in dirs:
+        if d.name in SESSION_DIRS:
+            out.append(("Autosaves (sessions)", d))
+        elif d.name == "Comparisons":
+            out.append(("Comparisons (saved from this window)", d))
+    return out
 
 
 def _natural(text: str) -> tuple:
@@ -334,7 +453,15 @@ class _LineCombo(QComboBox):
             e.ignore()
 
 
-class _TickDelegate(QStyledItemDelegate):
+class _RowDelegate(QStyledItemDelegate):
+    """1.1: rows a little taller than the text - easier to read and to hit."""
+
+    def sizeHint(self, opt, index):                                # noqa: N802
+        s = super().sizeHint(opt, index)
+        return QSize(s.width(), max(s.height(), opt.fontMetrics.height() + 14))
+
+
+class _TickDelegate(_RowDelegate):
     """The Use column: a light tick box with a dark tick, seen on dark and light
     lists alike."""
 
@@ -352,6 +479,10 @@ def _first_number(text: str) -> Optional[float]:
 
 class CompareWindow(QDialog):
     ASK_UNKNOWN = True          # ask for a colour of an unknown cell line (tests: False)
+    # 1.1 'Open in analysis': {"nd2": movie path, "run": run file} - emitted just before
+    # the window closes (the analysis window listens; the start screen reads
+    # open_request after exec())
+    openRequested = Signal(dict)
 
     def __init__(self, style: Optional[dict] = None, nd2_path: str = "", out_dir: str = "",
                  image_shape=None, n_timepoints: Optional[int] = None, parent=None) -> None:
@@ -359,6 +490,10 @@ class CompareWindow(QDialog):
         self.setWindowTitle("Compare / average runs")
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
         self.resize(1400, 820)
+        self.setWindowState(self.windowState() | Qt.WindowMaximized)   # 1.1: opens maximized
+        self.open_request: Optional[dict] = None   # 1.1: set by 'Open in analysis'
+        self._kind: Dict[str, str] = {}             # run path -> 'saved' / 'session' / 'export'
+        self._note: Dict[str, str] = {}             # run path -> the note saved with it
         self.style = GS.coerce(style)
         self.out_dir = out_dir
         self._cells: Dict[str, Dict[int, _Cell]] = {}      # run path -> its cells
@@ -409,19 +544,19 @@ class CompareWindow(QDialog):
         self.saved: List[str] = []
 
         lay = QVBoxLayout(self)
-        lay.addWidget(W.wrapped_label(
-            "1. Tick the runs to plot (each run = one dish; ticked = bold = plotted). The list "
-            "is in folders by group; a ▸ sub-folder holds the analyses of one .nd2 - tick one. "
-            "2. For replicates: '+ New group', then drag runs onto its folder (or select them "
-            "and 'Put selected runs in'); Show 'Groups - mean of dish means'. 3. Say what to "
-            "plot below. Drag the dividers to resize. Hover anything for help.",
-            muted=True))
+        lay.setContentsMargins(10, 6, 10, 8)
+        lay.setSpacing(4)
+        # 1.1: one short line of help (the details are in the tooltips)
+        self.lbl_help = W.wrapped_label(
+            "Tick the runs to plot (ticked = bold). Folders are groups of replicate dishes - "
+            "drag runs onto a folder. Double-click a run to open it in the analysis window; "
+            "right-click for more. Hover anything for help.", muted=True)
+        lay.addWidget(self.lbl_help)
         self.lbl_dup = QLabel("")
         self.lbl_dup.setWordWrap(True)
         self.lbl_dup.setStyleSheet("QLabel { color: #FFFFFF; background: #B00020; "
                                    "font-weight: bold; padding: 6px; border-radius: 3px; }")
-        self.lbl_dup.setVisible(False)
-        lay.addWidget(self.lbl_dup)
+        self.lbl_dup.setVisible(False)            # 1.1: shown over the graph (right)
         self.lbl_missing = QLabel("")             # V3.0: runs not on this computer
         self.lbl_missing.setWordWrap(True)
         self.lbl_missing.setProperty("role", "warn")
@@ -432,31 +567,37 @@ class CompareWindow(QDialog):
         self.hsplit = split
         lay.addWidget(split, 1)
 
-
-        # V2.8: the list (top) and the plot settings (bottom, scrollable) with a
-        # divider you can drag; neither part can be dragged away to nothing
+        # the list (top) and the plot settings (bottom) with a divider you can drag;
+        # neither part can be dragged away to nothing. 1.1: the settings always fit
+        # (their box is as tall as they need), so no scroll bar is needed.
         self.vsplit = QSplitter(Qt.Vertical)
         self.vsplit.setChildrenCollapsible(False)
         top_w = QWidget()
         ll = QVBoxLayout(top_w)
         ll.setContentsMargins(0, 0, 0, 0)
+        ll.setSpacing(4)
         bot_w = QWidget()
         bl = QVBoxLayout(bot_w)
         bl.setContentsMargins(0, 0, 0, 0)
-        ll.setContentsMargins(0, 0, 0, 0)
         # V2.8: the runs as a tree - a movie folder per .nd2 analysed more than once
         self.tree = _RunTree(self)
         self.tree.setColumnCount(len(HEADERS))
-        self.tree.setHeaderLabels(HEADERS)
+        self.tree.setHeaderLabels([TITLES.get(h, h) for h in HEADERS])
+        for c, h in enumerate(HEADERS):
+            if h in HEADER_TIPS:
+                self.tree.headerItem().setToolTip(c, HEADER_TIPS[h])
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)    # F2: _rename_current
         self.tree.setRootIsDecorated(True)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setItemDelegate(_RowDelegate(self.tree))             # 1.1: taller rows
         self.tree.setToolTip("Tick the runs to plot (ticked = bold = plotted). Each folder is a "
                              "group of replicate dishes; drag runs onto another group's folder "
                              "to move them. A ▸ sub-folder is one .nd2 analysed more than once - "
-                             "tick one analysis. Double-click a name to rename it, a colour to "
-                             "change it, a group's name to rename the group.")
+                             "tick one analysis. Double-click a run to open it in the analysis "
+                             "window, its name to rename it, a colour to change it, a group's "
+                             "name to rename the group. Right-click for more.")
         hdr = self.tree.header()
         hdr.setSectionResizeMode(QHeaderView.Interactive)
         hdr.setSectionsMovable(True)
@@ -464,29 +605,80 @@ class CompareWindow(QDialog):
         hdr.setSortIndicatorShown(True)
         hdr.setSortIndicator(-1, Qt.AscendingOrder)                # list order until clicked
         hdr.setToolTip("Click a title to sort by it (again: the other way round); drag a "
-                       "title to move the column. Remembered for next time.")
+                       "title to move the column; right-click to show or hide columns. "
+                       "Remembered for next time.")
+        hdr.setContextMenuPolicy(Qt.CustomContextMenu)
+        hdr.customContextMenuRequested.connect(self._header_menu)
         # tick boxes that can be seen on a dark list (a delegate, not a style sheet:
         # a style sheet on the table would also restyle the Cell line dropdowns)
         self.tree.setItemDelegateForColumn(COL_USE, _TickDelegate(self.tree))
         self.tree.itemChanged.connect(self._item_changed)
         self.tree.itemDoubleClicked.connect(self._cell_double)
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._tree_menu)
+        self.tree.itemSelectionChanged.connect(self._selection_changed)
+        QShortcut(QKeySequence(QKeySequence.Delete), self.tree, self._remove_clicked,
+                  context=Qt.WidgetShortcut)
+
+        # 1.1: a few grouped buttons instead of thirteen - every action is in a menu
+        self.menu_add = QMenu(self)
+        self.menu_add.addAction("Add run file...", self._add_clicked).setToolTip(
+            "A PeterPiper ROI or session file (.npz) saved with tracking.")
+        self.menu_add.addAction("Find my runs in a folder...", self._find_in_folder).setToolTip(
+            "Look through a folder (and its subfolders, e.g. the lab's shared drive) for your "
+            "tracked runs - also ones made on another computer - and add them to your list.")
+        self.menu_add.addAction("My data is in...", self._my_data_is_in).setToolTip(
+            "Your runs that are not where they were saved (e.g. a profile brought from another "
+            "computer, or a moved data folder): point to the folder that holds them now - each "
+            "is matched exactly (same movie, file name and save time) and the new place is "
+            "remembered.")
+        self.menu_add.setToolTipsVisible(True)
+        self.btn_add = QPushButton("Add runs ▾")
+        self.btn_add.setMenu(self.menu_add)
+        self.btn_add.setToolTip("Add runs to the list: a run file, every run of yours in a "
+                                "folder, or runs that moved ('My data is in...').")
+        self.menu_groups = QMenu(self)
+        self.menu_groups.setToolTipsVisible(True)
+        self.menu_groups.aboutToShow.connect(lambda: self._fill_group_menu(self.menu_groups))
+        self.btn_groups = QPushButton("Groups ▾")
+        self.btn_groups.setMenu(self.menu_groups)
+        self.btn_groups.setToolTip("Groups of replicate dishes: make one, put the selected runs "
+                                   "in it (or drag them onto its folder), rename, delete, or "
+                                   "group by cell line.")
+        self.btn_put = self.btn_groups            # V2.8 name ('Put selected runs in ▾')
+        self.btn_open = W.button("Open in analysis", lambda: self.open_in_analysis(),
+                                 "Close this window and open the selected run's movie in the "
+                                 "analysis window with this run loaded - to change or check "
+                                 "it. (Or double-click the run.)")
+        self.menu_results = QMenu(self)
+        self.menu_results.setToolTipsVisible(True)
+        self.act_open_folder = self.menu_results.addAction(
+            "Open results folder", lambda: self.open_results_folder())
+        self.act_open_folder.setToolTip("The folder with the selected run's files: its exports "
+                                        "(Export_...), autosaves and saved runs.")
+        self.act_outputs = self.menu_results.addAction(
+            "This run's output files...", lambda: self.show_output_files())
+        self.act_outputs.setToolTip("A short list of the selected run's exports and folders - "
+                                    "click one to open it.")
+        self.menu_results.addSeparator()
+        self.menu_results.addAction("Every saved file...", self._saved_files).setToolTip(
+            "Every file PeterPiper saved (exports, comparisons, batch runs), newest first - "
+            "click to open it or its folder.")
+        self.btn_results = QPushButton("Output files ▾")
+        self.btn_results.setMenu(self.menu_results)
+        self.btn_results.setToolTip("Open the selected run's results folder or see its output "
+                                    "files (exports); every file PeterPiper saved.")
+        self.menu_list = QMenu(self)
+        self.menu_list.aboutToShow.connect(lambda: self._fill_list_menu(self.menu_list))
+        self.btn_list = QPushButton("List ▾")
+        self.btn_list.setMenu(self.menu_list)
+        self.btn_list.setToolTip("More: remove the selected runs from the list (Delete key), "
+                                 "untick all, open / close all folders, show or hide columns.")
+        bar = W.row(self.btn_add, self.btn_groups, self.btn_open, self.btn_results)
+        bar.layout().addStretch(1)
+        bar.layout().addWidget(self.btn_list)
+        ll.addWidget(bar)
         ll.addWidget(self.tree, 1)
-        # groups (V2.8): the list's folders - make them, drag runs in, no typing per run
-        self.btn_put = W.button("Put selected runs in ▾", self._put_menu,
-                                "Select runs in the list (Ctrl / Shift-click), then pick the "
-                                "group - or drag them onto the group's folder.")
-        ll.addWidget(W.row(
-            QLabel("<b>Groups:</b>"),
-            W.button("+ New group", self._new_group, "Make an empty group folder, then drag "
-                     "runs into it."),
-            self.btn_put,
-            W.button("Take out of group", self._ungroup_selected)))
-        ll.addWidget(W.row(                       # V3.0: two rows, nothing cut off
-            W.button("Rename group", self._rename_group, "Click a group's folder first."),
-            W.button("Delete group", self._delete_group, "Its runs stay, in 'No group'."),
-            W.button("Group by cell line", self._group_by_line,
-                     "Every ticked run without a group goes into the group of its cell line "
-                     "(the Cell line column: read from the name or chosen by you).")))
         self._line_model = QStringListModel(self)
         known = CL.names()
         low = {n.lower() for n in known}
@@ -494,27 +686,20 @@ class CompareWindow(QDialog):
                          if str(v).lower() not in low and str(v) != UNKNOWN},
                         key=str.lower)
         self._line_model.setStringList([UNKNOWN] + sorted(known + custom, key=str.lower))
-        ll.addWidget(W.row(
-            W.button("Add run file...", self._add_clicked,
-                     "A PeterPiper ROI or session file (.npz) saved with tracking."),
-            W.button("My data is in...", self._my_data_is_in,
-                     "Your runs that are not where they were saved (e.g. a profile brought from "
-                     "another computer, or a moved data folder): point to the folder that holds "
-                     "them now - each is matched exactly (same movie, file name and save time) "
-                     "and the new place is remembered."),
-            W.button("Find my runs in a folder...", self._find_in_folder,
-                     "Look through a folder (and its subfolders, e.g. the lab's shared drive) "
-                     "for your tracked runs - also ones made on another computer - and add "
-                     "them to your list."),
-            ))
-        ll.addWidget(W.row(                       # V3.0: two rows, nothing cut off
-            W.button("Remove from list", self._remove_clicked, "Only from this list; the "
-                     "file is not touched."),
-            W.button("Untick all", lambda: self.set_checked([])),
-            W.button("Open all folders", self.tree.expandAll),
-            W.button("Close all folders", self.tree.collapseAll)))
 
-        box, f = W.group("What to show")
+        # 1.1: 'What to show' as a compact grid (two choices per line where they fit)
+        box = QGroupBox("What to show")
+        g = QGridLayout(box)
+        g.setContentsMargins(8, 6, 8, 8)
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(5)
+        g.setColumnStretch(1, 1)
+        g.setColumnStretch(3, 1)
+
+        def lab(text: str) -> QLabel:
+            w = QLabel(text)
+            w.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            return w
         self.cmb_mode = QComboBox()
         for key, text in MODES:
             self.cmb_mode.addItem(text, key)
@@ -525,7 +710,8 @@ class CompareWindow(QDialog):
             "every cell of the group as one sample (n = cells) - for reference only, cells of "
             "one dish are not independent replicates.")
         self.cmb_mode.currentIndexChanged.connect(lambda _i: self._mode_changed())
-        f.addRow("Show", self.cmb_mode)
+        g.addWidget(lab("Show"), 0, 0)
+        g.addWidget(self.cmb_mode, 0, 1)
         # V2.7: the plot builder - Y measure vs Time or vs another measure, an
         # optional right Y axis. The Y measure is kept in cmb_comp / cmb_q (not
         # shown), which every time-course path below reads.
@@ -538,18 +724,21 @@ class CompareWindow(QDialog):
         self.row_y = MeasureRow(None)
         self.row_y.setToolTip("What goes on the Y axis.")
         self.row_y.changed.connect(self._y_changed)
-        f.addRow("Plot", self.row_y)
+        g.addWidget(lab("Plot"), 1, 0)
+        g.addWidget(self.row_y, 1, 1, 1, 3)
         self.row_x = MeasureRow([("Time", XP.TIME), ("Timepoint", XP.TIMEPOINT)])
         self.row_x.setToolTip("vs = what goes on the X axis: Time (the usual time course), "
                               "Timepoint (frame numbers), or another measure of the same cells.")
         self.row_x.changed.connect(self._spec_changed)
-        f.addRow("vs", self.row_x)
+        g.addWidget(lab("vs"), 2, 0)
+        g.addWidget(self.row_x, 2, 1, 1, 3)
         self.row_y2 = MeasureRow([("none", "")])
         self.row_y2.setToolTip("Optional: a second measure on a right Y axis (dashed lines), "
                                "against the same X - for two measures with different units.")
         self.row_y2.changed.connect(self._spec_changed)
-        self.lbl_y2 = QLabel("Right Y axis")
-        f.addRow(self.lbl_y2, self.row_y2)
+        self.lbl_y2 = lab("Right Y axis")
+        g.addWidget(self.lbl_y2, 3, 0)
+        g.addWidget(self.row_y2, 3, 1, 1, 3)
         self.cmb_points = QComboBox()
         for key, text in XP.POINTS:
             self.cmb_points.addItem(text, key)
@@ -568,16 +757,11 @@ class CompareWindow(QDialog):
         self.sp_to.setPrefix("to ")
         for sp in (self.sp_at, self.sp_to):
             sp.valueChanged.connect(lambda _v: self._spec_changed())
-        self.lbl_points = QLabel("Points")
+        self.lbl_points = lab("Points")
         self.wid_points = W.row(self.cmb_points, self.sp_at, self.sp_to)
-        f.addRow(self.lbl_points, self.wid_points)
-        self.lbl_sentence = W.wrapped_label("")
-        self.lbl_sentence.setStyleSheet("font-weight: bold;")
-        f.addRow(self.lbl_sentence)
-        self.lbl_problem = W.wrapped_label("")           # V2.8: plots that make no sense
-        self.lbl_problem.setProperty("role", "danger")
-        self.lbl_problem.setVisible(False)
-        f.addRow(self.lbl_problem)
+        self.wid_points.layout().addStretch(1)
+        g.addWidget(self.lbl_points, 4, 0)
+        g.addWidget(self.wid_points, 4, 1, 1, 3)
         self.chk_own_base = QCheckBox("Each run's own saved baseline")
         self.chk_own_base.setChecked(True)
         self.chk_own_base.setToolTip("Untick to use the same baseline timepoint for every run.")
@@ -587,14 +771,16 @@ class CompareWindow(QDialog):
         self.sp_base.setPrefix("T")
         self.sp_base.setEnabled(False)
         self.sp_base.valueChanged.connect(lambda _v: self.refresh())
-        f.addRow("Baseline", W.row(self.chk_own_base, self.sp_base))
+        brow = W.row(self.chk_own_base, self.sp_base)
+        brow.layout().addStretch(1)
+        g.addWidget(lab("Baseline"), 5, 0)
+        g.addWidget(brow, 5, 1)
         self.cmb_err = QComboBox()
         for v in GS.ERRORS:
             self.cmb_err.addItem({"SEM": "mean ± SEM", "SD": "mean ± SD", "95% CI":
                                   "mean ± 95% CI", "none": "mean only"}[v], v)
         for i, v in enumerate(GS.ERRORS):
             self.cmb_err.setItemData(i, ERROR_TIPS.get(v, ""), Qt.ToolTipRole)
-        self.cmb_err.setCurrentIndex(max(0, self.cmb_err.findData(self.style.error)))
         self.cmb_err.setToolTip("SEM = SD / sqrt(n), SD with n - 1; n = cells (each run, "
                                 "pooled) or dishes (mean of dish means) with a value at "
                                 "that time.")
@@ -602,11 +788,13 @@ class CompareWindow(QDialog):
         # shared with the main window, the exports and the Prism files
         self.cmb_err.setCurrentIndex(max(0, self.cmb_err.findData(self.style.error)))
         self.cmb_err.currentIndexChanged.connect(self._err_changed)
-        f.addRow("Error", self.cmb_err)
+        g.addWidget(lab("Error"), 5, 2)
+        g.addWidget(self.cmb_err, 5, 3)
         self.ed_title = QLineEdit()
         self.ed_title.setPlaceholderText("automatic: <quantity> - <compartment>")
         self.ed_title.textChanged.connect(lambda _t: self.refresh())
-        f.addRow("Title", self.ed_title)
+        g.addWidget(lab("Title"), 6, 0)
+        g.addWidget(self.ed_title, 6, 1)
         from .. import kinetics as K
         self.cmb_graph = QComboBox()
         self.cmb_graph.addItem("Time course", GRAPH_TIME)
@@ -625,24 +813,34 @@ class CompareWindow(QDialog):
             "baseline to the first frame past half-max; maximum rate = steepest frame-to-frame "
             "step. Each dish is a dot; groups show the mean ± the chosen error across dishes.")
         self.cmb_graph.currentIndexChanged.connect(lambda _i: self._view_changed())
-        f.addRow("Graph", self.cmb_graph)
-        self.chk_window = QCheckBox("Kinetics: the same time window for every dish "
-                                    "(to the end of the shortest one)")
+        g.addWidget(lab("Graph"), 0, 2)
+        g.addWidget(self.cmb_graph, 0, 3)
+        self.chk_window = QCheckBox("Kinetics: same time window for every dish")
         self.chk_window.setChecked(True)
         self.chk_window.setToolTip(
             "On (recommended): every dish is measured from its baseline to the same time - "
             "the end of the shortest dish shown - so a movie that simply ran longer does not "
             "get a bigger maximum and a later t½. Off: each dish to its own last frame.")
         self.chk_window.toggled.connect(lambda _on: self._view_changed())
-        f.addRow("", self.chk_window)
+        g.addWidget(self.chk_window, 6, 2, 1, 2)
+        self.lbl_sentence = W.wrapped_label("")
+        self.lbl_sentence.setStyleSheet("font-weight: bold;")
+        self.lbl_sentence.setVisible(False)
+        g.addWidget(self.lbl_sentence, 7, 0, 1, 4)
+        self.lbl_problem = W.wrapped_label("")           # V2.8: plots that make no sense
+        self.lbl_problem.setProperty("role", "danger")
+        self.lbl_problem.setVisible(False)
+        g.addWidget(self.lbl_problem, 8, 0, 1, 4)
         bl.addWidget(box)
+        bl.addStretch(1)
 
         # V2.8: the file types and kinetics graphs live in the Save dialog
         self._save_opts = QDialog(self)
         self._save_opts.setWindowTitle("Save")
         sl = QVBoxLayout(self._save_opts)
         sl.addWidget(W.wrapped_label("Save what is shown as these files (nothing is "
-                                     "overwritten; a log of every save: 'Saved files...')."))
+                                     "overwritten; a log of every save: 'Output files ▾ > "
+                                     "Every saved file...')."))
         self.chk_fmt: Dict[str, QCheckBox] = {}
         fr = QWidget()
         fl = QGridLayout(fr)
@@ -672,7 +870,6 @@ class CompareWindow(QDialog):
         sl.addWidget(W.row(W.button("Choose name and folder...", self._save_opts.accept,
                                     strong=True),
                            W.button("Cancel", self._save_opts.reject)))
-        box, f = W.group("Save")
         self.btn_save = W.button(
             "Save...", self._save_clicked,
             "One .prism in the PeterPiper template look (one data set per line, legend; for groups "
@@ -680,32 +877,33 @@ class CompareWindow(QDialog):
             "the picture as shown (PNG / JPEG / SVG / TIFF / PDF) and the tables (CSV / Excel: "
             "the plotted numbers; for groups also each dish's mean and the pooled cells). "
             "Existing files are never replaced.", strong=True)
-        f.addRow(W.row(self.btn_save, W.button(
-            "Saved files...", self._saved_files,
-            "Every file PeterPiper saved (exports, comparisons, batch runs), newest first - "
-            "click to open it or its folder."), W.button(
-            "Prism style templates...", self._templates,
-            "Your two Prism template files: change the look in Prism once, every .prism "
-            "uses it from then on.")))
-        f.addRow(W.row(
-            W.button("Save plot settings...", self._save_plot_settings,
-                     "This plot (what is plotted against what, what is shown, error, baseline, "
-                     "title, file types, kinetics graphs) as a named settings file."),
-            W.button("Load plot settings...", self._load_plot_settings,
-                     "Plot the ticked runs the way a saved settings file says."),
-            W.button("Batch save...", self._batch_save,
-                     "Pick several saved plot settings: each is plotted for the ticked runs and "
-                     "saved (every ticked file type) into one folder.")))
-        bl.addWidget(box)
-        bl.addStretch(1)
-        scroll = QScrollArea()
+        self.menu_save = QMenu(self)
+        self.menu_save.setToolTipsVisible(True)
+        self.menu_save.addAction("Save plot settings...", self._save_plot_settings).setToolTip(
+            "This plot (what is plotted against what, what is shown, error, baseline, title, "
+            "file types, kinetics graphs) as a named settings file.")
+        self.menu_save.addAction("Load plot settings...", self._load_plot_settings).setToolTip(
+            "Plot the ticked runs the way a saved settings file says.")
+        self.menu_save.addAction("Batch save...", self._batch_save).setToolTip(
+            "Pick several saved plot settings: each is plotted for the ticked runs and saved "
+            "(every ticked file type) into one folder.")
+        self.menu_save.addSeparator()
+        self.menu_save.addAction("Prism style templates...", self._templates).setToolTip(
+            "Your two Prism template files: change the look in Prism once, every .prism uses "
+            "it from then on.")
+        self.btn_save_more = QPushButton("More ▾")
+        self.btn_save_more.setMenu(self.menu_save)
+        self.btn_save_more.setToolTip("Plot settings (save, load, batch save) and the Prism "
+                                      "style templates.")
+        self._settings_scroll = scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
         scroll.setWidget(bot_w)
-        scroll.setMinimumHeight(160)
-        top_w.setMinimumHeight(160)
+        top_w.setMinimumHeight(150)
         self.vsplit.addWidget(top_w)
         self.vsplit.addWidget(scroll)
-        self.vsplit.setSizes([520, 480])
+        self.vsplit.setStretchFactor(0, 1)
+        self.vsplit.setStretchFactor(1, 0)
         left = self.vsplit
         left.setMinimumWidth(420)
         split.addWidget(left)
@@ -713,6 +911,7 @@ class CompareWindow(QDialog):
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(4)
         pg.setConfigOption("background", "w")
         pg.setConfigOption("foreground", "k")
         # V2.8: what the graph shows - toggles, reset, the hover readout
@@ -732,7 +931,11 @@ class CompareWindow(QDialog):
         self.btn_reset = W.button("Reset zoom", self._reset_zoom,
                                   "Drag with the left mouse button to move, scroll to zoom; "
                                   "this shows everything again.")
-        rl.addWidget(W.row(self.chk_yerr, self.chk_xerr, self.chk_cells, self.btn_reset))
+        trow = W.row(self.chk_yerr, self.chk_xerr, self.chk_cells)
+        trow.layout().addStretch(1)
+        trow.layout().addWidget(self.btn_reset)
+        rl.addWidget(trow)
+        rl.addWidget(self.lbl_dup)
         self.plot = pg.PlotWidget()
         self.plot.setMenuEnabled(False)
         self.legend = self.plot.addLegend(offset=(10, 10))
@@ -750,10 +953,21 @@ class CompareWindow(QDialog):
         self.lbl_warn.setProperty("role", "warn")
         self.lbl_warn.setVisible(False)
         rl.addWidget(self.lbl_warn)
+        srow = W.row(self.btn_save, self.btn_save_more)
+        srow.layout().addStretch(1)
+        rl.addWidget(srow)
         right.setMinimumWidth(360)
         split.addWidget(right)
-        split.setSizes([700, 700])
+        split.setStretchFactor(0, 11)
+        split.setStretchFactor(1, 9)
+        split.setSizes([760, 620])
         self.setMinimumSize(900, 560)
+        self._cap_combos()
+        self.vsplit.setSizes([2000, scroll.minimumHeight()])
+        split.splitterMoved.connect(lambda *_a: self._fit_settings())
+        QShortcut(QKeySequence(Qt.Key_F2), self.tree, self._rename_current,
+                  context=Qt.WidgetShortcut)
+        self._selection_changed()
 
         self._width_timer = QTimer(self)
         self._width_timer.setSingleShot(True)
@@ -765,7 +979,7 @@ class CompareWindow(QDialog):
         self._fit_columns()
         self._restore_sort()
         self._restore_view()
-        sp_ = self._table_prefs.get("splits")
+        sp_ = self._table_prefs.get("splits11")    # 1.1 layout: earlier sizes do not fit it
         if isinstance(sp_, list) and len(sp_) == 2:
             for w, sz in ((self.hsplit, sp_[0]), (self.vsplit, sp_[1])):
                 if isinstance(sz, list) and len(sz) == 2 and all(int(v) > 100 for v in sz):
@@ -785,6 +999,11 @@ class CompareWindow(QDialog):
         self._restoring = True
         try:
             order = [HEADERS.index(n) for n in (st.get("order") or []) if n in HEADERS]
+            if not order:                       # 1.1: first time - the clear default order
+                order = [HEADERS.index(n) for n in DEFAULT_ORDER]
+                if not self._order_v26:
+                    self._order_v26 = True
+                    update_prefs(order_v26=True)
             if not self._order_v26:
                 # V2.6 (once): Version and Saved right after the name, where they are seen
                 order = [c for c in order if c not in (COL_VER, COL_SAVED)]
@@ -792,8 +1011,19 @@ class CompareWindow(QDialog):
                 order[at:at] = [COL_VER, COL_SAVED]
                 self._order_v26 = True
                 update_prefs(order_v26=True)
+            # 1.1: the new columns where they are seen: which save after the date saved,
+            # the user after the cells; anything else missing at the end
+            for col, after in ((COL_KIND, COL_SAVED), (COL_USER, COL_CELLS)):
+                if col not in order:
+                    order.insert(order.index(after) + 1 if after in order else len(order), col)
+            order += [c for c in range(len(HEADERS)) if c not in order]
             for vis, logical in enumerate(order):
                 hdr.moveSection(hdr.visualIndex(logical), vis)
+            hidden = st.get("hidden")
+            if not isinstance(hidden, list):    # 1.1: rarely needed columns start hidden
+                hidden = list(DEFAULT_HIDDEN)
+            for c, n in enumerate(HEADERS):
+                hdr.setSectionHidden(c, n in hidden)
             for n, w in (st.get("widths") or {}).items():
                 try:
                     if n in HEADERS and int(w) >= 16:
@@ -813,8 +1043,10 @@ class CompareWindow(QDialog):
                     continue
                 self.tree.resizeColumnToContents(c)
                 w = self.tree.columnWidth(c)
-                lo, hi = {COL_LINE: (150, 220), COL_LABEL: (140, 280), COL_FILE: (120, 280),
-                          COL_SAME: (110, 240), COL_GROUP: (150, 240)}.get(c, (30, 260))
+                lo, hi = {COL_LINE: (150, 220), COL_LABEL: (170, 300), COL_FILE: (120, 280),
+                          COL_SAME: (110, 240), COL_GROUP: (150, 240), COL_KIND: (110, 260),
+                          COL_USER: (60, 160), COL_SAVED: (140, 200),
+                          COL_CELLS: (50, 260)}.get(c, (30, 260))
                 self.tree.setColumnWidth(c, max(lo, min(hi, w)))
         finally:
             self._restoring = False
@@ -837,9 +1069,9 @@ class CompareWindow(QDialog):
         finally:
             self._restoring = False
 
-    def _section_resized(self, logical: int, _old: int, _new: int) -> None:
-        if self._restoring or self._busy:
-            return
+    def _section_resized(self, logical: int, _old: int, new: int) -> None:
+        if self._restoring or self._busy or new <= 0 or                 self.tree.header().isSectionHidden(logical):
+            return                              # hiding a column is not a width
         self._widths_touched.add(logical)
         self._width_timer.start()
 
@@ -854,9 +1086,12 @@ class CompareWindow(QDialog):
                 else "asc"] if 0 <= sec < len(HEADERS) else None
         widths = dict(self._table_prefs.get("widths") or {})
         for c in self._widths_touched:
-            widths[HEADERS[c]] = int(self.tree.columnWidth(c))
-        self._table_prefs = dict(order=order, sort=sort, widths=widths,
-                                 splits=[list(self.hsplit.sizes()), list(self.vsplit.sizes())])
+            if not hdr.isSectionHidden(c) and self.tree.columnWidth(c) > 0:
+                widths[HEADERS[c]] = int(self.tree.columnWidth(c))
+        hidden = [HEADERS[c] for c in range(len(HEADERS)) if hdr.isSectionHidden(c)]
+        self._table_prefs = dict(self._table_prefs, order=order, sort=sort, widths=widths,
+                                 hidden=hidden, splits11=[list(self.hsplit.sizes()),
+                                                          list(self.vsplit.sizes())])
         update_prefs(table=self._table_prefs)
 
     def done(self, r: int) -> None:                                # noqa: D401
@@ -1114,6 +1349,8 @@ class CompareWindow(QDialog):
         av = str(s.get("version") or "")
         app = str(s.get("app") or "PD4nav")           # PeterPiper 1.0: files name the app
         self._app_ver[path] = f"{app}V{'.'.join(av.split('.')[:2])}" if av else ""
+        self._kind[path] = str(s.get("kind") or "")
+        self._note[path] = note_of(path, s)
         ov = self._saved_lines.get(self.run_key(path))
         if ov:
             self._line_override[path] = str(ov)
@@ -1149,6 +1386,9 @@ class CompareWindow(QDialog):
                                       "The .nd2's folder is not recorded in this run file.")
             items[COL_VER].setToolTip("Which analysis of this .nd2 this is, by the date it was "
                                       "saved (newest = the latest analysis).")
+            items[COL_KIND].setText(self.kind_text(path))
+            items[COL_KIND].setToolTip(self._kind_tip(path))
+            items[COL_USER].setText(who or "")
             n = s.get("n_cells")
             items[COL_CELLS].setText(str(n) if n not in (None, "") else "")
             if isinstance(n, (int, float)):
@@ -1296,7 +1536,7 @@ class CompareWindow(QDialog):
             self._items.pop(path, None)
             self._rebuild_tree()
         for d in (self._cells, self._combos, self._runs, self._ident, self._saved_at,
-                  self._ckey, self._copies, self._items):
+                  self._ckey, self._copies, self._items, self._kind, self._note):
             d.pop(path, None)
 
     def _selected_paths(self) -> List[str]:
@@ -1371,12 +1611,7 @@ class CompareWindow(QDialog):
 
     def _put_menu(self) -> None:
         m = QMenu(self)
-        for g in self._all_groups():
-            m.addAction(g, lambda g=g: self.put_selected_in(g))
-        if m.actions():
-            m.addSeparator()
-        m.addAction("New group...", lambda: (lambda n: n and self.put_selected_in(n))(
-            self._new_group()))
+        self._fill_put_menu(m)
         m.exec(self.btn_put.mapToGlobal(self.btn_put.rect().bottomLeft()))
 
     def put_selected_in(self, group: str) -> None:
@@ -1495,6 +1730,340 @@ class CompareWindow(QDialog):
                     self.set_group_colour(key, c.name().upper())
                 else:
                     self.set_colour(p, c.name().upper())
+        elif p in self._cells:
+            self.open_in_analysis(p)            # 1.1: any other column opens the run
+
+    # ------------------------------------------- 1.1 which save, open, outputs
+    def kind_text(self, path: str) -> str:
+        """'Saved: <note>' / 'Saved' / 'Autosave' / 'Export' - which save a row is."""
+        k = self._kind.get(path, "")
+        txt = KIND_TEXT.get(k, k.capitalize() if k else "")
+        note = self._note.get(path, "")
+        return f"{txt}: {note}" if note and txt else (note or txt)
+
+    def _kind_tip(self, path: str) -> str:
+        k = self._kind.get(path, "")
+        tip = {"saved": "Saved with SAVE in the analysis window (a run you chose to keep).",
+               "session": "Autosaved while you worked on this movie (PeterPiper_sessions).",
+               "export": "The ROI file written with an export (Export_... folder)."}.get(
+            k, "A PeterPiper run file.")
+        note = self._note.get(path, "")
+        if note:
+            tip += f"\nYour note: {note}"
+        if self._copies.get(path):
+            tip += "\nThe same analysis was also saved as: " + ", ".join(
+                Path(q).name for q in self._copies[path])
+        return tip
+
+    def _rename_current(self) -> None:
+        p = self.current_run()
+        if p is not None:
+            self.tree.editItem(self._items[p], COL_LABEL)
+
+    def current_run(self) -> Optional[str]:
+        """The run the buttons act on: the clicked run (one of the selected), or
+        the only selected run. None: no single run is selected."""
+        sel = self._selected_paths()
+        it = self.tree.currentItem()
+        if it is not None and it.data(0, FOLDER_ROLE) is None and \
+                it.data(0, GROUP_ROLE) is None:
+            p = str(it.data(0, PATH_ROLE) or "")
+            if p in self._cells and (not sel or p in sel):
+                return p
+        return sel[0] if len(sel) == 1 else None
+
+    def _selection_changed(self) -> None:
+        one = self.current_run() is not None
+        for w in (self.btn_open, self.act_open_folder, self.act_outputs):
+            w.setEnabled(one)
+
+    def _pick_run(self, path: Optional[str], what: str) -> Optional[str]:
+        p = path or self.current_run()
+        if not p or p not in self._cells:
+            QMessageBox.information(self, what, "Click a run in the list first.")
+            return None
+        return p
+
+    def find_movie(self, path: str, ask: bool = True) -> str:
+        """The .nd2 a run was made from, on this computer: where it was saved,
+        else where this movie (its fingerprint) was last opened (the run index,
+        read only), else next to the run's OUTPUT_ folder; a movie with a
+        fingerprint must have the same contents. Not found: the user is asked
+        to show where it is (ask=False: ''). '' = not found / cancelled."""
+        from ..roifile import read_summary
+        s = read_summary(path) or {}
+        fp = s.get("fingerprint") if isinstance(s.get("fingerprint"), dict) else {}
+        ident = self._ident.get(path) or {}
+        quick = str(fp.get("quick") or ident.get("quick") or "")
+        try:
+            size = int(fp.get("size") or ident.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        saved_at = str(s.get("nd2_path") or "")
+        name = Path(saved_at).name if saved_at else Path(str(s.get("nd2") or
+                                                               self._nd2.get(path, ""))).name
+        cands: List[str] = [saved_at] if saved_at else []
+        if quick:
+            try:
+                ent = history._load_index().get(quick) or {}       # noqa: SLF001 (read only)
+                cands += [str(q) for q in reversed(ent.get("paths") or [])]
+            except Exception:                                      # noqa: BLE001
+                pass
+        for anc in Path(plain_path(str(path))).parents:            # <dir>/OUTPUT_<movie>/...
+            if anc.name.upper().startswith("OUTPUT_"):
+                for nm in dict.fromkeys([name, anc.name[7:] + ".nd2"]):
+                    if nm:
+                        cands.append(str(anc.parent / nm))
+                break
+
+        def same(c: str) -> bool:
+            if not quick:
+                return True
+            got = history.nd2_fingerprint(c)
+            return got.get("quick") == quick and (not size or int(got.get("size") or 0) == size)
+        for c in dict.fromkeys(q for q in cands if q):
+            try:
+                if Path(plain_path(c)).is_file() and same(c):
+                    return str(Path(plain_path(c)))
+            except OSError:
+                continue
+        if not ask:
+            return ""
+        start = ""
+        for c in cands:
+            par = Path(plain_path(c)).parent
+            if par.is_dir():
+                start = str(par)
+                break
+        got, _f = QFileDialog.getOpenFileName(
+            self, f"Where is the movie {name or ''} now? (not where it was saved)",
+            start or str(results_folder(path)), "Nikon movies (*.nd2);;All files (*)")
+        if not got:
+            return ""
+        if quick and not same(got):
+            r = QMessageBox.question(
+                self, "Open in analysis",
+                f"{Path(got).name} is not the movie this run was made from (its contents "
+                f"differ). Open it with this run anyway?", QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No)
+            if r != QMessageBox.Yes:
+                return ""
+        return str(got)
+
+    def open_in_analysis(self, path: Optional[str] = None) -> bool:
+        """1.1: close this window and open the run's movie in the analysis window
+        with this run loaded: sets open_request = {"nd2", "run"}, emits
+        openRequested(dict), accept(). False: no run, or no movie found."""
+        p = self._pick_run(path, "Open in analysis")
+        if p is None:
+            return False
+        nd2 = self.find_movie(p)
+        if not nd2:
+            return False
+        self.open_request = {"nd2": nd2, "run": p}
+        self.openRequested.emit(dict(self.open_request))
+        self.accept()
+        return True
+
+    def open_results_folder(self, path: Optional[str] = None) -> Optional[str]:
+        """1.1: open the folder holding the run's files (its results folder);
+        returns the folder opened (None: none)."""
+        p = self._pick_run(path, "Open results folder")
+        if p is None:
+            return None
+        folder = results_folder(p)
+        if not folder.is_dir():
+            QMessageBox.information(self, "Open results folder",
+                                    f"The folder is not on this computer:\n{plain_path(folder)}")
+            return None
+        W.open_path(str(folder))
+        return str(folder)
+
+    def show_output_files(self, path: Optional[str] = None, exec_: bool = True):
+        """1.1: a small window with the run's output folders (its exports,
+        autosaves, comparisons) - double-click or Open opens one. Returns the
+        dialog (exec_=False: made, not shown - tests)."""
+        p = self._pick_run(path, "Output files")
+        if p is None:
+            return None
+        root = results_folder(p)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Output files - {self._labels.get(p, Path(p).stem)}")
+        dlg.resize(620, 360)
+        v = QVBoxLayout(dlg)
+        v.addWidget(W.wrapped_label(f"Results folder of this run:\n{plain_path(root)}",
+                                    muted=True))
+        lst = QListWidget()
+        for text, folder in output_folders(p):
+            it = QListWidgetItem(text)
+            it.setData(Qt.UserRole, str(folder))
+            it.setToolTip(plain_path(folder))
+            lst.addItem(it)
+        rf = QListWidgetItem(f"This run's file: {Path(p).name}")
+        rf.setData(Qt.UserRole, str(Path(p).parent))
+        rf.setToolTip(plain_path(p))
+        lst.addItem(rf)
+        if lst.count():
+            lst.setCurrentRow(0)
+
+        def open_it(*_a):
+            it = lst.currentItem()
+            if it is not None:
+                W.open_path(str(it.data(Qt.UserRole)))
+        lst.itemDoubleClicked.connect(open_it)
+        v.addWidget(lst, 1)
+        v.addWidget(W.row(W.button("Open", open_it, "Open the chosen folder.", strong=True),
+                          W.button("Open results folder", lambda: W.open_path(str(root))),
+                          W.button("Close", dlg.reject)))
+        dlg.list = lst
+        self._outputs_dlg = dlg
+        if exec_:
+            dlg.exec()
+        return dlg
+
+    # ----------------------------------------------------------- 1.1 menus
+    def _fill_put_menu(self, m: QMenu) -> None:
+        m.clear()
+        for g in self._all_groups():
+            m.addAction(g, lambda g=g: self.put_selected_in(g))
+        if m.actions():
+            m.addSeparator()
+        m.addAction("New group...", lambda: (lambda n: n and self.put_selected_in(n))(
+            self._new_group()))
+
+    def _fill_group_menu(self, m: QMenu) -> None:
+        """The Groups ▾ menu (made when it opens: the groups change)."""
+        m.clear()
+        m.addAction("New group...", self._new_group).setToolTip(
+            "Make an empty group folder, then drag runs into it.")
+        put = m.addMenu("Put selected runs in")
+        put.setToolTipsVisible(True)
+        self._fill_put_menu(put)
+        put.setEnabled(bool(self._selected_paths()))
+        a = m.addAction("Take selected runs out of their group", self._ungroup_selected)
+        a.setEnabled(bool(self._selected_paths()))
+        m.addSeparator()
+        g = self._panel_group()
+        a = m.addAction(f"Rename group '{g}'..." if g else "Rename group...", self._rename_group)
+        a.setEnabled(bool(g))
+        a.setToolTip("Click a group's folder first.")
+        a = m.addAction(f"Delete group '{g}'" if g else "Delete group", self._delete_group)
+        a.setEnabled(bool(g))
+        a.setToolTip("Its runs stay, in 'No group'.")
+        m.addSeparator()
+        m.addAction("Group by cell line", self._group_by_line).setToolTip(
+            "Every ticked run without a group goes into the group of its cell line (the Cell "
+            "line column: read from the name or chosen by you).")
+
+    def _fill_list_menu(self, m: QMenu) -> None:
+        """The List ▾ menu: list housekeeping and the columns shown."""
+        m.clear()
+        a = m.addAction("Remove selected runs from the list", self._remove_clicked)
+        a.setShortcut(QKeySequence.Delete)
+        a.setEnabled(bool(self._selected_paths()))
+        m.addAction("Untick all", lambda: self.set_checked([]))
+        m.addSeparator()
+        m.addAction("Open all folders", self.tree.expandAll)
+        m.addAction("Close all folders", self.tree.collapseAll)
+        m.addSeparator()
+        self._fill_columns_menu(m.addMenu("Columns shown"))
+
+    def _fill_columns_menu(self, m: QMenu) -> None:
+        hdr = self.tree.header()
+        for c, n in enumerate(HEADERS):
+            if c == COL_USE:
+                continue
+            a = m.addAction(TITLES.get(n) or n)
+            a.setCheckable(True)
+            a.setChecked(not hdr.isSectionHidden(c))
+            a.toggled.connect(lambda on, c=c: self.set_column_shown(c, on))
+
+    def _header_menu(self, pos) -> None:
+        m = QMenu(self)
+        m.addSection("Columns shown")
+        self._fill_columns_menu(m)
+        m.exec(self.tree.header().mapToGlobal(pos))
+
+    def set_column_shown(self, col: int, on: bool) -> None:
+        """Show / hide a column of the list (remembered)."""
+        hdr = self.tree.header()
+        hdr.setSectionHidden(col, not on)
+        if on and self.tree.columnWidth(col) < 24:
+            self.tree.resizeColumnToContents(col)
+        self._save_table_state()
+
+    def _tree_menu(self, pos) -> None:
+        """Right-click on the list: what can be done with that run / group."""
+        it = self.tree.itemAt(pos)
+        m = QMenu(self)
+        m.setToolTipsVisible(True)
+        if it is not None and it.data(0, GROUP_ROLE) is None and it.data(0, FOLDER_ROLE) is None:
+            p = str(it.data(0, PATH_ROLE) or "")
+            if p in self._cells:
+                if not it.isSelected():
+                    self.tree.clearSelection()
+                    it.setSelected(True)
+                self.tree.setCurrentItem(it)
+                m.addAction("Open in analysis", lambda: self.open_in_analysis(p))
+                m.addAction("Open results folder", lambda: self.open_results_folder(p))
+                m.addAction("This run's output files...", lambda: self.show_output_files(p))
+                m.addSeparator()
+                m.addAction("Rename in the graph...", lambda: self.tree.editItem(it, COL_LABEL))
+                m.addAction("Colour...", lambda: self._cell_double(it, COL_COLOUR))
+        elif it is not None and it.data(0, GROUP_ROLE):
+            g = str(it.data(0, GROUP_ROLE))
+            self.tree.setCurrentItem(it)
+            m.addAction(f"Rename group '{g}'...", self._rename_group)
+            m.addAction(f"Delete group '{g}'", self._delete_group)
+            m.addAction("Colour...", lambda: self._group_double(g, COL_COLOUR))
+        if self._selected_paths():
+            m.addSeparator()
+            self._fill_put_menu(m.addMenu("Put selected runs in"))
+            m.addAction("Take out of group", self._ungroup_selected)
+            a = m.addAction("Remove from list", self._remove_clicked)
+            a.setShortcut(QKeySequence.Delete)
+        m.addSeparator()
+        m.addAction("Untick all", lambda: self.set_checked([]))
+        m.addAction("Open all folders", self.tree.expandAll)
+        m.addAction("Close all folders", self.tree.collapseAll)
+        m.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _cap_combos(self) -> None:
+        """1.1: a long entry (a long channel name ...) never makes the settings wider
+        than the window: each dropdown is at most so wide (the text is shortened in
+        the closed dropdown), its open list as wide as its longest entry."""
+        combos = [self.cmb_mode, self.cmb_graph, self.cmb_points, self.cmb_err]
+        for row in (self.row_y, self.row_x, self.row_y2):
+            combos += [c for c in row.findChildren(QComboBox)]
+        for c in combos:
+            c.setMaximumWidth(340 if c in (self.cmb_mode, self.cmb_graph, self.cmb_points)
+                              else 190)
+            try:
+                c.view().setMinimumWidth(c.view().sizeHintForColumn(0) + 28)
+            except RuntimeError:
+                pass
+        self._fit_settings()
+
+    def _fit_settings(self) -> None:
+        """1.1: the plot settings box as tall (and the left side as wide) as its
+        contents need - so it never needs a scroll bar."""
+        sc = getattr(self, "_settings_scroll", None)
+        if sc is None:
+            return
+        w = sc.widget()
+        mw = max(420, w.minimumSizeHint().width() + 4)
+        if self.vsplit.minimumWidth() != mw:
+            self.vsplit.setMinimumWidth(mw)
+        width = max(sc.viewport().width(), mw - 4)
+        h = w.heightForWidth(width) if w.hasHeightForWidth() else -1
+        h = max(h, w.minimumSizeHint().height(), w.sizeHint().height() if h < 0 else 0)
+        h += 2 * sc.frameWidth()
+        if sc.minimumHeight() != h:
+            sc.setMinimumHeight(h)
+
+    def resizeEvent(self, e) -> None:                              # noqa: N802
+        super().resizeEvent(e)
+        self._fit_settings()                    # wrapped texts are taller when narrower
 
     def set_colour(self, p: str, colour: str) -> None:
         """This run's colour (remembered for its name)."""
@@ -2037,7 +2606,7 @@ class CompareWindow(QDialog):
         auto = CL.assign_colours(names, rem, lines)
         out = {}
         for i, (k, c) in enumerate(zip(keys, auto)):
-            out[k] = mine.get(k) or c or C.PALETTE[i % len(C.PALETTE)]
+            out[k] = mine.get(k) or c or C.PLOT_PALETTE[i % len(C.PLOT_PALETTE)]
         self._unknown = [k for k, c in zip(keys, auto) if c is None and k not in mine]
         for k, ln in zip(keys, lines):
             if isinstance(ln, str) and ln.strip():
@@ -2068,7 +2637,8 @@ class CompareWindow(QDialog):
                 continue
             self._asked.add(label.lower())
             what = ("cell line" if key in self._unknown_custom else "cell line not recognised")
-            c = QColorDialog.getColor(QColor(C.PALETTE[len(self._asked) % len(C.PALETTE)]),
+            c = QColorDialog.getColor(QColor(C.PLOT_PALETTE[len(self._asked) %
+                                                 len(C.PLOT_PALETTE)]),
                                       self, f"Colour for '{label}' ({what})")
             if c.isValid():
                 remember(label, c.name().upper())
@@ -2084,7 +2654,8 @@ class CompareWindow(QDialog):
         """The colour swatch of every plotted run; plotted runs in bold, the others
         dimmed (V2.8: what is graphed is what is bold)."""
         cmap = self._current_colour_map()
-        dim = QBrush(QColor("#8A8A8A"))
+        from . import theme as TH
+        dim = QBrush(QColor(TH.current().muted))      # 1.1: the theme's own dimmed text
         self._busy = True
         try:
             for p in list(self._cells):
@@ -2097,7 +2668,8 @@ class CompareWindow(QDialog):
                 it.setData(SORT_ROLE, c or "")
                 row = self._items.get(p)
                 if row is not None:
-                    for col in (COL_LABEL, COL_GROUP, COL_CELLS, COL_SAVED):
+                    for col in (COL_LABEL, COL_GROUP, COL_CELLS, COL_SAVED, COL_KIND,
+                                COL_USER):
                         f = row.font(col)
                         f.setBold(on)
                         row.setFont(col, f)
@@ -2131,6 +2703,7 @@ class CompareWindow(QDialog):
                 row.set_options(opts)
         finally:
             self._busy_rows = False
+        self._cap_combos()
         self._fill_quantities()
         self._sync_y_row()
 
@@ -2219,6 +2792,7 @@ class CompareWindow(QDialog):
             self.cmb_graph.setCurrentIndex(0)
         sp = self.spec()
         self.lbl_sentence.setText(html.escape(sp.sentence()) if sp else "")
+        self.lbl_sentence.setVisible(bool(sp))
         self._save_view_prefs()
         self.refresh()
 
@@ -2418,7 +2992,9 @@ class CompareWindow(QDialog):
                  if joined and (st.mean_width > 0 or dashed) else None),
             symbol=None if dashed else (PG_SYM.get(sym, "o") or "o"),
             symbolSize=st.symbol_size * PX * (1.1 if small else 1.4),
-            symbolBrush=None if open_ else qc, symbolPen=pg.mkPen(qc) if open_ else None,
+            symbolBrush=None if open_ else qc,
+            symbolPen=pg.mkPen(qc) if open_ else (pg.mkPen(C.edge_colour(colour))   # 1.1: pale
+                                                  if C.edge_colour(colour) else None),
             connect="finite", name=html.escape(name))
         add(main)
         if vb is not None:
@@ -2564,6 +3140,7 @@ class CompareWindow(QDialog):
         if hasattr(self, "lbl_problem"):
             self.lbl_problem.setText(" ".join(probs))
             self.lbl_problem.setVisible(bool(probs))
+            self._fit_settings()
         pl = self.pair_lines() if hasattr(self, "row_x") else None
         if pl is not None:
             dup = self.duplicate_warning()
@@ -2677,7 +3254,8 @@ class CompareWindow(QDialog):
             if fin.any():
                 self.plot.plot((pos + K._offsets(len(v)))[fin], v[fin], pen=None, symbol="o",
                                symbolSize=max(6.0, st.symbol_size * PX * 1.6), symbolBrush=qc,
-                               symbolPen=None, name=html.escape(it.label))
+                               symbolPen=(pg.mkPen(C.edge_colour(col)) if C.edge_colour(col)
+                                          else None), name=html.escape(it.label))
             m = sm.mean[0]
             if np.isfinite(m):
                 self.plot.plot([pos - 0.28, pos + 0.28], [m, m],

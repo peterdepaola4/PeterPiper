@@ -323,7 +323,8 @@ def fake_smartselect(unlocked, text=None, how="1  Play the hidden minigame.\n2  
 
 
 def drop_smartselect():
-    sys.modules.pop("peterpiper.smartselect", None)
+    """As if smartselect.py were not there (an import of it fails)."""
+    sys.modules["peterpiper.smartselect"] = None
     import peterpiper
     if hasattr(peterpiper, "smartselect"):
         delattr(peterpiper, "smartselect")

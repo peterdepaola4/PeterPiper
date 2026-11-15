@@ -1090,6 +1090,7 @@ def run_with_progress(parent: Optional[QWidget], title: str, fn: Callable, delay
             loop.exec(QEventLoop.ExcludeUserInputEvents)
         th.join()
     finally:
+        t0.stop()                                   # also when the work ended before the first poll
         QApplication.restoreOverrideCursor()
         panel.close()
         panel.deleteLater()

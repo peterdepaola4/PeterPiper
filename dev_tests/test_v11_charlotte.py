@@ -555,6 +555,21 @@ def part_f():
     for wsz in ((1366, 768), (1280, 800)):
         ok(f"F the window fits a {wsz[0]} x {wsz[1]} screen",
            ui.minimumSizeHint().width() <= wsz[0] and ui.minimumSizeHint().height() <= wsz[1] - 60)
+    import types
+    fake = types.ModuleType("peterpiper.smartselect")
+    fake.status = lambda: {"text": "Smart auto-select: 1 of 3 hand-drawn queued movies",
+                           "unlocked": False}
+    sys.modules["peterpiper.smartselect"] = fake
+    try:
+        ui.show_page(ui.PAGE_WEB)
+        ok("F the Smart auto-select line shows status()['text']",
+           ui.lbl_smart.isVisible() and ui.lbl_smart.text().startswith("Smart auto-select: 1 of 3"),
+           ui.lbl_smart.text())
+        fake.status = lambda: 1 / 0
+        ui.refresh()
+        ok("F a failing smartselect.status() only hides the line", not ui.lbl_smart.isVisible())
+    finally:
+        sys.modules.pop("peterpiper.smartselect", None)
     ui.close()
     ok("F closing the window is remembered", CH._load()["window"].get("closed") is True)
     batchqueue.clear()

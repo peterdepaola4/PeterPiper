@@ -345,6 +345,8 @@ def _smart_line() -> Optional[str]:
         return None
     if isinstance(st, str):
         return st
+    if isinstance(st, dict) and st.get("text"):         # the contract: status()["text"]
+        return str(st["text"])
     try:
         if isinstance(st, dict):
             done = st.get("count", st.get("done", 0))

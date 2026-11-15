@@ -228,6 +228,39 @@ class _SessionWriter(QObject):
             t.join(0.05)
 
 
+class _ElideButton(QPushButton):
+    """1.1: a button whose (long) text is shortened with ... to fit its width; the
+    whole text stays in full_text() (and the tooltip)."""
+
+    def __init__(self) -> None:
+        super().__init__("")
+        self._full = ""
+        self._short: tuple = ()
+
+    def set_full_text(self, text: str, *shorter: str) -> None:
+        """text, and shorter forms to use (in order) before cutting with '...'."""
+        self._full = str(text)
+        self._short = tuple(str(t) for t in shorter if t)
+        self._elide()
+
+    def full_text(self) -> str:
+        return self._full
+
+    def resizeEvent(self, ev) -> None:                             # noqa: N802
+        super().resizeEvent(ev)
+        self._elide()
+
+    def _elide(self) -> None:
+        room = max(24, self.width() - (40 if self.menu() is not None else 16))
+        fm = self.fontMetrics()
+        txt = next((t for t in (self._full,) + self._short if fm.horizontalAdvance(t) <= room),
+                   None)
+        if txt is None:
+            txt = fm.elidedText((self._short or (self._full,))[-1], Qt.ElideRight, room)
+        if txt != self.text():
+            self.setText(txt)
+
+
 class _ExtrasBar(QWidget):
     """1.1: a row for optional extras (e.g. part charlotte's button), at the foot of the
     side panel under SAVE / EXPORT. Empty and hidden until a widget is put in it
@@ -689,7 +722,7 @@ class ClickWindow(QMainWindow):
         self.btn_auto.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         # 1.1: Smart auto-select (smartselect.py) beside it - shown to everyone, locked until
         # earned; kept enabled-looking so its directions always show on hover
-        self.btn_smart = QPushButton("")
+        self.btn_smart = _ElideButton()
         self.btn_smart.setMinimumHeight(34)
         self.btn_smart.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.btn_smart.setMinimumWidth(60)
@@ -755,6 +788,12 @@ class ClickWindow(QMainWindow):
                                   "keep / skip quiz, and save it as your own button here.")
         self.btn_train.triggered.connect(self._train_detector)
         mm.addAction(self.btn_train)
+        self.act_bins = QAction("Smart auto-select: your bins...", self)
+        self.act_bins.setToolTip("Which of your hand-drawn movies Smart auto-select learns "
+                                 "from (name bins, move movies between them).")
+        self.act_bins.triggered.connect(self._smart_bins)
+        self.act_bins.setVisible(False)
+        mm.addAction(self.act_bins)
         mm.setToolTipsVisible(True)
         more.setMenu(mm)
         self.btn_more = more
@@ -1189,15 +1228,28 @@ class ClickWindow(QMainWindow):
 
     def _refresh_smart(self) -> None:
         """Smart auto-select: hidden without smartselect.py; else locked / unlocked as
-        its status() says (asked again when a movie opens and after SAVE)."""
+        its status(channels) says - only the bins that fit this movie's channels
+        (asked again when a movie opens and after SAVE)."""
         mod = self._smart_module()
         st = None
         if mod is not None:
+            chans = list(self.exp.channels)
             try:
-                got = mod.status()
+                try:
+                    got = mod.status(channels=chans)
+                except TypeError:                                  # an older smartselect
+                    got = mod.status()
                 if isinstance(got, dict):
+                    bins = []
+                    for b in got.get("bins") or []:
+                        if isinstance(b, dict) and b.get("name"):
+                            bins.append(dict(name=str(b["name"]),
+                                             label=str(b.get("label") or b["name"]),
+                                             n_movies=int(b.get("n_movies") or 0),
+                                             n_rois=int(b.get("n_rois") or 0)))
                     st = dict(unlocked=bool(got.get("unlocked")), text=str(got.get("text") or ""),
-                              how=str(got.get("how") or ""))
+                              how=str(got.get("how") or ""),
+                              label=str(got.get("label") or "Smart auto-select"), bins=bins)
             except Exception:                                      # noqa: BLE001
                 st = None
         self._smart_state = st
@@ -1205,12 +1257,27 @@ class ClickWindow(QMainWindow):
             self.btn_smart.setVisible(st is not None)
             if st is not None:
                 self._style_smart()
+            self.act_bins.setVisible(mod is not None
+                                     and callable(getattr(mod, "review_dialog", None)))
         except RuntimeError:
             pass
 
+    def _smart_tip(self, st: dict) -> str:
+        lines = []
+        if st["bins"]:
+            lines.append("Your bins for these channels (n = hand-picked movies):")
+            lines += [f"  •  {b['label']}: n={b['n_movies']}"
+                      + (f", {b['n_rois']} cells" if b["n_rois"] else "") for b in st["bins"]]
+        if st["text"]:
+            lines.append(st["text"])
+        if st["how"]:
+            lines.append(("\nHow to unlock it:\n" if not st["unlocked"] else "\n") + st["how"])
+        return "\n".join(lines)
+
     def _style_smart(self) -> None:
-        """Accent gradient with a sparkle when unlocked; a calm locked look with a lock
-        (theme colours only - readable on every theme)."""
+        """Accent gradient with a sparkle when unlocked (a small menu when several of
+        your bins fit this movie); a calm locked look with a lock. Theme colours only
+        - readable on every theme."""
         st = self._smart_state
         if st is None:
             return
@@ -1220,7 +1287,10 @@ class ClickWindow(QMainWindow):
         b = self.btn_smart
         if st["unlocked"]:
             a = QColor(t_.accent)
-            b.setText("✦  Smart auto-select")
+            lab = st["label"]
+            short = lab.split(":", 1)[1].strip() if ":" in lab else ""
+            b.set_full_text("✦  " + lab, ("✦  Smart: " + short) if short else "",
+                            ("✦  " + short) if short else "")
             b.setStyleSheet(
                 f"QPushButton {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
                 f"stop:0 {a.lighter(118).name()}, stop:1 {a.darker(135).name()}); "
@@ -1228,36 +1298,84 @@ class ClickWindow(QMainWindow):
                 f"padding: 6px 4px; }}"
                 f"QPushButton:hover {{ background: {a.lighter(125).name()}; }}"
                 f"QPushButton:disabled {{ background: {t_.surface2}; color: {t_.muted}; }}")
-            b.setToolTip("Smart auto-select: picks the cells on this movie the way you pick "
-                         "them." + (f"\n{st['text']}" if st["text"] else "")
-                         + (f"\n{st['how']}" if st["how"] else ""))
+            b.setToolTip(f"{st['label']}: picks the cells on this movie the way you pick "
+                         f"them.\n" + self._smart_tip(st))
         else:
-            b.setText("🔒  Smart auto-select")
+            b.set_full_text("🔒  Smart auto-select")
             b.setStyleSheet(
                 f"QPushButton {{ background: {t_.surface2}; color: {t_.muted}; "
                 f"border: 1px dashed {t_.accent}; font-weight: 600; padding: 6px 4px; }}"
                 f"QPushButton:hover {{ color: {t_.text}; border: 1px solid {t_.accent}; }}")
-            b.setToolTip("Smart auto-select - locked." + (f"\n{st['text']}" if st["text"] else "")
-                         + (f"\n\nHow to unlock it: {st['how']}" if st["how"] else ""))
+            b.setToolTip("Smart auto-select - locked.\n" + self._smart_tip(st))
         b.setProperty("locked", not st["unlocked"])
+        # several bins fit: a small menu (one entry each, with its n) + Your bins...
+        old = b.menu()
+        if st["unlocked"] and len(st["bins"]) > 1:
+            m = QMenu(b)
+            for bn in st["bins"]:
+                m.addAction(f"{bn['label']}  (n={bn['n_movies']})",
+                            lambda _c=False, name=bn["name"]: self._smart_run(name))
+            mod = self._smart_module()
+            if mod is not None and callable(getattr(mod, "review_dialog", None)):
+                m.addSeparator()
+                m.addAction("Your bins...", self._smart_bins)
+            b.setMenu(m)
+        else:
+            b.setMenu(None)
+        if old is not None and old is not b.menu():
+            old.deleteLater()
+        b._elide()                                # (room for the menu arrow)
 
     def _smart_clicked(self) -> None:
         st = self._smart_state
-        mod = self._smart_module()
-        if st is None or mod is None:
+        if st is None or self._smart_module() is None:
             return
         if not st["unlocked"]:
             self._show_smart_directions()
+            return
+        if self.btn_smart.menu() is not None:     # (a menu opens instead of a click)
+            return
+        self._smart_run(st["bins"][0]["name"] if len(st["bins"]) == 1 else None)
+
+    def _smart_run(self, bin_name: Optional[str] = None) -> None:
+        """Smart auto-select with that bin (None: smartselect chooses / asks)."""
+        mod = self._smart_module()
+        if mod is None:
             return
         if self._busy_now():
             self.set_status("Please wait - a job is running (see the bar under the image).")
             return
         self._show_page(1)
         try:
-            mod.run(self)
+            try:
+                mod.run(self, bin_name=bin_name)
+            except TypeError:                                      # an older smartselect
+                mod.run(self)
         except Exception as exc:                                   # noqa: BLE001
             self.set_status(f"Smart auto-select stopped: {error_text(exc)}")
         self._refresh_smart()
+
+    def _smart_bins(self) -> None:
+        """'Your bins...': which hand-drawn movies Smart auto-select learns from."""
+        mod = self._smart_module()
+        fn = getattr(mod, "review_dialog", None) if mod is not None else None
+        if callable(fn):
+            try:
+                fn(self)
+            except Exception as exc:                               # noqa: BLE001
+                self.set_status(f"Your bins: {error_text(exc)}")
+            self._refresh_smart()
+
+    def use_detector(self, det) -> None:
+        """For smartselect (and other learners run with _start): use a learned
+        detector on this movie - or, with None, just end the busy state cleanly."""
+        if det is None:
+            self._busy(False)
+            self.progress.reset("Ready.")
+            self._update_next()
+            return
+        self._busy(False)
+        self._use_detector(det)
 
     def _show_smart_directions(self) -> None:
         """A locked Smart auto-select was clicked: the directions in a small popup under

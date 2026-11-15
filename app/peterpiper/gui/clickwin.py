@@ -1639,6 +1639,11 @@ class ClickWindow(QMainWindow):
         a = QAction("About PeterPiper", self)                # V3.0: version, licence, how to cite
         a.triggered.connect(self._about)
         h.addAction(a)
+        a = QAction("Check for updates...", self)       # 1.1: the only network use, on request
+        a.setToolTip("Asks GitHub whether a newer PeterPiper exists (nothing of yours is sent).")
+        a.triggered.connect(lambda: __import__("peterpiper.gui.updatedlg", fromlist=["x"])
+                            .check_for_updates(self))
+        h.addAction(a)
         a = QAction("Computer check...", self)          # V2.9: long paths, Python
         a.setToolTip("Is this computer set up the way PeterPiper needs?")
         a.triggered.connect(self._computer_check)

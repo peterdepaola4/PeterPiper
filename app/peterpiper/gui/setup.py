@@ -711,6 +711,11 @@ class SetupDialog(QDialog):
             self.btn_storage = W.button("Storage & cloud", lambda: opener(self),
                                         "Where results are kept, and back-ups.")
             lay.addWidget(self.btn_storage)
+        self.btn_update = W.button(                  # 1.1: the only network use, on request
+            "Check for updates", self._check_updates,
+            "Asks GitHub whether a newer PeterPiper exists (only when you press this; nothing "
+            "of yours is sent). Your profiles, saved runs, logs and results are never touched.")
+        lay.addWidget(self.btn_update)
         self.btn_more = QToolButton()
         self.btn_more.setText("More")
         self.btn_more.setPopupMode(QToolButton.InstantPopup)
@@ -811,6 +816,10 @@ class SetupDialog(QDialog):
     def _saved_files(self) -> None:
         from .outlogdlg import OutputsDialog
         OutputsDialog(self).exec()
+
+    def _check_updates(self) -> None:
+        from .updatedlg import check_for_updates
+        check_for_updates(self)
 
     def _batch(self) -> None:
         from .batchdlg import BatchDialog

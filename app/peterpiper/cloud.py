@@ -2,7 +2,9 @@
 PeterPiper 1.1 - keeping analyses in OneDrive, Google Drive, Box, Dropbox, iCloud
 Drive, a network folder ... through each service's OWN app.
 
-PeterPiper never signs in anywhere and has no network code. Each service has a
+PeterPiper never signs in anywhere, and this module has no network code (the
+only network use in PeterPiper is the optional 'Check for updates', updater.py).
+Each service has a
 free app that puts a folder on the computer and uploads whatever is put into it.
 This module only FINDS those folders (read-only looks at the file system; on
 Windows also read-only registry look-ups), tells whether a file is stored only

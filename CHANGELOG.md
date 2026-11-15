@@ -1,5 +1,88 @@
 # Changelog
 
+## PeterPiper 1.1.0 (2026-11-15)
+
+**A new start screen and analysis window, the movie queue with SAVE, Smart
+auto-select, profiles shared between computers and across a lab, storage in cloud
+folders, colour-blind-safe colours and Check for updates.** The methods and the
+numbers are unchanged (the same measurement code; every earlier test suite passes).
+
+- Program folder and launcher `PeterPiperV1.1` / `PeterPiperV1.1.bat`, install folder
+  `%USERPROFILE%\.PeterPiperV1.1` (one install of about 5 minutes per computer; the
+  same package versions as 1.0); users and runs in `PeterPiper data` carry over.
+  Mac: `PeterPiper-1.1.0-macOS-AppleChip.dmg` / `-Intel.dmg`.
+- **Start screen** (opens maximized, no scroll bars at 1366 x 768): *Analyse movies*
+  (one .nd2, or several at once - a movie queue), *Continue your queue (N left)*,
+  *Compare / average saved runs*; a movie card with every earlier check (pixel size,
+  frame interval, uneven gaps, stage position, channel names, results folder with
+  *Open results folder*, analysed before, read-only drives); tabs *Recent analyses*
+  (open a run straight into the analysis window) and *Queue*; footer *Saved files*,
+  *Storage & cloud*, *Check for updates*, *More* (batch, Prism templates, export /
+  import profile), text size, theme; the Smart auto-select status line. A movie from
+  the queue or a run list skips it only when its metadata is complete (pixel size
+  present and not 1.0, interval > 0, even gaps, one stage position).
+- **Analysis window**: opens maximized; one step page at a time; SAVE (with an
+  optional note) and EXPORT at the foot of the panel; top row *Another file*, *Open
+  results folder*, *Compare*, *Undo* and, in a queue, *Movie 2 of 5*, *Skip*, *Next
+  movie*; Smart auto-select beside AUTO-DETECT; *File > Back up this analysis...*;
+  *Help > Check for updates...*; *Help > Achievements...* once something is found.
+- **SAVE**: a saved ROI file with the tracking (kind `saved`) and the note in its
+  summary, shown in Compare as *Saved: <note>*. The autosave is unchanged.
+- **Movie queue**: statuses to do / saved / exported / skipped, kept per user;
+  *Next movie* asks to SAVE first if needed.
+- **Compare window**: eight buttons instead of twenty (menus *Add runs*, *Groups*,
+  *Output files*, *List*, *More*), opens maximized, a clearer list with the columns
+  *Save* (Saved: note / Autosave / Export) and *User*; *Open in analysis* (finds the
+  movie by its saved path, the run index or next to `OUTPUT_`, or asks; checks the
+  fingerprint), *Open results folder*, *This run's output files*.
+- **Smart auto-select**: cell selection learned from your hand-picked movies, kept
+  in named bins (one per kind of experiment, same channel names, any number of ROIs);
+  n = hand-picked movies on the button. The V3.0 trained auto-detect (your saved ROIs
+  as answers, IoU >= 0.3; limits on fixed grids by coordinate search maximising mean
+  F1; held-out score, each movie scored by the rule learned from the others), learned
+  in the background on use from >= 2 movies whose files are present. The detector's
+  name carries the bin, n and the ROI count into the Methods text of every run that
+  used it. Unlocked by hand-drawing and SAVEing 3 movies of a queue; plain and
+  trained AUTO-DETECT unchanged.
+- **Profiles and lab**: a redesigned *Who is using PeterPiper?*; *Merge profiles*
+  (two spellings, or a profile zip / folder from another computer, into a chosen
+  user; the kept profile wins ties; run lists united; the merged user hidden, never
+  deleted, its name an alias); *Keep in step* through a personal cloud or network
+  folder (both ways at start, switch and close; unions, newest wins only for single
+  values, conflict copies kept); a *lab folder* (`PeterPiper lab users.json`,
+  `PeterPiper profiles/`) with one lab user list, aliases, profiles and the lab's
+  data folders for every linked computer, and an *anyone can add themselves*
+  switch; roles User / Admin / Developer (Developer = a title, Admin's abilities;
+  the last admin cannot be demoted); optional passwords (salted PBKDF2-SHA256,
+  200,000 iterations, 16-byte salt; admins can reset; not strong security).
+- **Storage & cloud**: results next to each movie (default) or in a folder
+  (`<folder>/OUTPUT_<movie>/<user>`), e.g. in OneDrive / SharePoint / Teams, Google
+  Drive, Box, Dropbox, iCloud Drive, Nextcloud / ownCloud, pCloud, MEGA, Sync.com,
+  Egnyte or a network drive - through the services' own apps; PeterPiper never signs
+  in. *Back up this analysis* into `<folder>/PeterPiper backup/<movie>/` (results and
+  optionally the .nd2; never overwrites: same size and time = skipped, else `_2`;
+  sizes checked). A warning when a movie is stored only online.
+- **Colours and accessibility**: cell colours #2299CC, #BB2200, #5533FF, #AA8844,
+  #EE3388, #007755 in every theme (Okabe-Ito hues at medium luminance; >= 3.23:1 on
+  white, >= 3.30:1 on black; every pair >= 14.4 CIEDE2000 apart with normal vision
+  and simulated protanopia, deuteranopia and tritanopia); dashed / dotted / dash-dot
+  beyond six cells (24 looks); a white trace plot in every theme; colour swatches in
+  the cell list. Every theme checked against WCAG 2 contrast (text >= 7:1, secondary
+  text, text on accent and status colours >= 4.5:1, borders >= 1.25:1); the basic
+  themes adjusted slightly; 18 optional palettes as a hidden extra.
+- **Check for updates** (start screen, Help menu): the only network use, only when
+  pressed - one HTTPS request to GitHub's public release list and, if you choose,
+  the release download. Windows: changed program files replaced in place (old ones
+  kept in `_update_backup/`), or a new version unpacked into its own folder; Mac: the
+  right .dmg saved in Downloads and opened; developer copies never changed; user
+  data never touched.
+- **Charlotte's Web**: a small game (pink button) - a unique web for every movie
+  picked by hand, finished by SAVE, collected in a gallery and exportable as
+  pictures; it stores only its own file and never touches data, measurements or
+  results. A few further optional hidden extras.
+- Manual: new sections 6.14 - 6.19 and 8.13; privacy, storage, troubleshooting,
+  limitations and validation updated.
+
 ## PeterPiper 1.0.3 (2026-11-12)
 
 **Movies on a drive PeterPiper cannot write to** (e.g. a Windows-formatted external

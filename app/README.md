@@ -4,7 +4,7 @@ Click-to-draw (plus 'auto-select the obvious ones') ROI tracking for Nikon .nd2
 fluorescence time series. See `READ ME.txt` next to `PeterPiperV1.1.bat` for how to use it.
 
 Install: `PeterPiperV1.1.bat` makes a private Python environment in
-`%USERPROFILE%\.PD4navV3.0\venv` from the exact versions in `requirements.txt`
+`%USERPROFILE%\.PeterPiperV1.1\venv` from the exact versions in `requirements.txt`
 (fallback: `requirements-compatible.txt`); what was really installed is written to
 `venv\installed_versions.txt`. After that everything runs locally (see `SECURITY.md`).
 
@@ -54,3 +54,19 @@ Code map (`peterpiper/`):
 - `safety.py` - file names, never-overwrite output files, and long Windows paths (every
   file is written and read with the extended-length form, so results deeper than 260
   characters still work)
+
+PeterPiper 1.1 (see the manual, sections 6.14 - 6.19 and 8.13):
+- `gui/setup.py` - the start screen (Analyse movies / Continue your queue / Compare,
+  recent analyses, the queue); `gui/clickwin.py` - the analysis window (step pages,
+  SAVE and EXPORT, the queue row, Smart auto-select)
+- `batchqueue.py` - the movie queue; `userprefs.py` - small per-user JSON files;
+  `events.py` - in-process events the optional parts listen to
+- `smartselect.py` - Smart auto-select: bins, unlocking, learning (uses `detectors.py`)
+- `users.py`, `profilesync.py`, `labshare.py`, `gui/userdlg.py` - merge profiles, keep
+  in step through a folder, the lab folder, roles, optional password hashes
+- `cloud.py`, `gui/storagedlg.py` - cloud / network folders, results location, back-ups
+- `updater.py`, `gui/updatedlg.py` - Check for updates: the only network use, on request
+- `gui/theme.py`, `gui/colourvision.py`, `gui/widgets.py` - themes with their WCAG
+  contrast check, colour-vision checks, the colour-blind-safe cell colours
+- `gui/charlotte*.py`, `achievements.py`, `gui/eggsdlg.py` - Charlotte's Web and the
+  optional hidden extras (they never touch data)

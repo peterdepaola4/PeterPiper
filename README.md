@@ -3,7 +3,7 @@
 **Free and open source (MIT) · Windows 10 / 11 and macOS 14+ · runs entirely on your own computer.**
 By Peter DePaola IV, Schmitt Lab, University of California, Los Angeles.
 
-PeterPiper was called **PD4nav** up to version 3.0. **PeterPiper 1.0 continues PD4nav V3.0**: the same methods and the same numbers, a new name and logo, and a fresh start on every computer (section 15). Version tags such as *(V2.9)* or *(V3.0)* in this manual mark the PD4nav version a feature arrived in.
+PeterPiper was called **PD4nav** up to version 3.0. **PeterPiper 1.0 continues PD4nav V3.0**: the same methods and the same numbers, a new name and logo, and a fresh start on every computer (section 15). **PeterPiper 1.1** keeps the same methods and the same numbers and adds a redesigned start screen and analysis window, a movie queue with SAVE and *Next movie*, *Smart auto-select* (cell selection learned from your own hand-picked movies), profiles kept in step between computers and across a lab, results and back-ups in cloud folders, colour-blind-safe cell colours and an optional *Check for updates* (section 15). Version tags such as *(V2.9)*, *(V3.0)* or *(1.1)* in this manual mark the version a feature arrived in.
 
 **What it does**
 
@@ -11,31 +11,32 @@ PeterPiper was called **PD4nav** up to version 3.0. **PeterPiper 1.0 continues P
 - It **measures every channel in every cell** from the raw pixels, subtracts a background measured at every timepoint, and gives intensities, ratios, F/F0 and R/R0 - with a check that leaves out divisions by almost nothing.
 - It **exports** Excel workbooks (live formulas), GraphPad Prism files with the graph already made, CSV tables, graphs, ROI pictures and a **ready-to-edit methods text** with every value used.
 - Saved runs can be **compared and averaged as replicate dishes** (mean of dish means, n = dishes), with kinetics (t½, initial slope).
+- Several movies can be analysed **one after another as a queue**; after a few movies picked by hand, **Smart auto-select** picks cells on new movies of the same kind the way you do (section 6.15).
 
 **Download and install** - from the project's **Releases** page (https://github.com/peterdepaola4/PeterPiper/releases)
 
 *Windows 10 / 11:*
 
-1. Download `PeterPiperV1.0.zip`.
+1. Download `PeterPiperV1.1.zip`.
 2. Right-click it > *Extract All...* into a simple local folder (not OneDrive or a network drive).
-3. Double-click **`PeterPiperV1.0.bat`**. The first time it installs its own private Python packages (about 5 minutes, internet once); after that it opens straight away. It needs 64-bit Python 3.11 - 3.14 from python.org (section 3).
+3. Double-click **`PeterPiperV1.1.bat`**. The first time on a computer it installs its own private Python packages into `%USERPROFILE%\.PeterPiperV1.1` (about 5 minutes, internet once); after that it opens straight away. It needs 64-bit Python 3.11 - 3.14 from python.org (section 3). Users and runs from PeterPiper 1.0 carry over (they are in `%USERPROFILE%\PeterPiper data`).
 
 *macOS 14 (Sonoma) or newer:*
 
-1. Download `PeterPiper-...-macOS-AppleChip.dmg` (Macs with an Apple M chip) or `PeterPiper-...-macOS-Intel.dmg` (older Intel Macs; *Apple menu > About This Mac* says which).
+1. Download `PeterPiper-1.1.0-macOS-AppleChip.dmg` (Macs with an Apple M chip) or `PeterPiper-1.1.0-macOS-Intel.dmg` (older Intel Macs; *Apple menu > About This Mac* says which).
 2. Open it and drag **PeterPiper** onto **Applications**.
 3. Double-click PeterPiper in Applications. Nothing else to install: the app carries its own Python. The first time, macOS says it cannot check PeterPiper for malicious software (PeterPiper is not registered with Apple): click **Done**, open **System Settings > Privacy & Security**, scroll down to *"PeterPiper" was blocked...* and click **Open Anyway**, then **Open** (and your Mac password). From then on it opens with a double-click like any app. (section 3.7)
 
 **Quick start** (section 5 has more)
 
 1. Pick your name (*Who is using PeterPiper?* - each person's data is kept apart).
-2. *Browse for .nd2 file...*, check the pixel size and frame interval, *Open image*.
+2. **Analyse movies**: choose one `.nd2` - or several at once, which become your movie queue; check the pixel size and frame interval, *Open in the analysis window*.
 3. Check the tracking rule (e.g. *Auto-detect nucleus using Cy5*), click each cell (or AUTO-DETECT), and **pick a background spot** (right-click an empty area).
 4. **TRACK & MEASURE**, press Play to check the outlines follow the cells, include / exclude cells.
-5. **CHOOSE OUTPUTS & EXPORT**; *Compare / average runs* to put dishes together.
+5. **SAVE** (with an optional note) and **EXPORT**; in a queue, **Next movie**. *Compare / average saved runs* puts dishes together.
 
 **Cite** - name the version you used and keep the exported methods text with your data:
-DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 1.0.3 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper - also *Cite this repository* (from `CITATION.cff`) and section 11.
+DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 1.1.0 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper - also *Cite this repository* (from `CITATION.cff`) and section 11.
 
 **For developers** - `CONTRIBUTING.md` (tests run on a small synthetic movie shipped with the code), `docs/PUBLISHING.md`, `CHANGELOG.md`; the code map is in section 16.
 
@@ -43,11 +44,11 @@ DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Niko
 
 ## The manual
 
-**PeterPiper version 1.0.3** (program name `PeterPiperV1.0`; formerly PD4nav, continuing PD4nav V3.0) · Windows 10 / 11, 64-bit, and macOS 14+ · Python 3.11 - 3.14 · runs entirely on your own computer
+**PeterPiper version 1.1.0** (program name `PeterPiperV1.1`; formerly PD4nav, continuing PD4nav V3.0) · Windows 10 / 11, 64-bit, and macOS 14+ · Python 3.11 - 3.14 · runs entirely on your own computer
 
 PeterPiper measures fluorescence in single cells over time in Nikon NIS-Elements `.nd2` time-lapse movies. You click on the cells; PeterPiper draws each region of interest (ROI) from the image, follows every ROI through every timepoint by redrawing it from that timepoint's pixels, measures every channel in every ROI, subtracts a background measured at every timepoint, and exports Excel, GraphPad Prism, CSV, graphs, ROI pictures and a ready-to-edit methods text. Saved runs (dishes) can be compared and averaged as replicates (mean of dish means ± SEM, n = dishes).
 
-This manual explains every step, how every number is made (with the exact parameters in the code), what is written where, and what to report when you use PeterPiper in a scientific paper. For a one-page start, read `READ ME.txt` next to `PeterPiperV1.0.bat`.
+This manual explains every step, how every number is made (with the exact parameters in the code), what is written where, and what to report when you use PeterPiper in a scientific paper. For a one-page start, read `READ ME.txt` next to `PeterPiperV1.1.bat`.
 
 **Author:** Peter DePaola IV ([ORCID 0000-0003-4264-0375](https://orcid.org/0000-0003-4264-0375)), Schmitt Lab, UCLA. **License:** MIT (section 17, `LICENSE`). **How to cite:** section 11.5 and `CITATION.cff`. **Changes:** section 15 and `CHANGELOG.md` (every version and every commit).
 
@@ -85,10 +86,11 @@ PeterPiper is a desktop program (Python, Qt) for **semi-automatic, user-checked 
 - **Every export records how it was made**: the tracking rules, every tracking parameter, the software versions and a fingerprint of the `.nd2` file, plus a ready-to-edit methods text with references.
 - **Your work is kept**: the ROIs and the tracking are saved automatically as you work; when you open a movie analysed before, PeterPiper offers to load the earlier analysis (identical saves are listed once).
 - **Replicates are averaged per dish**: the *Compare / average runs* window puts saved runs (one run = one dish) into groups and shows the mean of the dish means ± SEM with n = dishes, plus the pooled cells for reference, with colours chosen by cell line.
+- **Selection that learns your judgement** (1.1): *Smart auto-select* is trained on movies in which you picked the cells by hand (kept in named bins, one per kind of experiment), so that automated selection on large data sets follows the researcher's own criteria; how many hand-picked movies it learned from, and its held-out accuracy, go into the methods text of every run that used it (sections 6.15, 8.13).
 
 What PeterPiper is **not**:
 
-- not a fully automatic segmentation pipeline - AUTO-DETECT is deliberately conservative and only proposes clearly visible, well-separated objects;
+- not a fully automatic segmentation pipeline - AUTO-DETECT is deliberately conservative and only proposes clearly visible, well-separated objects, and Smart auto-select only reproduces the selection you made by hand; every proposal is reviewed by you;
 - not a lineage tracker - cells are followed, not split or merged; divisions, cells entering or leaving the field are not modelled;
 - not a 3-D tool - Z stacks are reduced to a maximum-intensity projection, and one stage position is analysed at a time;
 - not a general image reader - it opens Nikon `.nd2` files only;
@@ -102,9 +104,9 @@ What PeterPiper is **not**:
 | Operating system | Windows 10 or Windows 11, 64-bit; or **macOS 14 (Sonoma) or newer** on Apple-chip or Intel Macs (the Mac app, section 3.7). No Linux launcher. |
 | Python | Windows: 64-bit Python **3.11, 3.12, 3.13 or 3.14** from python.org, installed with "Add python.exe to PATH" ticked. Python 3.10 also works, but gets compatible package versions instead of the exact tested ones (the launcher says so). Python 3.9 and older are not accepted. Mac: none - the app carries its own. |
 | Disk space | About 0.5 GB for the private Python environment (the tested install was about 460 MB); keep 1 GB free. Plus space for results (below). |
-| Internet | Once, for the first-time install: about 250 MB of packages from the official Python package index (https://pypi.org). Never again after that. |
+| Internet | Once, for the first-time install: about 250 MB of packages from the official Python package index (https://pypi.org). After that only if you press *Check for updates* (1.1, optional; section 4). |
 | Memory (RAM) | See below: 8 GB minimum, 16 GB recommended for large multi-channel movies. |
-| Screen | The main window opens at 1600 x 960 pixels; smaller screens work (the side panel scrolls; text size is adjustable). |
+| Screen | 1.1: the start screen, the analysis window and the Compare window open maximized and are laid out to need no scroll bars on a 1366 x 768 screen at the default text size; larger screens give more room. Text size is adjustable (larger text may need scrolling on small screens). |
 | To open the results | Excel or LibreOffice (`.xlsx`, with live formulas); GraphPad Prism 10 or newer for `.prism` files (verified with Prism 11), any Prism version for `.pzfx`; Fiji / ImageJ for the raw TIFFs (optional). |
 
 **Memory guidance.** The `.nd2` file is never loaded whole: frames are read one timepoint at a time (through the `nd2` and `dask` packages), so a 4 GB movie does not need 4 GB of memory. What matters is the size of one timepoint: channels x width x height x 2 bytes (16-bit). For 3 channels of 2400 x 2400 pixels that is about 35 MB. The image display keeps recently viewed timepoints in a cache of at most 1.5 GB (`FrameStore`, `budget_bytes = 1 500 000 000`), and tracking reads up to 4 timepoints ahead. With 8 GB of RAM this works comfortably for typical movies; with 16 GB or more you can keep other programs open. (These are recommendations from the code's memory budget, not measured limits.)
@@ -118,31 +120,31 @@ What PeterPiper is **not**:
 ### 3.1 Step by step
 
 1. **Python (once per computer).** If Python is not installed: go to https://www.python.org/downloads/windows/, download Python 3.13 (or 3.12 / 3.11), "Windows installer (64-bit)", run it and **tick "Add python.exe to PATH" on the first screen**. (A Python from the Microsoft Store also works; it was found and used in the install test.)
-2. **Unpack.** Copy `PeterPiperV1.0.zip` to the computer, right-click it, choose **Extract All...** and pick a simple local folder such as `D:\PeterPiperV1.0`. Not OneDrive, not a network drive, and never run it from inside the zip.
-3. **Start.** Open the extracted folder and double-click **`PeterPiperV1.0.bat`** - the only file you ever open. The first time, a black window shows "PeterPiperV1.0 - first-time setup": `[1/3] Setting up a private Python`, `[2/3] Downloading packages` (progress bars, about 250 MB), `[3/3] Checking ... all packages OK`, "Setup finished". This takes about 5 minutes (250 s in our test). Then the program opens.
+2. **Unpack.** Copy `PeterPiperV1.1.zip` to the computer, right-click it, choose **Extract All...** and pick a simple local folder such as `D:\PeterPiperV1.1`. Not OneDrive, not a network drive, and never run it from inside the zip.
+3. **Start.** Open the extracted folder and double-click **`PeterPiperV1.1.bat`** - the only file you ever open. The first time on a computer (also when PeterPiper 1.0 is already installed: each program version has its own install folder), a black window shows "PeterPiperV1.1 - first-time setup": `[1/3] Setting up a private Python`, `[2/3] Downloading packages` (progress bars, about 250 MB), `[3/3] Checking ... all packages OK`, "Setup finished". This takes about 5 minutes (250 s in our test). Then the program opens.
 4. **Every later time** the launcher checks the install (a fraction of a second) and opens the program straight away, without internet.
 
 What is in the zip:
 
 | File / folder | What it is |
 |---|---|
-| `PeterPiperV1.0.bat` | The launcher: installs on first use, then starts the program. |
+| `PeterPiperV1.1.bat` | The launcher: installs on first use, then starts the program. |
 | `READ ME.txt` | One-page quick start. |
 | `README.html`, `README.md` | This manual (the same text; the `.html` opens in any browser). |
 | `app\PeterPiper.py` | The program's start file (called by the launcher). |
 | `app\peterpiper\` | The program code (Python package `peterpiper`), including `templates\PeterPiper_timecourse.prism` (the Prism graph template) and `templates\PeterPiper_look.json` (the template's look per data set). |
-| `app\requirements.txt` | The exact package versions PeterPiperV1.0 was tested with. |
+| `app\requirements.txt` | The exact package versions PeterPiperV1.1 was tested with (the same versions as PeterPiper 1.0). |
 | `app\requirements-compatible.txt` | The fallback list of version ranges. |
 | `app\README.md`, `app\SECURITY.md` | Short code map; security and data-safety notes. |
 
 ### 3.2 What the launcher does
 
-`PeterPiperV1.0.bat` is a plain Windows batch file; you can open it in Notepad and read it. In order:
+`PeterPiperV1.1.bat` is a plain Windows batch file; you can open it in Notepad and read it. In order:
 
 1. **Checks that it was extracted** (`app\PeterPiper.py` and `app\requirements.txt` must exist next to it); otherwise it explains how to extract the zip.
 2. **Shows the PeterPiper logo** in its window, drawn with block characters (`app\peterpiper\assets\logo_116.txt`, `logo_100.txt` or `logo_72.txt`: the widest that fits the window), at the first install and at every start.
-3. **Chooses the install folder**: `%USERPROFILE%\.PeterPiperV1.0` (for example `C:\Users\you\.PeterPiperV1.0`), or the folder in the environment variable `PETERPIPER_HOME` if set. The private Python environment goes into its `venv` subfolder.
-4. **Uses an existing install if it is up to date**: if `venv\installed_requirements.txt` (a copy of the package list it was installed from) is byte-identical to `app\requirements.txt`, the program starts at once. (It would also reuse an earlier PD4nav install made from a byte-identical package list; PeterPiper 1.0's list has its own header, so PeterPiper 1.0 always makes its own install.)
+3. **Chooses the install folder**: `%USERPROFILE%\.PeterPiperV1.1` (for example `C:\Users\you\.PeterPiperV1.1`), or the folder in the environment variable `PETERPIPER_HOME` if set. The private Python environment goes into its `venv` subfolder.
+4. **Uses an existing install if it is up to date**: if `venv\installed_requirements.txt` (a copy of the package list it was installed from) is byte-identical to `app\requirements.txt`, the program starts at once. (It would also reuse an earlier install made from a byte-identical package list; PeterPiper 1.1's list has its own header line, so PeterPiper 1.1 makes its own install - one install of about 5 minutes per computer - even though its package versions are the same as 1.0's.)
 5. **Otherwise installs.** It looks for 64-bit Python in this order: `py -3.11`, `py -3.12`, `py -3.13`, `py -3.14`, `py -3.10`, then `py -3`, `python`, `python3`. Each candidate must be 64-bit Python 3.10 - 3.14. Python 3.15 and newer are not supported yet (the packages are not available for them) and 32-bit Python does not work; the message says so - install 64-bit Python 3.13 next to it.
 6. **Checks the path length.** Windows limits paths to 260 characters unless "long paths" are turned on, and the longest file in the packages needs about 170 characters inside the install folder. If long paths are off and the `venv` path is longer than 85 characters, the launcher stops with a clear message instead of failing halfway (this only happens with an unusual `PETERPIPER_HOME` or a very long user-profile path).
 7. **Creates the private environment** (`python -m venv`). Nothing is installed into your system Python.
@@ -153,28 +155,39 @@ What is in the zip:
 9. **Checks** that every package imports ("all packages OK"). If the download worked but this check fails (for example antivirus removed a file), it says so in its own message - different from a failed download - and tells you to delete the `venv` folder and start again.
 10. **Records what was installed** in `venv\installed_versions.txt` (date, which list was used, the Python version and platform, then the full `pip freeze` list) and stores the stamp `venv\installed_requirements.txt`. When the compatible list was used, it shows a note asking you to report `installed_versions.txt` for published work.
 11. **Makes the PeterPiper shortcuts** (the first time, and again if the folder was moved): *PeterPiper* with the logo icon next to the `.bat`, on the Desktop and in the Start menu (right-click it there to pin it to Start or the taskbar). A `.bat` file cannot have an icon of its own, so the shortcuts carry it; they start the same `.bat`. `PETERPIPER_NO_SHORTCUTS=1` turns this off.
-12. **Starts the program** with `pythonw`: `app\PeterPiper.py`, with the logo as its window and taskbar icon. The launcher window shows the logo and *keep this window open*, and closes by itself when you quit PeterPiper. Anything printed before the window appears goes to `%USERPROFILE%\.PeterPiperV1.0\error_<number>.txt`; that file is deleted after a normal exit and opened in Notepad if the program crashes.
+12. **Starts the program** with `pythonw`: `app\PeterPiper.py`, with the logo as its window and taskbar icon. The launcher window shows the logo and *keep this window open*, and closes by itself when you quit PeterPiper. Anything printed before the window appears goes to `%USERPROFILE%\.PeterPiperV1.1\error_<number>.txt`; that file is deleted after a normal exit and opened in Notepad if the program crashes.
 
 ### 3.3 Where things are stored
 
 | What | Where | Notes |
 |---|---|---|
-| The program | The folder you extracted (e.g. `D:\PeterPiperV1.0`) | The program only reads it (Python adds its own `__pycache__` folders of compiled code there). |
-| Private Python and packages | `%USERPROFILE%\.PeterPiperV1.0\venv` | About 0.5 GB. Delete it to force a fresh install. |
-| Installed versions | `%USERPROFILE%\.PeterPiperV1.0\venv\installed_versions.txt` | The exact package versions on this computer - for methods sections and bug reports. |
-| Users | `%USERPROFILE%\PeterPiper data\users.json` and `%USERPROFILE%\PeterPiper data\users\<name>\` | **One folder for every PeterPiper version** (a new version finds everyone's profiles). It starts empty: nothing is taken over from PD4nav, whose `PD4nav data` folder is left as it was (bring a PD4nav profile in on purpose with *Import a profile...*). The list of users, the last one, renames / removed users and *don't ask again* (section 6.0). Everything below marked *per user* is in the user's own folder. |
+| The program | The folder you extracted (e.g. `D:\PeterPiperV1.1`) | The program only reads it (Python adds its own `__pycache__` folders of compiled code there). Only *Check for updates*, when you choose *Update now*, changes program files here (section 3.6). |
+| Update backups (1.1) | `<program folder>\_update_backup\<old version>_<time>\` | Every program file an in-place update replaced, copied here first (section 3.6). |
+| Private Python and packages | `%USERPROFILE%\.PeterPiperV1.1\venv` | About 0.5 GB. Delete it to force a fresh install. |
+| Installed versions | `%USERPROFILE%\.PeterPiperV1.1\venv\installed_versions.txt` | The exact package versions on this computer - for methods sections and bug reports. |
+| Users | `%USERPROFILE%\PeterPiper data\users.json` and `%USERPROFILE%\PeterPiper data\users\<name>\` | **One folder for every PeterPiper version** (a new version finds everyone's profiles; PeterPiper 1.1 uses the users and runs of 1.0 as they are). 1.1: `users.json` also holds the roles, merged users and aliases, this computer's link to a lab folder (`"lab"`) and this computer's own data folders (`"data_folders"`), section 6.16. It starts empty: nothing is taken over from PD4nav, whose `PD4nav data` folder is left as it was (bring a PD4nav profile in on purpose with *Import a profile...*). The list of users, the last one, renames / removed users and *don't ask again* (section 6.0). Everything below marked *per user* is in the user's own folder. |
 | Settings | `%USERPROFILE%\PeterPiper data\users\<name>\settings.json` (per user) | Your last-used settings (tracking rules, export list, text size, graph look, ...). |
 | Compare colours | `%USERPROFILE%\PeterPiper data\users\<name>\compare_colours.json` (per user) | Colours you chose in the *Compare / average runs* window for unknown cell lines, groups or runs (by name). |
 | Compare window choices | `%USERPROFILE%\PeterPiper data\users\<name>\compare_window.json` (per user) | The cell line you chose for each `.nd2` in the *Compare / average runs* window (keyed by its content fingerprint, else the run file's path); each run's group (by run file and by `.nd2` fingerprint) and name in the graph; which runs were ticked, the mode, compartment, quantity, graph and kinetics choices; the list's column order, widths and sort. |
 | List of earlier runs | `%USERPROFILE%\PeterPiper data\users\<name>\run_history.json` (per user) | For each analysed `.nd2`: its name, size, fingerprint, paths, and the paths of its ROI / session files. No image data. |
-| Start-up error log | `%USERPROFILE%\.PeterPiperV1.0\error_<number>.txt` | Only while the program runs; deleted after a normal exit. |
-| Results | `OUTPUT_<file name>\<user>` next to the `.nd2` (default, V2.9; you can choose another folder in the start window) | One new `Export_<date>_<time>` folder per export. |
+| Where results and back-ups go (1.1) | `...\users\<name>\storage.json` (per user, this computer only) | The results location chosen in *Storage & cloud* (`results_root`; absent = next to each movie) and the back-up folder (`backup_root`), section 6.17. |
+| Movie queue (1.1) | `...\users\<name>\queue.json` (per user, this computer only) | The queued `.nd2` paths and each one's status (`todo` / `saved` / `exported` / `skipped`), section 6.14. |
+| Smart auto-select (1.1) | `...\users\<name>\smartselect.json` (per user) | Your named bins (name, channel names, date made) and, per hand-drawn queued movie you SAVEd: the `.nd2` path, the saved run file, the channel names, the number of ROIs saved and of ROIs added by hand, its bin. No image data, section 6.15. |
+| Charlotte's Web (1.1) | `...\users\<name>\charlotte.json` (per user) | The game's own collection only (random seeds, drawing choices, theme, movie name, date, the number of cells drawn by hand), section 6.19. |
+| Hidden extras (1.1) | `...\users\<name>\achievements.json` (per user) | Which optional hidden extras this user has found, and when. Deleting it hides them again. |
+| Keep in step (1.1) | `...\users\<name>\sync.json` (per user, never synced) | The folder your profile is kept in step with, the time and result of the last sync, and a checksum per file from the last sync, section 6.16. |
+| Password (1.1, optional) | `...\users\<name>\password.json` (per user) | Only a salted hash (PBKDF2-SHA256, 200,000 iterations, 16-byte random salt) - never the password itself; absent or empty = no password, section 6.16. |
+| Start-up error log | `%USERPROFILE%\.PeterPiperV1.1\error_<number>.txt` | Only while the program runs; deleted after a normal exit. |
+| Results | `OUTPUT_<file name>\<user>` next to the `.nd2` (default, V2.9; you can choose another folder in the start screen); 1.1: or `<your results folder>\OUTPUT_<file name>\<user>` when *Storage & cloud* says *In a folder* | One new `Export_<date>_<time>` folder per export. |
 | Results when the movie's folder cannot be written | `%USERPROFILE%\PeterPiper results\OUTPUT_<file name>\<user>` (1.0.3) | Suggested when the `.nd2` is on a read-only drive (e.g. a Windows-formatted drive on a Mac), full, or a folder without permission; you can choose another folder instead. |
 | Autosaved sessions | `<results folder>\PeterPiper_sessions\` | One file per window session (section 7). Sessions PD4nav saved in `PD4nav_sessions` are still found and opened. |
-| Shortcuts | `PeterPiper.lnk` next to the `.bat`, on the Desktop and in the Start menu; `%USERPROFILE%\.PeterPiperV1.0\shortcuts_for.txt` remembers which `.bat` they start | Made by the launcher (section 3.2). |
+| Shortcuts | `PeterPiper.lnk` next to the `.bat`, on the Desktop and in the Start menu; `%USERPROFILE%\.PeterPiperV1.1\shortcuts_for.txt` remembers which `.bat` they start | Made by the launcher (section 3.2). |
 | Comparisons | `<results folder>\Comparisons\` (default) | *Compare / average runs* outputs (section 6.10). |
+| Back-ups (1.1) | `<back-up folder>\PeterPiper backup\<movie>\` | *File > Back up this analysis...*: the `.nd2` (optional) and `OUTPUT_<movie>\<user>` with everything in it; nothing is ever overwritten (section 6.17). |
+| Profile kept in step (1.1, optional) | `<your folder>\PeterPiper profile - <name>\` | A copy of your profile, laid out like an exported profile, in a folder you chose (e.g. in your own cloud drive), section 6.16. |
+| Lab folder (1.1, optional) | `<lab folder>\PeterPiper lab users.json` and `<lab folder>\PeterPiper profiles\PeterPiper profile - <name>\` | The lab user list (names, aliases, roles, optional password hashes, the lab's data folders, the *anyone can add themselves* switch) and each person's profile, section 6.16. |
 
-Prism style templates, saved settings and the saved-files log are per user too; the computer check's record (`computer_check.json`) is in `%USERPROFILE%\PeterPiper data`. The private Python (`venv`) stays in the version's own `%USERPROFILE%\.PeterPiperV1.0`. With `PETERPIPER_HOME` set, everything listed under `%USERPROFILE%\PeterPiper data` goes into that folder instead.
+Prism style templates, saved settings and the saved-files log are per user too; the computer check's record (`computer_check.json`) is in `%USERPROFILE%\PeterPiper data`. The private Python (`venv`) stays in the version's own `%USERPROFILE%\.PeterPiperV1.1`. On a Mac, `PeterPiper data` is in your home folder (`~/PeterPiper data`) and paths use `/`. With `PETERPIPER_HOME` set, everything listed under `%USERPROFILE%\PeterPiper data` goes into that folder instead.
 
 ### 3.4 Exact package versions
 
@@ -203,56 +216,67 @@ If a computer cannot install the exact versions (for example Python 3.10), the l
 
 | Environment variable | Effect |
 |---|---|
-| `PETERPIPER_HOME=<folder>` | Puts the private environment, settings, run index, compare colours and error logs in `<folder>` instead of `%USERPROFILE%\.PeterPiperV1.0` and `%USERPROFILE%\PeterPiper data`, and turns off reuse of older installs. Use a short path (e.g. `C:\PeterPiper`). |
+| `PETERPIPER_HOME=<folder>` | Puts the private environment, settings, run index, compare colours and error logs in `<folder>` instead of `%USERPROFILE%\.PeterPiperV1.1` and `%USERPROFILE%\PeterPiper data`, and turns off reuse of older installs. Use a short path (e.g. `C:\PeterPiper`). |
 | `PETERPIPER_INSTALL_ONLY=1` | Installs or checks the install, then exits (code 0) without opening the program; no "press a key" pauses. |
 
 Exit codes of the launcher: 0 = OK; 1 = not extracted, no Python, unsuitable Python, install path too long, environment could not be created, download failed, or the program crashed.
 
 ### 3.6 Updating, reinstalling and uninstalling
 
-- **Updating to a later version**: extract it into its own folder and start its own `.bat`. Each version installs its own private Python (`.PeterPiperV1.0\venv`, ...); **your profiles, settings and run lists are in `%USERPROFILE%\PeterPiper data` and every later PeterPiper version finds them**. Results stay compatible: PeterPiper 1.0 opens ROI and session files of every PD4nav version (V1.x without tracking, V1.9 - V2.1, V2.2 - V2.4 with tracking, V2.5 - V3.0; tracking made before V2.5 loads with its own background values, see section 7). Files PeterPiper writes say so (`app` = PeterPiper in the file), so *Earlier analyses* and *Compare* show "PeterPiper 1.0" or "PD4nav 3.0" for each run.
+- **Updating to a later version**: extract it into its own folder and start its own `.bat`. Each program version installs its own private Python (`.PeterPiperV1.0\venv`, `.PeterPiperV1.1\venv`, ...); **your profiles, settings and run lists are in `%USERPROFILE%\PeterPiper data` and every later PeterPiper version finds them** (PeterPiper 1.1 finds 1.0's users and runs). Results stay compatible: PeterPiper 1.0 and 1.1 open ROI and session files of every PD4nav version (V1.x without tracking, V1.9 - V2.1, V2.2 - V2.4 with tracking, V2.5 - V3.0; tracking made before V2.5 loads with its own background values, see section 7). Files PeterPiper writes say so (`app` = PeterPiper in the file), so *Earlier analyses* and *Compare* show e.g. "PeterPiper 1.1" or "PD4nav 3.0" for each run.
+- **Check for updates** (1.1; start screen footer and *Help > Check for updates...*): the only place PeterPiper uses the network, and only when you press it (`peterpiper/updater.py`, `gui/updatedlg.py`). It asks GitHub's public release list of the project (one HTTPS request to `api.github.com/repos/peterdepaola4/PeterPiper/releases/latest`, with a generic User-Agent) for the newest version, shows its release notes, and offers *Update now* (Windows) or *Download* (Mac), *Open the release page* or *Later*. Nothing of yours (names, files, paths, results) is sent. What an update changes:
+  - **Windows, the same program folder and the same package list** (e.g. 1.1.0 → 1.1.1): the release zip is downloaded to a temporary folder; only the program files that differ from it are replaced, each first copied to `<program folder>\_update_backup\<old version>_<time>\`. Nothing outside the zip's own file list is touched, and protected paths (`_out`, logs, shortcuts, `.git`, `__pycache__`, `_update_backup` ...) are never written.
+  - **Windows, a new program folder or new packages** (e.g. 1.2): the release is unpacked into its own new folder next to the current one (never over an existing folder); start it with its own `.bat`. The current version stays as it is.
+  - **Mac**: the `.dmg` for this Mac (Apple chip or Intel) is saved in *Downloads* (never over an existing file) and opened; drag the new app onto Applications.
+  - **A developer copy** (a git checkout) is never changed - update it with git.
+  - **Your data is never touched**: profiles, settings, run lists, saved files, logs and results live in `PeterPiper data` and next to your movies, outside the program folder. If GitHub cannot be reached (no internet, a firewall), a plain message says so and nothing is changed; if an update does not finish, the message says that nothing of yours was changed.
 - **Coming from PD4nav**: PeterPiper starts empty - its users, settings and run list are its own, and PD4nav's (`%USERPROFILE%\PD4nav data`, `.PD4navV...` folders) are left untouched. Your analyses next to the movies are still there: *Earlier analyses of this file* and Compare > *Find my runs in a folder...* find them. To take a whole PD4nav profile over, export it in PD4nav (*Export my profile...*) and import it in PeterPiper (*Import a profile...*).
-- **Fresh install** (e.g. after a broken download): delete `%USERPROFILE%\.PeterPiperV1.0\venv` and double-click the `.bat` again.
-- **Uninstalling**: delete the program folder, `%USERPROFILE%\.PeterPiperV1.0` (the private Python) and the *PeterPiper* shortcuts (Desktop, Start menu). **`%USERPROFILE%\PeterPiper data` holds every user's profile, settings and run list** - keep it if anyone may use PeterPiper again; delete it only to remove PeterPiper and everyone's settings completely. PeterPiper makes no registry entries or system-wide installs (only the three shortcuts). Your results (`OUTPUT_...` folders, including `PeterPiper_sessions`) are not touched; delete them by hand if you wish. Python itself is removed through Windows Settings > Apps.
+- **Fresh install** (e.g. after a broken download): delete `%USERPROFILE%\.PeterPiperV1.1\venv` and double-click the `.bat` again.
+- **Uninstalling**: delete the program folder, `%USERPROFILE%\.PeterPiperV1.1` (the private Python; also `.PeterPiperV1.0` if 1.0 was installed) and the *PeterPiper* shortcuts (Desktop, Start menu). **`%USERPROFILE%\PeterPiper data` holds every user's profile, settings and run list** - keep it if anyone may use PeterPiper again; delete it only to remove PeterPiper and everyone's settings completely. PeterPiper makes no registry entries or system-wide installs (only the three shortcuts). Your results (`OUTPUT_...` folders, including `PeterPiper_sessions`) are not touched; delete them by hand if you wish. Python itself is removed through Windows Settings > Apps.
 
 ### 3.7 macOS
 
 PeterPiper for Mac is one app, **PeterPiper.app**, that carries its own Python and every package (the exact versions in `app/requirements.txt`), so nothing has to be installed and no internet is needed after the download. It is the same program as on Windows - the same code, the same numbers - built on GitHub's Mac machines for each release (`.github/workflows/mac-app.yml`, `build/peterpiper_app.spec`), where the developer tests run on macOS and the finished app checks itself before it is published (below).
 
-1. **Which download**: `PeterPiper-...-macOS-AppleChip.dmg` for Macs with an Apple M chip (M1 - M4 ...), `PeterPiper-...-macOS-Intel.dmg` for Intel Macs. *Apple menu > About This Mac* shows *Chip: Apple M...* or *Processor: ... Intel ...*. Needs **macOS 14 (Sonoma) or newer** (the tested package versions exist for macOS 14 and newer only).
+1. **Which download**: `PeterPiper-1.1.0-macOS-AppleChip.dmg` for Macs with an Apple M chip (M1 - M4 ...), `PeterPiper-1.1.0-macOS-Intel.dmg` for Intel Macs. *Apple menu > About This Mac* shows *Chip: Apple M...* or *Processor: ... Intel ...*. Needs **macOS 14 (Sonoma) or newer** (the tested package versions exist for macOS 14 and newer only).
 2. **Install**: open the `.dmg`, drag **PeterPiper** onto **Applications**, eject the `.dmg`.
 3. **First start**: The first time, macOS says it cannot check PeterPiper for malicious software (PeterPiper is not registered with Apple): click **Done**, open **System Settings > Privacy & Security**, scroll down to *"PeterPiper" was blocked...* and click **Open Anyway**, then **Open** (and your Mac password). From then on it opens with a double-click like any app. After that you can keep it in the Dock (right-click its icon > *Options > Keep in Dock*).
 4. **Where things are**: your profiles, settings and run list in `PeterPiper data` in your home folder (Finder > Go > Home); results next to each movie in `OUTPUT_<movie>/<your name>`, as on Windows. **External drives formatted for Windows (NTFS)**: macOS can read them but not write to them, so the results cannot go next to a movie on such a drive - PeterPiper says so and saves them in `PeterPiper results/OUTPUT_<movie>/<your name>` in your home folder instead (or a folder you choose); the movie itself stays on the drive. To keep results next to the movies on a Mac, the drive must be formatted as exFAT or APFS (reformatting erases it - copy everything off first) or have an NTFS driver for macOS installed. If the app ever closes unexpectedly, the report is in `~/Library/Logs/PeterPiper` (Finder > Go > Go to Folder...).
 5. **Check an installation**: in Terminal, `/Applications/PeterPiper.app/Contents/MacOS/PeterPiper --selftest` runs a whole analysis of a small built-in synthetic movie and checks the numbers (add a folder and the path of one of your `.nd2` files to also open that movie, read only); it ends with *SELF-TEST PASSED*.
-6. **Updating**: drag the new version onto Applications and replace the old one; your data stays. **Uninstalling**: move PeterPiper from Applications to the Bin; delete `PeterPiper data` in your home folder only to remove everyone's settings too.
+6. **Updating**: drag the new version onto Applications and replace the old one; your data stays. *Check for updates* (1.1) saves the right `.dmg` in Downloads and opens it (section 3.6). **Uninstalling**: move PeterPiper from Applications to the Bin; delete `PeterPiper data` in your home folder only to remove everyone's settings too.
 
 Differences from Windows: there is no `.bat` and no terminal window (no block-character logo) - the app opens straight to *Who is using PeterPiper?*; the Windows long-path setting does not exist on a Mac; *Saved files...* and the Prism style templates open files with their Mac program (GraphPad Prism for Mac opens `.prism` files). Keyboard shortcuts use Cmd where Windows uses Ctrl.
 
 ## 4. Privacy: everything runs on your computer
 
-- **No data leaves the computer.** The program contains no network code: it never uploads images, results, settings or usage data, has no accounts, licence server or telemetry. The only network use is the one-time package download by the launcher from https://pypi.org (and again only if the package list changes or you delete the install).
+- **No data leaves the computer.** PeterPiper never uploads images, results, settings or usage data, and has no accounts, sign-in, licence server or telemetry. The program uses the network in **exactly one place**: the optional **Check for updates** (1.1; start screen footer and *Help > Check for updates...*), and only when you press it - one HTTPS request to GitHub's public release list of the project (`api.github.com/repos/peterdepaola4/PeterPiper/releases/latest`) with a generic User-Agent and, only if you then choose to update, the download of that release's file (section 3.6). Nothing of yours (names, files, paths, results) is sent. Apart from that, the only network use is the one-time package download by the launcher from https://pypi.org (and again only if the package list changes or you delete the install).
+- **Cloud and network folders are only folders** (1.1): results, back-ups, a profile kept in step and a lab folder may be put into a folder that OneDrive, Google Drive, Box, Dropbox, iCloud Drive and similar services synchronise, or onto a network drive. PeterPiper only reads and writes those local folders; the service's own app does any uploading. PeterPiper never signs in to any service (section 6.17).
+- **Passwords** (1.1, optional, off by default) are never stored: only a salted hash (section 6.16).
 - **What it reads**: the `.nd2` and ROI files you choose; to offer earlier analyses it also reads the headers (not the masks) of ROI and session files (`*_ROIs*.npz`, `*_session_*.npz`) in the results folder and next to the `.nd2`; to fingerprint a movie it reads the first and last 4 MiB of the `.nd2` file.
 - **What it writes**:
   - results into the results folder you choose (default `OUTPUT_<file name>\<user>` next to the `.nd2`; `PeterPiper results` in your home folder if that cannot be written): one new `Export_<date>_<time>` folder per export, `Save ROIs now` files, and the autosaved session files in `PeterPiper_sessions`;
-  - into your own folder in `%USERPROFILE%\PeterPiper data\users\<name>`: `settings.json`, `run_history.json` (file names, paths, sizes and fingerprints - no image data), `compare_colours.json` (names and colours you chose), `compare_window.json` (cell lines you chose per `.nd2` fingerprint or run path, and the list's column layout); into `%USERPROFILE%\.PeterPiperV1.0`, while it runs, a start-up error log;
+  - into your own folder in `%USERPROFILE%\PeterPiper data\users\<name>`: `settings.json`, `run_history.json` (file names, paths, sizes and fingerprints - no image data), `compare_colours.json` (names and colours you chose), `compare_window.json` (cell lines you chose per `.nd2` fingerprint or run path, and the list's column layout); 1.1: `storage.json`, `queue.json`, `smartselect.json`, `charlotte.json`, `achievements.json`, `sync.json` and, only if you set a password, `password.json` (a salted hash) - section 3.3 says what each holds; into `%USERPROFILE%\PeterPiper data\users.json` the user list (with roles, aliases and this computer's lab link); into `%USERPROFILE%\.PeterPiperV1.1`, while it runs, a start-up error log;
   - comparisons into `<results folder>\Comparisons` (or the folder you choose);
-  - raw TIFFs only when you ask for them.
-- **Your files are never replaced.** Every result file is created new and exclusively; if the name is taken, `_2`, `_3`, ... is added. The only files PeterPiper replaces are its own: the current session file and the run index (each written to a temporary file first and swapped in with one `os.replace`, so they are never half-written), and its `settings.json`, `compare_colours.json` and `compare_window.json`.
+  - raw TIFFs only when you ask for them;
+  - 1.1, only when you set them up: back-ups into `<back-up folder>\PeterPiper backup\`; your profile into `<your folder>\PeterPiper profile - <name>\`; the lab list and profiles into the lab folder; after *Update now*, changed program files into the program folder (with copies of the old ones in `_update_backup`), or a new version into its own new folder; on a Mac, the downloaded `.dmg` into Downloads.
+  - **PeterPiper writes only into the folders listed here.**
+- **Your files are never replaced.** Every result file is created new and exclusively; if the name is taken, `_2`, `_3`, ... is added. The only files PeterPiper replaces are its own: the current session file and the run index (each written to a temporary file first and swapped in with one `os.replace`, so they are never half-written), and its `settings.json`, `compare_colours.json`, `compare_window.json`, the 1.1 per-user files listed above, the lab list and the profile copies it keeps in step (also written via a temporary file and `os.replace`); and, only after *Update now*, program files in the program folder (each copied to `_update_backup` first).
 - **ROI files cannot carry code**: they are NumPy archives read with `allow_pickle=False`.
 - Details: `app\SECURITY.md`.
 
 ## 5. Quick start
 
-1. Double-click `PeterPiperV1.0.bat`.
-2. **Start window**: *Browse for .nd2 file...*; check *Pixel size* and *Frame interval*; press **Open image**. (To compare or average runs you saved before, press **Compare / average runs...** at the top instead - no image needed.)
+1. Double-click `PeterPiperV1.1.bat` (Mac: PeterPiper in Applications) and pick your name in *Who is using PeterPiper?*.
+2. **Start screen**: press **Analyse movies** and choose one `.nd2` - or several at once (Ctrl / Shift-click), which become your **movie queue**; check *Pixel size* and *Frame interval*; press **Open in the analysis window**. (To compare or average runs you saved before, press **Compare / average saved runs** instead - no image needed. **Recent analyses** on the right opens a run straight into the analysis window.)
 3. If the movie was analysed before, a list of earlier analyses appears: **Load this run** (ROIs and tracking come back) or **Start a fresh analysis**.
 4. **Step 1, Tracking rules**: check the rule, e.g. `Track [Nucleus] using [Cy5] [ONLY]`. Add a rule per kind of ROI (`+ Add rule`).
 5. **Step 2, Add ROIs**: pick the Compartment, press **AUTO-DETECT** (the slider under it keeps only the brightest of the cells found) and/or turn on **Add** and click each cell. Fix shapes with Resize (scroll), Split, Add to cell, Draw by hand; Remove what you do not want. **Pick the background region yourself** (V3.0: it is no longer placed automatically - it often sat on real cells): right-click an empty area > *Put the background region here*, or Compartment *Background* with Add (a 60 µm square) or Draw by hand (a freehand outline). TRACK & MEASURE without one switches straight to placing it.
 6. **Step 3**: check *Size may change by* (default ±25%; 0% = exactly the drawn pixel count); if two touching cells get mixed up, use **Tracker boundary** to draw a line between them; press **TRACK & MEASURE**.
 7. **Step 4**: press **▶ Play** and watch the outlines follow the cells; tick / untick cells in the list beside the traces.
-8. **Step 5**: set the **Baseline (time 0)**, press **CHOOSE OUTPUTS & EXPORT...**, put what you want on your export list, press **Export**.
-9. Open the new `Export_<date>_<time>` folder (the "Open folder" button). The Methods text in it is the start of your methods section.
-10. Several dishes of one condition: **Compare / average runs...**, put the dishes of one condition into one group, show *Groups - mean of dish means (n = dishes)*, **Save...**.
+8. **SAVE** (at the foot of the side panel; optionally type a short note first, e.g. *without the dim cells*): this version of your work is kept as a saved run and shows in Compare as *Saved: <note>*.
+9. **Step 5**: set the **Baseline (time 0)**, press **EXPORT...**, put what you want on your export list, press **Export**. Open the new `Export_<date>_<time>` folder (the "Open folder" button, or *Open results folder* at the top). The Methods text in it is the start of your methods section.
+10. In a queue: **Next movie ▸** at the top opens the next movie still to do (it asks to SAVE first if you changed something); *Skip* passes over one.
+11. Several dishes of one condition: **Compare / average runs...**, put the dishes of one condition into one group, show *Groups - mean of dish means (n = dishes)*, **Save...**.
 
 The blue box at the top of the side panel always says what to do next.
 
@@ -260,7 +284,9 @@ The blue box at the top of the side panel always says what to do next.
 
 ### 6.0 Who is using PeterPiper? (V2.9)
 
-PeterPiper first asks **who is using it** (`peterpiper/users.py`, `gui/userdlg.py`): pick your name (the last user is pre-selected; double-click or *Continue*) or type a new name and press *Add user*. There is no password - profiles keep people's work apart on a shared computer, they do not lock it.
+PeterPiper first asks **who is using it** (`peterpiper/users.py`, `gui/userdlg.py`): pick your name (the last user is pre-selected; double-click or *Continue*) or type a new name and press *Add user*. Profiles keep people's work apart on a shared computer; a password is optional and off by default (1.1, section 6.16).
+
+**The window in 1.1.** The main choice comes first (pick your name or add a user). Below it, one *Profile & lab* box shows and changes the selected person's **Keep in step** folder (*Off* or a folder, *Change...*), the computer's **Lab folder** (linked or not; *Lab settings...* for admins and developers), **Merge profiles...**, **Import a profile...** and **More** (*Rename...*, *Remove...*, *Export this profile...*, *Password...*). On the very first start, with nobody on the list yet, the window also offers to link this computer to the lab's shared PeterPiper folder. These are described in section 6.16.
 
 - **Your own folder**: everything PeterPiper remembers - settings, the list of your runs, Compare groups / colours / labels, Prism style templates, saved settings and the saved-files log - is in `%USERPROFILE%\PeterPiper data\users\<your name>\` (the same folder for every PeterPiper version).
 - **Your own results**: next to a movie, results go into `OUTPUT_<movie>\<your name>\` (exports, ROI files, autosaved sessions, comparisons).
@@ -269,7 +295,7 @@ PeterPiper first asks **who is using it** (`peterpiper/users.py`, `gui/userdlg.p
 - **Rename...** gives a user another name (their folder and runs stay theirs - the old name still identifies runs made before); **Remove...** only takes a name off the list (nothing is deleted; adding the same name again brings the user back). **Enter** continues with the selected name.
 - **Your profile goes with you** (portable): everything in your user folder is self-contained and says whose it is (`profile.json`). On another computer either copy the folder into `%USERPROFILE%\PeterPiper data\users\` there (PeterPiper adds it to the list at the next start), or use **Export my profile...** (start window; one `.zip`) and **Import a profile...** there (start window, or *Who is using PeterPiper?*): a new user, or - if a user of that name exists - merged into theirs (runs, groups, colours, labels, templates and saved files added; their settings and anything already there are never overwritten; a differing template is kept as *(imported)*). Your **analyses** stay next to your movies (`OUTPUT_<movie>\<you>`): copy them with the movie folders. Runs whose files are in another place on the new computer: *Compare / average runs* says how many are missing and **My data is in...** finds them - each matched exactly (same movie fingerprint, file name and save time) - and remembers the new place (`moved_data.json`), so later runs from the same old folder are found too. Runs missing on one computer are kept in your list (they may be on another). Compare works from the saved results alone; only steps that need the image (drawing, tracking) need the movie. Nothing is ever sent over the internet.
 - **Don't ask again on this Windows account**: for computers where everyone has their own Windows login - PeterPiper then starts straight away as the last user, until *Switch user...*.
-- The start window shows *User: <name>* with **Switch user...**; every window title shows the user.
+- The start screen shows *User: <name>* with **Switch user**; every window title shows the user.
 
 **Computer check** (V2.9, `peterpiper/syscheck.py`, `gui/syscheckdlg.py`). At the first start on a computer (after *Who is using PeterPiper?*), and again only if a result changes, PeterPiper shows what it found - it only looks, it changes nothing; it is always under *Help > Computer check...*:
 
@@ -278,28 +304,46 @@ PeterPiper first asks **who is using it** (`peterpiper/users.py`, `gui/userdlg.p
 
 GraphPad Prism is not needed to run PeterPiper: it only opens the `.prism` files PeterPiper writes.
 
-### 6.1 The start window
+### 6.1 The start screen
 
-The PeterPiper logo is at the top (black on the light theme, white on the dark one; also in *Who is using PeterPiper?*).
+1.1 redesigned the start window as a **start screen** (`gui/setup.py`). It opens maximized and fits a 1366 x 768 screen without scroll bars. The PeterPiper logo is at the top left (black on light themes, white on dark ones; also in *Who is using PeterPiper?*); at the top right, the **Smart auto-select** status line (✨ when unlocked, 🔒 while locked, with *?* for how it works; section 6.15), *User: <name>* and **Switch user**.
 
-| Box | What to do |
+**Three big choices:**
+
+| Choice | What it does |
 |---|---|
-| Text size | `A-` / `A+` / `Reset` make all text smaller / larger (remembered). |
-| Compare / average saved runs (no image needed) | **Compare / average runs...** opens the window of section 6.10 straight away, without opening an `.nd2`. |
-| 1 Files | **Browse for .nd2 file...** (nothing is typed). The **Results folder** defaults to `OUTPUT_<file name>\<user>` next to the image; *Browse for results folder...* to choose another. If the results folder cannot be written (a read-only drive, e.g. a Windows-formatted drive on a Mac; a full drive; no permission), PeterPiper says why when you press *Open image* and offers `PeterPiper results` in your home folder or another folder (1.0.3). **Analysed before** says whether earlier analyses of this movie were found, e.g. "2 earlier runs (newest 29 Oct 2026 17:26, tracking saved). You can load one when the image opens." |
-| 2 Check the file | A summary (timepoints, channels, size, bit depth, file size, total duration, objective). **Pixel size (µm/px)** is read from the file's calibration and **Frame interval (s)** from the frame time stamps (the median spacing; if the file has no usable time stamps, the declared time-loop period; 0 = unknown, time is then given in timepoints). **Uneven gaps (V3.0)**: every frame's time stamp is read; a gap between two timepoints more than 20% off the median is shown in amber under the summary (e.g. *timepoint 1 → 2: 3 h 17 min*, or the longer gap when a treatment was added), and the total is first to last frame as recorded. Graphs and results still space the timepoints evenly at the frame interval, so times next to such a gap are not the real ones; the Methods text and the Settings sheet say so and list the gaps. **Check both**: every size and distance in the analysis is in micrometres and depends on the pixel size, and every time axis depends on the interval. **Stage position** appears for multi-position files: one position is analysed at a time. |
-| 3 Channel names (optional) | Tick *Rename the channels* to change the names read from the file. The names become the Excel sheet names, so they must be different from each other and plain (no slashes, colons, asterisks, question marks, quotation marks, angle brackets or vertical bars). |
+| **Analyse movies** | Choose one `.nd2` - or several at once (Ctrl / Shift-click). Several become your **movie queue**, analysed one after another (section 6.14); the first still to do is shown in the movie card. |
+| **Continue your queue (N left)** | Opens the next movie of your queue that is still to do (shown only while there is one). |
+| **Compare / average saved runs** | Opens the window of section 6.10 straight away, without opening an `.nd2`. |
 
-**Open image** opens the main window. A large file shows "Opening ... please wait" for a few seconds.
+**The movie card** (left) keeps every check of the earlier start window:
+
+| Part | What to do |
+|---|---|
+| File | The chosen movie's name and folder. Nothing is typed; files and folders are chosen with a browser. If the movie needs a look (below), a warning line says why: *Please check before opening: ...*. |
+| Check the file | A summary (timepoints, channels, size, bit depth, file size, total duration, objective). **Pixel size (µm/px)** is read from the file's calibration and **Frame interval (s)** from the frame time stamps (the median spacing; if the file has no usable time stamps, the declared time-loop period; 0 = unknown, time is then given in timepoints). **Uneven gaps (V3.0)**: every frame's time stamp is read; a gap between two timepoints more than 20% off the median is shown in amber under the summary (e.g. *timepoint 1 → 2: 3 h 17 min*, or the longer gap when a treatment was added), and the total is first to last frame as recorded. Graphs and results still space the timepoints evenly at the frame interval, so times next to such a gap are not the real ones; the Methods text and the Settings sheet say so and list the gaps. **Check both**: every size and distance in the analysis is in micrometres and depends on the pixel size, and every time axis depends on the interval. **Stage position** appears for multi-position files: one position is analysed at a time. |
+| Channel names | The names read from the file, editable. The names become the Excel sheet names, so they must be different from each other and plain (no slashes, colons, asterisks, question marks, quotation marks, angle brackets or vertical bars). |
+| Results folder | Defaults to `OUTPUT_<file name>\<user>` next to the image (or inside the folder chosen in *Storage & cloud*, section 6.17); *Change...* to choose another; **Open results folder** opens it. If it cannot be written (a read-only drive, e.g. a Windows-formatted drive on a Mac; a full drive; no permission), PeterPiper says why and offers `PeterPiper results` in your home folder or another folder (1.0.3). |
+| Analysed before | Whether earlier analyses of this movie were found, e.g. "2 earlier runs (newest 29 Oct 2026 17:26, tracking saved). You can load one when the image opens." |
+
+**Open in the analysis window** opens the movie. A large file shows a progress window for a few seconds.
+
+**Tabs on the right:** **Recent analyses** - your newest analyses, one per movie (movie, date saved, cells); double-click or *Open in analysis window* opens the movie with that run loaded (its ROIs and tracking as saved); *Results folder* opens the folder it was saved in. **Queue** (*Queue (N left)*) - the queued movies with their status (*to do*, *saved*, *exported ✓*, *skipped*); *Open*, *Remove* (the file is not touched), *Clear queue*.
+
+**Skipping the start screen.** A movie opened from the queue (*Continue your queue*, *Next movie*) or from a run list (*Recent analyses*, Compare's *Open in analysis*) goes straight into the analysis window **only when its metadata is complete**: a pixel size is present and is not the stand-in 1.0 µm/px, the frame interval is above 0, the gaps between timepoints are even, the file holds a single stage position, and the channel names can be used. Otherwise the start screen opens with that movie and says what to check.
+
+**The footer:** **Saved files** (section 9.13), **Storage & cloud** (section 6.17), **Check for updates** (section 3.6), **More** (*Batch analyse automatically (no clicking)...*, *Prism style templates...*, *Export my profile...*, *Import a profile...*), the text size (`A-` / `A+` / *Reset*, remembered) and the **Theme** (section 6.18).
 
 ### 6.2 The main window
 
 - **Left: the image.** Below it: the timepoint slider with ◀ / ▶| buttons, **▶ Play** (space bar) and the play speed (2, 4, 8, 15 or 25 timepoints per second); **Show** (one channel, an overlay of two channels, or - for a WITH rule - the *Tracking image* the ROIs are drawn and followed on); **Fit to window**; **Outlines** and **Cell numbers** on / off. Scroll on the image to zoom, drag to pan. The bar under the image sets the white point (drag it, scroll on it, double-click for automatic); the setting is kept as you step through time, so brightness changes you see are real. On the image, tracker boundary lines are drawn in orange (the selected cell's with a white halo). No background pixels are left out (section 8.4), so no red dots are drawn; only a session tracked with the earlier V2.5 exclusion method still shows the pixels it left out as small red dots (display only, section 7).
-- **Right: the side panel**, top to bottom: the **step bar** (V2.9: *1 Rules · 2 ROIs · 3 Track · 4 Check · 5 Export*; the step you are on is lit, finished steps are green - click one to go to it; *1 Rules* stays the current step until you have looked at the rules or added the first ROI, and when folded its title shows the active rule(s)), the blue **what-to-do-next** box, steps **1 - 5**, and **Status** (the last message, and whether your work was saved automatically). **Focus** (V2.9): when you move on to the next step, the steps you are not on fold to their title (▸); click a title or the step bar to open one again. *View > Fold finished steps* switches this off (remembered).
+- **Right: the side panel**, top to bottom: the **step bar** (V2.9: *1 Rules · 2 ROIs · 3 Track · 4 Check · 5 Export*; the step you are on is lit, finished steps are green - click one to go to it; *1 Rules* stays the current step until you have looked at the rules or added the first ROI), the blue **what-to-do-next** box, **one step page at a time** (1.1: the step bar switches pages; each page ends with a *Next: ...* button; rarely used things - *Load saved ROIs...*, *Earlier analyses of this file...*, *Train auto-detect from my runs...*, *Smart auto-select: your bins...* - are in step 2's **More** menu and the File menu), and at the foot, always visible, a **note** box, **SAVE** and **EXPORT...** (section 6.14), with when you last saved and the autosave **Status**. (Up to 1.0 all five steps were stacked and folded; the pages replace that.)
+- **The top row** (1.1): **◂ Another file** (back to the start screen), **Open results folder**, **Compare / average runs...**, **Undo**, and - for a movie in your queue - *Movie 2 of 5*, **Skip** and **Next movie ▸** (*Finish the queue* on the last one).
+- **The window opens maximized** (1.1) and, at the default text size, needs no scroll bar on a 1366 x 768 screen.
 - **Loading bars** (V2.9): anything that takes more than a moment - opening an `.nd2` (with its first frame), looking for earlier analyses, reading your saved runs for the Compare window, loading the runs you tick, saving a comparison - shows a small window with what it is doing and a progress bar, so the program never looks frozen (the work runs in the background; clicks wait until it is done). Detecting, tracking and exporting keep their progress bar under the image.
 - **Notes that fade** (V2.9): *ROIs saved*, *Exported* and *Graph saved* appear as a banner at the top of the window with **Open folder**, and fade away after a few seconds (they stay while the mouse is on them) - no OK box to click. The same message stays in Status.
 - **The Traces panel** (right edge, "Traces - include / exclude cells here") appears after tracking.
-- **Menus**: *File* (Choose another file..., Earlier analyses of this file..., Load saved ROIs..., Save ROIs now, Export raw TIFFs..., Compare / average runs..., Save my work automatically, Offer earlier analyses when a file opens, Close); *View* (Theme: Midnight (dark) / Daylight (light), Fold finished steps, Larger text Ctrl +, Smaller text Ctrl -, Normal text size Ctrl 0, Undo Ctrl Z, Play / pause Space);; *Help* (How to use this window).
+- **Menus** (1.1): *File* (Choose another file..., Earlier analyses of this file..., Load saved ROIs..., Save now (SAVE) Ctrl S, Open results folder, Back up this analysis..., Export raw TIFFs..., Compare / average runs..., Prism style templates..., Save / Load analysis settings..., Batch analyse .nd2 files..., Saved files..., Save my work automatically, Offer earlier analyses when a file opens, Close); *View* (Theme: Midnight (dark) / Daylight (light) and any palettes you have found, Larger text Ctrl +, Smaller text Ctrl -, Normal text size Ctrl 0, Undo Ctrl Z, Play / pause Space); *Help* (How to use this window, About PeterPiper, Computer check..., Check for updates..., and *Achievements...* - shown only once a hidden extra has been found).
 
 ### 6.3 Step 1: Tracking rules
 
@@ -383,7 +427,7 @@ The tools (each is on / off; click it again or press Esc to turn it off):
 | **Split** | teal | Hold the left button and draw a line across an ROI: it is cut along the line into two cells (the ends of the line are continued, so roughly across is enough). |
 | **Add to cell** | pink | Click a cell's ROI, then click each missed part just outside it: that part is outlined from the image and joined to the ROI. |
 
-- **AUTO-DETECT** proposes the well-defined (high-confidence) ROIs of the chosen compartment in a second or two: clearly above background, normal size and shape, separate, not at the image edge (criteria in section 8.3). With helper channels (and under an older IF rule), cells without signal in the helper channel are skipped. Under it, **AUTO-DETECT - <name>** buttons are your trained auto-detects for this movie's channels, and **Train auto-detect from my runs...** makes one (section 6.13). Remove any you do not want and add the rest by clicking; **Undo** takes all of them back at once.
+- **AUTO-DETECT** proposes the well-defined (high-confidence) ROIs of the chosen compartment in a second or two: clearly above background, normal size and shape, separate, not at the image edge (criteria in section 8.3). With helper channels (and under an older IF rule), cells without signal in the helper channel are skipped. Beside it, **Smart auto-select** (1.1) picks cells the way you pick them, learned from your hand-picked movies (section 6.15). Under it, **AUTO-DETECT - <name>** buttons are your trained auto-detects for this movie's channels, and **Train auto-detect from my runs...** (step 2's *More* menu) makes one (section 6.13). Remove any you do not want and add the rest by clicking; **Undo** takes all of them back at once.
 - **Brightness slider** (V2.5): after AUTO-DETECT a slider appears under it - "Keep the N brightest of the M found (k placed; dimmest kept: x counts above background)". It starts at the right end (all M kept). Sliding left removes the **dimmest** cells first: the cells found are ranked by their brightness = mean of the detection image (the image the compartment is drawn on) inside the ROI minus the mean of the background region on the same image, at the timepoint shown (section 8.3). The slider stays until you make any other change (then the set is accepted and the slider hides); Undo takes back the whole set.
 - **Undo (Ctrl+Z)** takes back the last change (up to 60 steps).
 - **No tool on**: clicking a cell selects it (its trace lights up). **Right-click** an ROI to move it to another cell, make it a cell of its own, remove it or select its cell; right-click an empty area to add an ROI there or put the background region there.
@@ -432,7 +476,7 @@ Any change to ROIs, the background, the rules, the tracker boundary lines or any
 
 - **▶ Play** (or the space bar) plays the movie with the tracked outlines on top; drag the slider to scrub. Check that the outlines follow the cells. *Outlines* / *Cell numbers* switch the overlays off to look at the cells.
 - **The Traces panel** ("Traces - include / exclude cells here") is **the** place to include or exclude cells:
-  - the **cell list**: tick / untick *Include* per cell (only for the compartment shown); *Include all* / *Exclude all*; each row also says why a cell is in or out ("included", "excluded by you", "excluded by the IF rule: ...", or "QC note: ..."); click a row to find the cell (its trace turns orange and its outline is highlighted);
+  - the **cell list**: each cell with a swatch of its colour and line style (1.1, section 6.18); tick / untick *Include* per cell (only for the compartment shown); *Include all* / *Exclude all*; each row also says why a cell is in or out ("included", "excluded by you", "excluded by the IF rule: ...", or "QC note: ..."); click a row to find the cell (its trace turns orange and its outline is highlighted);
   - **Show**: the quantity plotted - `R/R0 - A/B`, `F/F0 - channel`, `Ratio - A/B` or `Intensity - channel` (background-subtracted counts) for every channel and every ordered channel pair. It opens on your key quantity (the `resp_quantity` setting, default `F/F0 - GFP; R/R0 - GFP/Cy5`, R/R0 first), else R/R0 of the rule's channels A/B, else F/F0 of channel A;
   - **plot**: scroll = zoom, drag = move, *Zoom box* = drag a rectangle, *Reset zoom*; hover a line to read its value; click a line to select its cell; **double-click a line to include / exclude that cell**; click elsewhere to jump the image to that time; the orange line marks the timepoint shown in the image.
 - **Two views of the graph**:
@@ -444,7 +488,7 @@ Any change to ROIs, the background, the rules, the tracker boundary lines or any
 
 - **Baseline (time 0)**: the timepoint where F/F0 = 1 and R/R0 = 1 and time = 0; earlier timepoints get negative times. The Excel workbook keeps a dropdown so you can change it there later.
 - **Drift slope T _ to T _** (default T2 - T9): the window for the baseline-drift item (section 8.10).
-- **CHOOSE OUTPUTS & EXPORT...** opens the export list:
+- **EXPORT...** (1.1: at the foot of the side panel; *CHOOSE OUTPUTS & EXPORT...* before) opens the export list:
   - **Name for the files** (top): every file of this export starts with it (default: the `.nd2` name, first 40 characters), e.g. `MyExp1_nucleus.xlsx`. Letters, numbers, `- _ . ( )` and spaces; it is saved with your session.
   - Left: everything that can be made, grouped by compartment; right: **your export list**. *Add* (or double-click) puts an item on the list, *Remove* takes it off. **Only what is on the list is written.** *Standard set* = Excel workbook, Prism graphs, Prism tables, baseline drift, ROI picture on the drawn timepoint, ROI file, Methods text and the graphs of your key quantities (or, if none of them exists in this movie, every F/F0 and R/R0 graph); *Everything*; *Clear list*. *Remember this list for next time* is on by default.
   - **Prism graph style**: *Built-in* (the bundled template, drawn in **your live graph look**) or *Choose style...* - a `.prism` file whose first graph you styled in Prism (made on an XY table with cells as replicates); every "Prism graphs" file then uses that file with the new numbers. **Own-template rule**: if your file was made from a PeterPiper `.prism` (exported, changed in Prism and saved), it keeps being recognised and your live look is applied to it as well; any other Prism graph keeps its own look and gets only the data and the texts (titles, axis titles), as in V2.3. A `.pzfx` with graphs also works: each `.pzfx` then also comes as `..._with_graphs.pzfx`. *How?* explains it.
@@ -483,7 +527,13 @@ The last entry of the **Look** list (in the *As exported* view, and in *More sty
 
 ### 6.10 Compare / average runs
 
-**Compare / average runs...** - at the top of the start window (no image needed), under the export button, or *File > Compare / average runs...* - opens the **Compare / average runs** window: several saved runs in one graph, either one line per run or **replicate dishes grouped and averaged**.
+**Compare / average runs...** - *Compare / average saved runs* on the start screen (no image needed), the top row of the analysis window, or *File > Compare / average runs...* - opens the **Compare / average runs** window: several saved runs in one graph, either one line per run or **replicate dishes grouped and averaged**.
+
+**The window in 1.1.** It opens maximized and needs no scroll bars on a 1366 x 768 screen (only a long run list scrolls inside itself). Eight buttons replace the earlier twenty: above the list **Add runs ▾** (*Add run file...*, *Find my runs in a folder...*, *My data is in...*), **Groups ▾** (new group, put the selected runs in a group, rename, delete, take out, group by cell line), **Open in analysis**, **Output files ▾** and **List ▾** (remove from list - also the Delete key -, untick all, open / close all folders, columns shown); under the graph **Save...**, **More ▾** (save / load plot settings, batch save, Prism style templates) and **Reset zoom**; a right-click menu on the list offers the same. The list has taller rows and plainer column titles, and two new columns: **Save** - which kind of save a row is: *Saved: <your note>* (or *Saved*), *Autosave* or *Export* (section 6.14) - and **User** (who made the analysis). Rarely needed columns start hidden (right-click a column title to show them).
+
+- **Open in analysis** (or double-click a run) closes the window and opens the run's movie in the analysis window with that run loaded, to check or change it. The movie is looked for where it was when the run was saved, then where this movie (its fingerprint) was last opened on this computer, then next to the run's `OUTPUT_` folder; a candidate must have the same content fingerprint. If none is found you are asked where the movie is now, and a movie whose contents differ from the run's is opened only after a question. The movie skips the start screen only when its metadata is complete (section 6.1).
+- **Output files ▾**: *Open results folder* (the run's results folder), *This run's output files...* (a short list of its exports `Export_...`, autosaves and comparisons, each opened with a click) and *Every saved file...* (section 9.13).
+- Lines without a cell-line colour get Okabe-Ito colours (without the pale yellow); pale dots get a darker edge on the white graph.
 
 **The window, in three steps (V2.8).** (1) **Tick the runs to plot** in the run list - ticked runs are shown in **bold** with their colour, the others are dimmed and not plotted. The list is in **folders by group** (in the order the groups were made; *No group* last). Each folder row says how many of its dishes are plotted and shows the group's colour (double-click it to change it, double-click the name to rename the group); its tick plots all its dishes. Inside, a **▸ movie sub-folder** holds the analyses of one `.nd2` that was analysed more than once (newest first) - it is one dish: tick the analysis you want. (2) **Replicate dishes**: *+ New group*, then **drag runs onto the group's folder** (or select runs - Ctrl / Shift-click - and *Put selected runs in ▾*); *Take out of group*, *Rename group*, *Delete group* (its runs move to *No group*), *Group by cell line*. A movie's analyses always move together. Putting runs in a group ticks them and shows *Groups - mean of dish means*; switching to a Groups mode keeps only the newest ticked analysis of each movie (and says so). (3) **Say what to plot** with the plot builder below. Hover any dropdown entry for what it is and what it is good for. **Drag the dividers** between the list, the settings (they scroll) and the graph to make any part bigger - no part can be dragged away to nothing; the window keeps a sensible minimum size, and the divider positions are remembered.
 
@@ -576,7 +626,7 @@ The colours are only a look: they never change a number.
 
 ### 6.11 Prism style templates (V2.7)
 
-**File > Prism style templates...** (also in the start window and the Compare window). Every `.prism` PeterPiper writes is made from two files PeterPiper keeps for you in `%USERPROFILE%\PeterPiper data\users\<name>\Prism style templates\` (`peterpiper/prismtemplate.py`):
+**File > Prism style templates...** (also under *More* on the start screen and in the Compare window). Every `.prism` PeterPiper writes is made from two files PeterPiper keeps for you in `%USERPROFILE%\PeterPiper data\users\<name>\Prism style templates\` (`peterpiper/prismtemplate.py`):
 
 - **`PeterPiper graph style.prism`** - an example time course. Open it in Prism (*Edit graph style in Prism*), change anything on **graph 1** - fonts, sizes, colours, symbols, line widths, axes, frame, legend - and save it under the same name. From then on every XY graph PeterPiper writes (single runs, *Save graph...*, Compare, averages, and the graph of every other table) is a copy of it with your data and texts.
 - **`PeterPiper column graph style.prism`** - an example kinetics table **without** a graph. In Prism select the table *Example groups*, *New graph > Column > scatter dot plot* (or bars) with mean ± SEM, style it and save. Every column table PeterPiper writes (kinetics, drift per cell) then gets a graph made from it (automatic Y range; the groups in table order). Until then column tables are written without a graph.
@@ -590,7 +640,7 @@ The colours are only a look: they never change a number.
 
 - **File > Save analysis settings...** stores every analysis setting: the tracking rules (by channel **name**, so a file with its channels in another order means the same), detection, size limits, background size, QC, IF-gate and AND settings, the baseline timepoint, the export list and the graph look. **File > Load analysis settings...** uses them from now on (ROIs and tracking already made are not changed; press AUTO-DETECT / TRACK again).
 - **Save / Load plot settings...** in the Compare window (section 6.10) store the plot.
-- **Batch analyse .nd2 files...** (start window and File menu; `gui/batchdlg.py`): add .nd2 files or a folder (all `.nd2` in it and below), choose saved analysis settings (or the settings in use), *Run*. Each file goes through exactly the steps of the main window, with the same code: the automatic background region, AUTO-DETECT for every compartment that has a tracking rule (in rule order), TRACK & MEASURE, then the settings' export list (else the standard list) into the file's `OUTPUT_<name>` folder, with the ROI file, methods text and provenance as always. No dialog waits for a click; your own `settings.json` is not changed. A log `PeterPiper batch <date>.csv` next to the first file lists per file: status, cells found and included per compartment, any background note, the export folder and every message. **Nothing is checked by hand, so every file is flagged *automatic - check*** - open it (*File > Earlier analyses of this file*) to check or correct it before you use its numbers.
+- **Batch analyse .nd2 files...** (start screen *More > Batch analyse automatically (no clicking)...* and File menu; `gui/batchdlg.py`): add .nd2 files or a folder (all `.nd2` in it and below), choose saved analysis settings (or the settings in use), *Run*. Each file goes through exactly the steps of the main window, with the same code: the automatic background region, AUTO-DETECT for every compartment that has a tracking rule (in rule order), TRACK & MEASURE, then the settings' export list (else the standard list) into the file's `OUTPUT_<name>` folder, with the ROI file, methods text and provenance as always. No dialog waits for a click; your own `settings.json` is not changed. A log `PeterPiper batch <date>.csv` next to the first file lists per file: status, cells found and included per compartment, any background note, the export folder and every message. **Nothing is checked by hand, so every file is flagged *automatic - check*** - open it (*File > Earlier analyses of this file*) to check or correct it before you use its numbers.
 - **Batch save...** in the Compare window re-plots analysed runs with several saved plot settings at once (section 6.10).
 
 ### 6.13 Train auto-detect (V3.0)
@@ -611,6 +661,98 @@ AUTO-DETECT on its own proposes every clearly visible nucleus - in a dish with a
 
 **What to expect** (the lab's own data, `test_v30.py` part L): trained on 8 hand-analysed biosensor movies (GFP + Cy5), each movie scored with a rule learned from the other 7, it found 94 of the 142 hand-picked cells with 56 extras (mean F1 0.66); plain AUTO-DETECT on the same movies found 91 with 154 extras (F1 0.50). It does not read your mind: where you picked differently from dish to dish (all bright cells in one, a few in another) no single rule fits, and the quiz is the quickest way to tighten it. Always check the cells it picks.
 
+PeterPiper 1.1's **Smart auto-select** (section 6.15) uses this same method, trained without a quiz on bins of movies you hand-picked in a movie queue.
+
+
+### 6.14 Movie queue and SAVE (1.1)
+
+**The movie queue** (`peterpiper/batchqueue.py`). Choosing several `.nd2` files at once with **Analyse movies** makes them your queue: they are analysed **by hand, one after another**, each with every check and choice of a single movie (unlike *Batch analyse*, section 6.12, which runs without clicking). The queue is kept per user (`queue.json`, this computer only), so it survives closing PeterPiper; choosing more movies adds them (a movie already in the queue keeps its status). Each movie has a status:
+
+| Status | Set when |
+|---|---|
+| *to do* | the movie was put into the queue |
+| *saved* | you pressed SAVE on it |
+| *exported ✓* | an export finished (a later SAVE does not change *exported* back to *saved*) |
+| *skipped* | you pressed *Skip* |
+
+In the analysis window the top row shows *Movie 2 of 5* (its tooltip: how many others are still to do), **Skip** and **Next movie ▸**. *Next movie* opens the next movie still *to do* after this one (going round to the start of the list); if you changed the analysis since the last SAVE it first asks **SAVE, then next movie** / *Next movie without saving* / *Cancel* (your work is kept by the autosave either way). On the last movie the button reads *Finish the queue*, and a message says that every movie has been looked at. The start screen's *Queue* tab lists every queued movie with its status; *Continue your queue (N left)* picks up where you stopped. A queued movie opens without the start screen only when its metadata is complete (section 6.1).
+
+**SAVE** (at the foot of the side panel, always visible; also *File > Save now (SAVE)*, Ctrl S). It writes the analysis as it is now - ROIs, cells, include / exclude choices and, once tracked, the whole tracking - as a saved ROI file `<file name>_ROIs.npz` in the results folder (never replacing an existing file: `_2`, `_3` ... is added), of kind `saved` (section 9.11), and adds it to your run list. The optional **note** typed in the box above it (up to 120 characters, e.g. *without the dim cells*; Enter also saves) is stored in the file's summary (`note`). The run then appears in Compare's *Save* column and in *File > Earlier analyses of this file* as **Saved: <note>** (or *Saved*), so different saved versions of one movie can be told apart. A SAVE before tracking keeps the ROIs only and says so. SAVE is in addition to the autosave (section 7), which is unchanged: autosaved sessions are listed as *Autosave*, ROI files written by an export as *Export*. The line under the buttons says when you last saved.
+
+**EXPORT...** (next to SAVE) opens the export list of section 6.7.
+
+### 6.15 Smart auto-select (1.1)
+
+**Smart auto-select** (`peterpiper/smartselect.py`; the button beside AUTO-DETECT in step 2) picks the cells on a movie **the way you pick them**, learned from movies of the same kind in which you picked the cells by hand. Its purpose is to make automated selection on large data sets follow the researcher's own judgement: a few movies annotated carefully by hand teach it which nuclei you include - for example only the transfected cells - and it then applies that rule to new movies, where you review its proposals as after AUTO-DETECT. The method is the trained auto-detect of PD4nav V3.0 (section 6.13), described in full in section 8.13.
+
+- **Bins, one per kind of experiment.** Each user keeps named **bins** (e.g. *GFP/Cy5 nuclei*). Every movie in a bin has the same channel names; a movie may hold any number of ROIs. A bin's **n** is the number of hand-picked movies in it. The button shows the bin that fits the open movie's channels and its n, e.g. **Smart auto-select: GFP/Cy5 nuclei (n=44)**; when several of your bins fit, the button opens a small menu (one entry per bin, with its n, and *Your bins...*).
+- **Unlocking.** Smart auto-select is shown to everyone, locked (🔒) until earned: draw the cells **by hand** (at least one ROI added by hand, e.g. with *Add* or *Draw by hand*) on **3 movies from a movie queue** and press **SAVE** on each. Hovering over the locked button, or *?* on the start screen, explains this. Each such movie is recorded in `smartselect.json` (section 3.3; no image data).
+- **Sorting movies into bins.** New hand-drawn movies are put into bins in the window **Your Smart auto-select bins**, which opens from the button (and from step 2's *More > Smart auto-select: your bins...*): each movie is listed with its ROIs saved, the ROIs drawn by hand and its channels, and gets a bin from a dropdown - an existing bin with the same channels, *(not in a bin)*, or **New bin...** (you name it). A bin name used for other channels is refused.
+- **Using it.** Press the button. PeterPiper learns, in the background, from every movie of the bin that is still on this computer (the saved run file and the `.nd2` must both be found) and that has the channels of the open movie's nucleus rule (main channel and helpers); **at least 2 such movies** are needed (otherwise a message says how many there are). The learned rule then picks this movie's nuclei like a trained auto-detect: the brightness slider, Remove, Add and Undo work as after AUTO-DETECT. It learns again each time it is used, so newly added movies count at once.
+- **What it learns.** Nucleus selection (as the trained auto-detect does); other compartments follow from your tracking rules as usual.
+- **What is recorded.** The detector's name carries the bin, its n and the number of ROIs it learned from, e.g. *GFP/Cy5 nuclei - Smart auto-select (n=44 hand-picked movies, 612 ROIs)* (an example). Its rule, this name and its held-out score are saved with the run and written into the methods text of every run that used it (section 8.13; how to report it: section 11.3).
+- **Plain AUTO-DETECT and your trained auto-detects** (section 6.13) are unchanged and always available.
+
+### 6.16 Profiles, lab folder and roles (1.1)
+
+PeterPiper 1.1 lets one person's profile follow them between computers and lets a lab keep one list of its users (`peterpiper/users.py`, `profilesync.py`, `labshare.py`; `gui/userdlg.py`). Everything below works through ordinary folders; PeterPiper never signs in anywhere (section 4).
+
+**Merge profiles...** (in *Who is using PeterPiper?*). For the same person under two spellings on one computer (e.g. *Ana Lopez* and *A. Lopez*), or for a profile `.zip` or folder from another computer, merged **into** a user you choose. The rules (the kept profile wins every tie):
+
+- `settings.json`: the kept user's settings stay; settings it does not have are added; the merged user's own settings are also kept as a saved setting *Settings of <name>*;
+- the run list: every run of both - movies matched by fingerprint, runs united by file path;
+- every other JSON file of the profile (Compare colours and choices, the 1.1 files ...): united key by key; where both have a single value for the same key, the kept profile's value stays;
+- logs (`*.jsonl`): lines united; other files (Prism style templates, saved settings, trained auto-detects): new ones copied, a different file of the same name kept next to it as *<name> (from <other>)* / *(imported)*;
+- per-computer files (`storage.json`, `queue.json`, `sync.json`) are not taken over;
+- the merged user is then **hidden, never deleted** (adding the name again brings it back), and its name becomes an **alias** of the kept user, so runs and `OUTPUT_<movie>\<old name>` results made under the old name count as the kept user's.
+
+**Keep in step through a folder** (*Profile & lab > Keep in step*, `profilesync.py`). Choose a folder you can reach from each of your computers - your own OneDrive, Google Drive, Box, Dropbox or iCloud Drive folder, or a network folder. Your profile is kept there as `PeterPiper profile - <name>` (laid out like an exported profile) and is merged both ways **when you start PeterPiper as that user, when you switch user and when PeterPiper closes**. Rules - nothing is deleted and nothing is overwritten blindly:
+
+- a file only one side has is copied to the other; the run list is united (movies by fingerprint, runs by path - a Mac path and a Windows path of the same run are both kept);
+- every other JSON file is united key by key; **only where both sides changed the same single value since the last sync does the newer file win**, and a side that did not change since the last sync never wins over one that did (a checksum per file is remembered in `sync.json`);
+- logs are united line by line; for other files, the changed one is taken, and if both changed, the newer keeps the name and the older is kept next to it as *<name> (other copy <date>)*;
+- per-computer files (results location, movie queue, sync state) are never synced; every write goes to a temporary file first; a folder that is offline or missing is skipped quietly, with a note.
+
+The profile folder's name may differ from your local name (e.g. *Ana Lopez* here, *A. Lopez* on the Mac): the profile is bound by the chosen folder, and the other spelling becomes one of your aliases.
+
+**Lab folder** (*Profile & lab > Lab settings...*, admins and developers; `labshare.py`). An admin **creates** a lab folder on a lab server or a shared cloud folder (choosing which users of this computer to include; whoever creates it is admin in it) or **links** this computer to an existing one. The lab folder holds `PeterPiper lab users.json` (the lab user list) and `PeterPiper profiles\` (each person's profile). On every linked computer:
+
+- the lab user list updates *Who is using PeterPiper?*: new lab members appear; **aliases unite spellings** (a local user whose name or alias is any of a lab person's names is that person, and their runs count as theirs on every computer); nobody is removed because the list changed, and a person is hidden only when the lab list says so (never deleted);
+- roles and passwords come from the list (the newer change wins); each person's profile is also kept in step with their folder in the lab folder (when they are chosen and when PeterPiper closes);
+- **the lab's data folders** - where the lab's `.nd2` movies live, with a label each - are shared to every linked computer (without a lab, a computer keeps its own list);
+- **Anyone can add themselves on a lab computer** (a switch, on when a lab folder is created): a user added on a linked computer is added to the lab list; with the switch off, only an admin can add people.
+
+Conflicts (two computers writing at once, or a cloud app's conflict copies such as *PeterPiper lab users (1).json*) are resolved by reading and uniting every `PeterPiper lab users*.json` in the folder: people are united by any shared name or alias, and for single values the newer change wins. A read-only lab folder is only read (the window says so). The link is per **computer** (in `users.json`), not per user.
+
+**Roles.** **User** (the default), **Admin** and **Developer**. Developer is a title only, with the same abilities as Admin. Admins may open *Lab settings*, change other people's roles, reset passwords and manage the lab list. The first user on a computer is Admin (when nobody visible has the role, the user who took over the older data, else the first user on the list, is treated as Admin), and so is the creator of a lab folder. **The last admin cannot be demoted** - make someone else admin first (this holds on the computer and in the lab list).
+
+**Optional passwords** (*More > Password...*; off by default). Only a salted hash is stored: PBKDF2-SHA256 with **200,000 iterations** and a **16-byte random salt** per password (`password.json` in the user's folder and, when a lab folder is linked, in the lab list), compared in constant time; the password itself is never written anywhere. An admin can reset (clear) another user's password. As the window says, a password keeps profiles tidy and private between colleagues; **it is not strong security** - the files are on a shared disk.
+
+### 6.17 Storage & cloud (1.1)
+
+**Storage & cloud** (start screen footer; `peterpiper/cloud.py`, `gui/storagedlg.py`) puts results and back-ups into folders that cloud services or network drives keep in step - **through each service's own sync app**: OneDrive (including SharePoint and Teams libraries synced through it), Google Drive for desktop, Box Drive, Dropbox, iCloud Drive, Nextcloud / ownCloud, pCloud, MEGA, Sync.com, Egnyte, and network drives. **PeterPiper only reads and writes those local folders; it never signs in, and the service's app does the uploading.** The window lists the folders it finds on this computer (from the services' default folders and, on Windows, read-only registry entries; network drives are listed but not opened, so a server that is off cannot make PeterPiper hang), and *Other folder...* chooses any folder.
+
+- **Results go**: **next to each movie** (default: `OUTPUT_<movie>\<user>` beside the `.nd2`) or **in a folder** - results then go into `<folder>\OUTPUT_<movie>\<user>` (in a cloud place, `<place>\PeterPiper results` is suggested so `OUTPUT_` folders do not fill its top level). A folder that cannot be written is refused with the reason. Kept per user (`storage.json`, this computer only).
+- **Back up this analysis...** (*File* menu of the analysis window) copies the movie's results folder (`OUTPUT_<movie>\<user>`: sessions, ROI files, exports) and, optionally, the `.nd2` itself into `<back-up folder>\PeterPiper backup\<movie>\`, with the results under `OUTPUT_<movie>\<user>` inside it, as next to the movie. **Nothing is ever overwritten**: a file already there with the same size and modification time (within 2 s) is skipped; a different file of the same name gets `_2`, `_3` ...; a different movie of the same name gets its own folder `<movie>_2`. Each file is copied to a hidden partial file, its size is checked, and only then is it given its name; free space is checked first; *Stop* leaves what is fully copied and removes what is half-copied (starting again copies nothing twice). A progress bar shows what is copied.
+- **Movies stored only online.** When a movie's data is not on this computer (a OneDrive / Google Drive / iCloud placeholder - only the file's attributes are read), PeterPiper warns that it will be downloaded first, with its size.
+
+### 6.18 Colours, themes and accessibility (1.1)
+
+**Cell colours** (`gui/widgets.py`, checked by `gui/colourvision.py`). Every cell's outline, trace and list swatch has the same colour in every theme, from six colours chosen to be colour-blind safe: **#2299CC, #BB2200, #5533FF, #AA8844, #EE3388, #007755** - the hues of Okabe and Ito's colour-blind-safe palette (sky blue, vermillion, blue, orange, reddish purple, bluish green) moved to medium luminance and then tuned to be as far apart as possible. Each has a WCAG 2 contrast of at least **3.23:1** against the white trace plot and at least **3.30:1** against black (the dark image behind the outlines). Every pair of the six is at least **14.4** apart in CIEDE2000 colour difference, with normal vision and with protanopia, deuteranopia and tritanopia simulated (Machado et al. 2009, severity 1.0). Beyond six cells the colours repeat with **dashed, dotted and dash-dot** lines (24 distinct looks before any repeat); the cell numbers on the image tell repeated outline colours apart. The interactive trace plot area is always white, whatever the theme, and the cell list shows a colour swatch (with the line style) next to each cell's name in normal text colour, instead of coloured text. Graphs you export are unchanged (section 8.9).
+
+**Themes** (*View > Theme*, the start screen's *Theme*; `gui/theme.py`). The two basic themes, **Midnight** (dark, the default) and **Daylight** (light), are always offered; 18 further colour palettes become available as one of PeterPiper's optional hidden extras. **Every theme is checked against WCAG 2 contrast minimums** (`theme.validate`): text on the window, panels and inputs at least **7:1**; secondary (muted) text at least **4.5:1**; text on the accent colour at least **4.5:1**; the status colours (warning, error, OK) used as text at least **4.5:1**; text on a selected row at least 4.5:1; the accent used for headings and focus frames at least 3:1; the logo at least 4.5:1; borders at least **1.25:1**. The basic themes' colours were adjusted slightly in 1.1 to meet these limits. Colours never change a number.
+
+### 6.19 Engagement and annotation incentives (1.1)
+
+Careful hand annotation is what makes Smart auto-select match your judgement (section 6.15), so PeterPiper 1.1 rewards it with a small game, **Charlotte's Web** (the pink **🕸 Charlotte's Web** button; `gui/charlotte*.py`):
+
+- every movie whose cells you pick by hand grows its own **unique, procedurally drawn web**, in one of **50 themes** (about a quarter of them are not spiders); each cell ROI added by hand makes it more elaborate (removing one may snap a thread, but a web never unspins);
+- **SAVE finishes the web** with one kind word written into it;
+- finished webs go into a **collection** (a gallery), and can be **exported as pictures** (PNG); webs of a movie queue are collected together at the end of the batch;
+- each web gets a rarity when it starts: of every three webs a user starts, two are **Common** and every third is **Rare** (75%) or **Epic** (25%).
+
+**Charlotte's Web never affects data, measurements or results.** It only listens to what happens in the analysis window, stores only its own small file (`charlotte.json`) in your user folder, draws everything in code (no image files) and uses no network; a failure in it can never disturb an analysis. PeterPiper also contains a few **optional hidden extras** (for example the extra colour palettes of section 6.18); like the game, they never touch data, and *Help > Achievements...* lists the ones a user has found.
+
 ## 7. Session memory: your work is kept
 
 **Autosave.** As you work, PeterPiper keeps one session file per window session in `<results folder>\PeterPiper_sessions\<file name>_session_<YYYY-MM-DD_HH-MM-SS>.npz` (the date and time the window was opened). It holds everything a saved ROI file holds: ROIs, cells, include / exclude choices and their reasons, background, drawn timepoint, tracking rules, baseline, drift window, graph look, file-name prefix, and - once tracked - **the tracking** (every ROI at every timepoint and all measurements). It is saved about 2 seconds after your last change (`AUTOSAVE_MS = 2000`), at once after tracking and after an export, and when the window closes. Packing happens in the window and writing in a background thread, so the window never freezes. Each save replaces this one file in a single step (temporary file, then swap), so it is never half-written; it never replaces any other file. The Status box says when it was last saved ("with the tracking" or "ROIs only - not tracked yet"). *File > Save my work automatically* turns this off. Just loading an earlier run and looking at it does not create a new session file.
@@ -626,7 +768,7 @@ AUTO-DETECT on its own proposes every clearly visible nucleus - in a dish with a
 | Cells | Number of cells. |
 | Compartments | Which kinds of ROI. |
 | Tracking | "saved ✓" if the file holds the tracking, else "not saved". |
-| Kind | autosave (session file), export (ROI file written by an export) or saved (*Save ROIs now*). |
+| Kind | autosave (session file), export (ROI file written by an export) or saved (SAVE, 1.1, with its note; *Save ROIs now* before). |
 | Folder | Where it is (hover for the full path). |
 
 The details area shows the rules, drawn timepoint, number of timepoints, baseline, path and the **match**: *same file* (the fingerprint matches), *same name* (same name and image size, no fingerprint to compare) or *renamed copy* (found by fingerprint under another name), with a caution if the `.nd2` changed since or the tracking length differs. **Load this run** (preselected: the newest run; when a newer run has no tracking saved, or an older one has, the details say so) or **Start a fresh analysis**. *Don't ask again for any file* turns the question off (*File > Offer earlier analyses when a file opens* turns it back on). *File > Earlier analyses of this file...* lists them at any time (then the second button is *Keep what I have*; what you have is autosaved first).
@@ -642,16 +784,16 @@ The details area shows the rules, drawn timepoint, number of timepoints, baselin
 - **V1.x** ROI files (ROIs only) load as well.
 - If one compartment's ROIs were drawn on different channels in an old file, a note explains that PeterPiper (since V2.3) follows each kind of ROI on one image (its rule's), and which one.
 
-**Other ways to save and load**: *File > Save ROIs now* writes `<results folder>\<file name>_ROIs.npz` (never replacing an existing one); every export can include the ROI file; *Load saved ROIs...* opens any `*_ROIs*.npz` or `*_session_*.npz` file.
+**Other ways to save and load**: **SAVE** (1.1; *File > Save now (SAVE)*, Ctrl S; *File > Save ROIs now* before) writes `<results folder>\<file name>_ROIs.npz` (never replacing an existing one); every export can include the ROI file; *Load saved ROIs...* opens any `*_ROIs*.npz` or `*_session_*.npz` file.
 
 ## 8. How the numbers are made (methods detail)
 
-This section describes the algorithms as implemented in PeterPiperV1.0 (`app/peterpiper/`). Constant names are given in `code` so every number can be checked in the source. µm values are converted to pixels with the pixel size checked in the start window; "px" values are in image pixels.
+This section describes the algorithms as implemented in PeterPiperV1.1 (`app/peterpiper/`); 1.1 did not change any of them (section 12). Constant names are given in `code` so every number can be checked in the source. µm values are converted to pixels with the pixel size checked in the start window; "px" values are in image pixels.
 
 ### 8.1 Reading the images
 
 - `.nd2` files are read with the `nd2` package (Talley Lambert), lazily through `dask`, one timepoint at a time (`nd2io.ND2Source`). Each timepoint is a stack of all channels (C x Y x X) of 16-bit (or the file's bit depth) raw counts.
-- Z stacks are reduced to the **maximum-intensity projection** over Z. Multi-position files: one stage position (chosen in the start window) per analysis.
+- Z stacks are reduced to the **maximum-intensity projection** over Z. Multi-position files: one stage position (chosen on the start screen) per analysis.
 - Channel names come from the file's metadata (made unique and safe as sheet names) and can be renamed at start-up.
 - Pixel size = the file's x voxel size; frame interval = the median difference of the time stamps of about 12 frames spread over the movie, or the declared time-loop period; both are shown for checking.
 - **Saturation level** = 2^(bit depth) - 1 counts (65535 for 16-bit).
@@ -865,9 +1007,9 @@ All parameters, their defaults and where they are set. The values actually used 
 
 | Parameter | Default | Unit | Set in | Code name |
 |---|---|---|---|---|
-| Pixel size | from the file | µm/px | start window | `Experiment.um_per_px` |
-| Frame interval | from the file | s | start window | `Experiment.seconds_per_frame` |
-| Channel names | from the file | - | start window | `Experiment.channels` |
+| Pixel size | from the file | µm/px | start screen | `Experiment.um_per_px` |
+| Frame interval | from the file | s | start screen | `Experiment.seconds_per_frame` |
+| Channel names | from the file | - | start screen | `Experiment.channels` |
 | Tracking rules | `Track nucleus using <channel 1> ONLY` | - | step 1 | `Settings.track_rules` |
 | ROIs drawn on timepoint | the first timepoint you click on | 1-based | step 2 | `t0` (stored 0-based) |
 | Size may change by | ±25% (0 - 100%, steps of 5; 0 = exactly the drawn pixel count) | fraction of drawn area (hard limit) | step 3 | `Settings.track_size_tol = 0.25` → `size_tol` |
@@ -969,6 +1111,21 @@ All parameters, their defaults and where they are set. The values actually used 
 | Automatic background | see "Fixed in the code - background" above (150 µm → x0.85 → ≥ 25 µm) |
 | AUTO-DETECT slider | rank = mean of the detection image in the ROI - background mean on the same image, at the timepoint shown; dimmest removed first |
 
+### 8.13 Smart auto-select: the method (1.1)
+
+Smart auto-select (`smartselect.learn`, using `detectors.py`) is the trained auto-detect of section 6.13, learned from one bin of movies you hand-picked, without the quiz. Every number below is fixed in the code.
+
+1. **Training movies.** The movies of the chosen bin (one kind of experiment, all with the same channel names) whose saved run file and `.nd2` are both on this computer and that have the main and helper channels of the open movie's nucleus rule. **n** = their number; at least 2 are needed. Only the frame you drew on is read from each `.nd2` (read-only).
+2. **Candidates** (as in section 6.13): every nucleus-sized blob on that frame is outlined exactly as AUTO-DETECT does (difference of Gaussians, outlined like a click; permissive limits 10 - 3000 µm², solidity ≥ 0.5) on the helper image, the main channel and each helper channel; a blob found again on a later image (overlap > 0.5) is not added twice.
+3. **Features** of each candidate: area (µm²), circularity (4π area / perimeter²), and for the main channel and every helper its signal-to-noise (ROI mean minus the 25th percentile of a 3 µm ring, divided by the background pixel noise) and its relative brightness (signal-to-noise ÷ the 95th percentile of all candidates of the movie).
+4. **Your answers**: the nucleus ROIs you saved. A candidate counts as yours when it is the best match of one of your ROIs with an overlap (intersection / union) of at least **0.3**; every saved ROI counts, so one the candidate finder never outlined counts as missed.
+5. **The rule**: a minimum signal-to-noise (0, or 1 - 300 in 30 log-spaced steps) and a minimum relative brightness (0 - 1.2 in steps of 0.05) per channel, a minimum area (0 - 100 µm², 8 values), a maximum area (200 - 3000 µm², 7 values) and a minimum circularity (0 - 0.75, 7 values). Starting from "keep everything", the limits are chosen one at a time on these fixed grids (coordinate search, up to 6 rounds) to give the highest **mean F1 over the n movies**, with F1 = 2 × (your cells found) / (candidates kept + your cells), 1 = exactly your picks. A limit that makes no difference stays off; of equally good values the middle one is taken.
+6. **Held-out score**: each movie is scored with the rule learned from the other n - 1 movies (leave-one-out); the sum of your cells found, of your cells and of extra cells, and the mean F1, are reported. This is the expected agreement on a movie the rule has not seen.
+7. **Use**: the rule learned from all n movies selects the candidates on the open movie (nuclei only); the cells are placed as after AUTO-DETECT, for you to review. The rule is learned again, in the background, each time Smart auto-select is used.
+8. **Record**: the detector's name is `<bin> - Smart auto-select (n=<n> hand-picked movies, <ROIs> ROIs)`; the run keeps the detector (rule, held-out scores, training movies), and the methods text of every export says, e.g., *Nuclei were proposed with the trained auto-detect '<name>' (PeterPiper 1.1.0, trained on <n> hand-analysed movie(s), main channel <...>). Keeps nucleus-sized blobs with ... On movies it had not seen: <a> of your <b> cells found, <c> extra (mean F1 <x>; 1 = exactly your picks).* followed by the definitions of signal-to-noise and relative brightness.
+
+What counts as a hand-picked movie: a movie of your movie queue on which at least one ROI was added by hand since it was opened, and which you then SAVEd; its ROIs saved are the answers (all of them, also ones placed by AUTO-DETECT and kept). The number of hand-picked movies needed to unlock Smart auto-select (3) and to use a bin (2) are minimums, not recommendations: like any trained rule, it is only as consistent as the selections it learned from (section 6.13, *What to expect*; section 13).
+
 ## 9. Outputs reference
 
 ### 9.1 Folder layout
@@ -977,7 +1134,7 @@ All parameters, their defaults and where they are set. The values actually used 
 OUTPUT_<file name>\<user>\                  (the results folder; default next to the .nd2)
     PeterPiper_sessions\
         <file name>_session_<date>_<time>.npz      autosaved sessions
-    <file name>_ROIs.npz                     File > Save ROIs now
+    <file name>_ROIs.npz                     SAVE (File > Save now)
     tiffs\                                   File > Export raw TIFFs...
     Graphs\                                  Save graph... (default folder)
     Comparisons\                             Compare / average runs (default folder)
@@ -1102,7 +1259,7 @@ A NumPy `.npz` archive (a zip of arrays; `np.load(path, allow_pickle=False)`). M
 | `comp_<c>_n`, `comp_<c>_bbox_i`, `comp_<c>_shape_i`, `comp_<c>_mask_i`, `comp_<c>_outline_i` | Every ROI of compartment `c` (`nucleus`, `cell`, `cytoplasm`, `mito`) as drawn, per cell (`outline` = the followed region for cytoplasm / mitochondria). |
 | `bg_bbox`, `bg_shape`, `bg_mask` | The background region. |
 | `image_shape`, `seg_timepoint` | Image height and width; the drawn timepoint (1-based). |
-| `state_json` | JSON: `version`, `saved`, `kind` (`session` / `export` / `saved`), `session_id`, `nd2` (name), `nd2_path`, `fingerprint`, `exp` (pixel size, interval, timepoints, width, height, channels, bit depth), `channels`, `t0`, `cells` (per cell: compartment → channel drawn on), `excl` (excluded cells per compartment), `rules`, `follow`, `bg_auto`, `bg_kind` (V2.5: `auto` / `click` / `hand`), `boundaries` (V2.5: `{cell index (0-based, text): [[[x, y], ...], ...]}`), `prefix`, `baseline`, `drift`, `track_params`, `graph_style`, `based_on` (the earlier run loaded, if any), `content_key` (V2.5, section 7). |
+| `state_json` | JSON: `version`, `saved`, `kind` (`session` / `export` / `saved`; `saved` = SAVE or *Save ROIs now*), `note` (1.1: the note typed with SAVE), `session_id`, `nd2` (name), `nd2_path`, `fingerprint`, `exp` (pixel size, interval, timepoints, width, height, channels, bit depth), `channels`, `t0`, `cells` (per cell: compartment → channel drawn on), `excl` (excluded cells per compartment), `rules`, `follow`, `bg_auto`, `bg_kind` (V2.5: `auto` / `click` / `hand`), `boundaries` (V2.5: `{cell index (0-based, text): [[[x, y], ...], ...]}`), `prefix`, `baseline`, `drift`, `track_params`, `graph_style`, `based_on` (the earlier run loaded, if any), `content_key` (V2.5, section 7). |
 | `track_json` | JSON: tracked compartments, redrawn fractions, `rules`, `params` (every tracking parameter), `gate` (IF signal-to-noise per cell), `background` (V2.5: the region's size, the fraction covered by measured ROIs per timepoint and the fluctuation check per channel), channel names per compartment. |
 | `trk_<c>_bbox` (T, N, 4), `trk_<c>_shape` (T, N, 2), `trk_<c>_off` (T, N, 2), `trk_<c>_hasout` (T, N), `trk_<c>_bits` | The tracked ROI of every cell at every timepoint (masks and outlines bit-packed one after another; `off` = their offsets). |
 | `trk_<c>_m_mean` (T, C, N), `_background` (T, C), `_background_sd` (T, C), `_area_px` (T, N), `_n_saturated` (T, C, N), `_quality` (T, N); V2.5: `_sum` (T, C, N), `_background_sum` (T, C), `_background_npx` (T) | All measurements. |
@@ -1116,7 +1273,7 @@ Every save - an export, *Save graph...*, a Compare / average save, a batch analy
 
 ### 9.12 Settings and run index
 
-`settings.json` holds the last-used settings (all fields of `config.Settings`). `compare_colours.json` (V2.5, same folder) holds `{"names": {name in lower case: "#RRGGBB"}}` - the colours chosen in the *Compare / average runs* window for unknown cell lines, groups and runs. `compare_window.json` (V2.5, same folder) holds `{"cell_lines": {run key: cell line}, "table": {"order", "sort", "widths"}}` - the cell line chosen in that window per `.nd2` (run key = its content fingerprint, else the run file's normalised path; `Unknown` = no cell line on purpose) and the list's column order, sort and widths (by column title); V2.6 adds `"groups": {"path:<run file>" or "fp:<.nd2 fingerprint>": group}`, `"labels": {"path:<run file>": name in the graph}` (only names you changed), `"view": {"ticked", "mode", "comp", "quantity", "graph", "kinetics"}` and `"sort_v25b"` (the list was switched once to the newest-first *Version* sort). `run_history.json` maps each `.nd2` fingerprint to its name, size, last 10 paths and up to 100 runs (ROI / session file paths with their summary); at most 2000 `.nd2` files are remembered; runs whose file no longer exists are pruned; a damaged index is set aside as `run_history.corrupt.json` and a new one started. An index that exists but cannot be read at that moment (locked by another program, no permission) is never replaced. Two PeterPiper windows or programs recording runs at the same time take turns (a short-lived `run_history.lock`), and each re-reads the index just before writing, so neither loses the other's runs.
+`settings.json` holds the last-used settings (all fields of `config.Settings`). `compare_colours.json` (V2.5, same folder) holds `{"names": {name in lower case: "#RRGGBB"}}` - the colours chosen in the *Compare / average runs* window for unknown cell lines, groups and runs. `compare_window.json` (V2.5, same folder) holds `{"cell_lines": {run key: cell line}, "table": {"order", "sort", "widths"}}` - the cell line chosen in that window per `.nd2` (run key = its content fingerprint, else the run file's normalised path; `Unknown` = no cell line on purpose) and the list's column order, sort and widths (by column title); V2.6 adds `"groups": {"path:<run file>" or "fp:<.nd2 fingerprint>": group}`, `"labels": {"path:<run file>": name in the graph}` (only names you changed), `"view": {"ticked", "mode", "comp", "quantity", "graph", "kinetics"}` and `"sort_v25b"` (the list was switched once to the newest-first *Version* sort). 1.1 adds small per-user files in the same folder, each one JSON object written in one step (`peterpiper/userprefs.py`): `storage.json` (`results_root`, `backup_root`), `queue.json` (`items`: `nd2`, `status`), `smartselect.json` (`bins`: name → channels, created; `movies`: `nd2`, `run`, `n_hand`, `n_cells`, `channels`, `bin`, `reviewed`, `saved`), `charlotte.json` (the game's collection), `achievements.json` (hidden extras found, with dates), `sync.json` (the keep-in-step folder and per-file checksums) and, only with a password, `password.json` (`algo` = `pbkdf2_sha256`, `n` = 200000, `salt`, `hash`, `set`). `run_history.json` maps each `.nd2` fingerprint to its name, size, last 10 paths and up to 100 runs (ROI / session file paths with their summary); at most 2000 `.nd2` files are remembered; runs whose file no longer exists are pruned; a damaged index is set aside as `run_history.corrupt.json` and a new one started. An index that exists but cannot be read at that moment (locked by another program, no permission) is never replaced. Two PeterPiper windows or programs recording runs at the same time take turns (a short-lived `run_history.lock`), and each re-reads the index just before writing, so neither loses the other's runs.
 
 ## 10. Reproducibility
 
@@ -1124,8 +1281,8 @@ What is recorded, and where:
 
 | Recorded | Where |
 |---|---|
-| PeterPiper version (`1.0.3`), Python version, operating system, and the version of every library that touches the numbers | Methods sheet, methods text (Software paragraph); ROI / session files (`version`) |
-| Exact installed package versions | `%USERPROFILE%\.PeterPiperV1.0\venv\installed_versions.txt` (or the reused install's, section 3.2) |
+| PeterPiper version (`1.1.0`), Python version, operating system, and the version of every library that touches the numbers | Methods sheet, methods text (Software paragraph); ROI / session files (`version`) |
+| Exact installed package versions | `%USERPROFILE%\.PeterPiperV1.1\venv\installed_versions.txt` (or the reused install's, section 3.2) |
 | The `.nd2` file: name, full path, size, modification date, **quick fingerprint** (SHA-1 of the file size + the first and last 4 MiB; the whole file if ≤ 8 MiB) | Methods sheet, ROI / session files, Prism notes (short form) |
 | Pixel size, frame interval, timepoints, image size, channels, bit depth, objective | Settings and Methods sheets, methods text, ROI files |
 | Tracking rules (with channel names) and every tracking parameter, including the frozen WITH / AND / IF normalisation | Settings and Methods sheets, methods text, ROI files (`rules`, `track_params`, `track_json`) |
@@ -1135,6 +1292,8 @@ What is recorded, and where:
 | Background region (automatic, clicked square or freehand), its area, the method (every pixel used), the fluctuation check and the timepoints at which the background jumped | ROI files; Settings and Methods sheets, methods text; Area_px sheet (pixels used) |
 | Replicate averages: which dishes in which group, each dish's mean and n, the alignment | Compare / average outputs (per-dish table, Methods sheet of the `.xlsx`, `.prism` notes) |
 | Baseline, drift window, graph look | Settings sheet, ROI files |
+| A trained auto-detect or Smart auto-select used for the nuclei: its name (for Smart auto-select: bin, n hand-picked movies, ROIs), rule and held-out score | ROI / session files (the detector), Methods sheet and methods text |
+| Which saved version a run is: SAVE / autosave / export, and the note typed with SAVE (1.1) | ROI / session files (`kind`, `note`); Compare's *Save* column |
 
 To reproduce or audit an analysis:
 
@@ -1151,15 +1310,16 @@ Every export can include `<name>_methods.txt` (and every workbook has the same t
 
 ### 11.2 Template paragraph
 
-Adapt this; replace every `[...]`. Values shown are PeterPiperV1.0 defaults - use the values from your Methods sheet.
+Adapt this; replace every `[...]`. Values shown are PeterPiperV1.1 defaults - use the values from your Methods sheet.
 
-> **Image analysis.** Time-lapse images were analysed with PeterPiper [1.0.3] [ref PeterPiper] directly from the Nikon NIS-Elements .nd2 files (read with the nd2 package [ref]), using the raw pixel values [and maximum-intensity projections of the Z stacks]. [Nuclei / Whole cells / Cytoplasm / Mitochondria] were outlined on [channel] on timepoint [1] by clicking on each cell, the outline being computed from the image around the click [nuclei: the connected region above the local background plus 35% of the difference to the nuclear interior] [and reviewed or corrected by hand]; [cells were proposed automatically and reviewed]. [Tracking rule(s), e.g. "Whole cells were followed on mRuby; within each outline, only pixels where mRuby and GFP, each scaled between its background and bright level measured on the drawn timepoint, were jointly above the outline's edge level were measured" / "only cells with a GFP signal-to-noise ratio of at least 5 on the drawn timepoint were analysed".] Each cell was followed through all timepoints: its displacement between consecutive timepoints was measured by sub-pixel phase cross-correlation [ref scikit-image; ref Guizar-Sicairos] (upsampling factor 10, at most [3] µm), and every ROI was redrawn at every timepoint from that timepoint's pixels at the ROI's own relative edge level, with neighbouring cells kept apart (no pixel shared between cells) [and user-drawn boundary lines between touching cells never crossed], and the ROI area constrained to 0.67-1.5 times the previous timepoint's area and strictly to within ±[25]% of the drawn pixel count (larger outlines trimmed to their brightest connected pixels, smaller ones grown by their brightest neighbouring pixels) [or: and the ROI given exactly the drawn pixel count at every timepoint]; where no acceptable outline was found ([x]% of ROI-timepoints), the previous outline was moved with the cell. At every timepoint the mean intensity of every channel was measured in every ROI from the raw pixels (sum of the pixel values divided by the number of pixels). The background was measured at every timepoint in [a 150 µm square region placed automatically away from the measured cells / a region drawn by hand], which could contain non-transfected cells so that their autofluorescence was included in the background; at every timepoint the mean of all the region's pixels (the sum of the raw values divided by their number) was subtracted from every ROI of the same channel and timepoint. The background trace of each channel was checked for jumps (more than 5 robust SD of the jumps and more than 5% of the background level away from its running median over 5 timepoints) and for drift (running median changing by more than 20%); this check did not change any value [and no jumps were found / and the region was redrawn where it flagged a passing bright cell]. Ratios ([A/B]) of background-subtracted intensities were calculated, and intensities (F) and ratios (R) were normalised to timepoint [1] (F/F0, R/R0; time 0). Cells were included after visual inspection of the tracked outlines [and the automated quality-control notes]. For each dish, the mean of its included cells was calculated at every timepoint; data are shown as the mean ± SEM of the dish means (n = [N] dishes, SD with n - 1, SEM = SD/√n; [n] cells in total), using only frame times common to all dishes, without interpolation [state tests]. Analyses used Python [3.11.9] [ref] with NumPy [2.4.6] [ref], SciPy [1.17.1] [ref], scikit-image [0.26.0] [ref], nd2 [0.12.0] [ref], matplotlib [3.11.2] [ref], pyqtgraph [0.14.0] [ref], PySide6 [6.12.0] [ref] and openpyxl [3.1.5] [ref]; graphs were made in GraphPad Prism [version] [ref].
+> **Image analysis.** Time-lapse images were analysed with PeterPiper [1.1.0] [ref PeterPiper] directly from the Nikon NIS-Elements .nd2 files (read with the nd2 package [ref]), using the raw pixel values [and maximum-intensity projections of the Z stacks]. [Nuclei / Whole cells / Cytoplasm / Mitochondria] were outlined on [channel] on timepoint [1] by clicking on each cell, the outline being computed from the image around the click [nuclei: the connected region above the local background plus 35% of the difference to the nuclear interior] [and reviewed or corrected by hand]; [cells were proposed automatically and reviewed] [or, with Smart auto-select: nuclei were proposed by a user-specific detector learned from [n] movies of the same experiment type in which cells had been selected by hand ([N] ROIs; held-out mean F1 [x], each movie scored by the rule learned from the others) and reviewed by hand]. [Tracking rule(s), e.g. "Whole cells were followed on mRuby; within each outline, only pixels where mRuby and GFP, each scaled between its background and bright level measured on the drawn timepoint, were jointly above the outline's edge level were measured" / "only cells with a GFP signal-to-noise ratio of at least 5 on the drawn timepoint were analysed".] Each cell was followed through all timepoints: its displacement between consecutive timepoints was measured by sub-pixel phase cross-correlation [ref scikit-image; ref Guizar-Sicairos] (upsampling factor 10, at most [3] µm), and every ROI was redrawn at every timepoint from that timepoint's pixels at the ROI's own relative edge level, with neighbouring cells kept apart (no pixel shared between cells) [and user-drawn boundary lines between touching cells never crossed], and the ROI area constrained to 0.67-1.5 times the previous timepoint's area and strictly to within ±[25]% of the drawn pixel count (larger outlines trimmed to their brightest connected pixels, smaller ones grown by their brightest neighbouring pixels) [or: and the ROI given exactly the drawn pixel count at every timepoint]; where no acceptable outline was found ([x]% of ROI-timepoints), the previous outline was moved with the cell. At every timepoint the mean intensity of every channel was measured in every ROI from the raw pixels (sum of the pixel values divided by the number of pixels). The background was measured at every timepoint in [a 150 µm square region placed automatically away from the measured cells / a region drawn by hand], which could contain non-transfected cells so that their autofluorescence was included in the background; at every timepoint the mean of all the region's pixels (the sum of the raw values divided by their number) was subtracted from every ROI of the same channel and timepoint. The background trace of each channel was checked for jumps (more than 5 robust SD of the jumps and more than 5% of the background level away from its running median over 5 timepoints) and for drift (running median changing by more than 20%); this check did not change any value [and no jumps were found / and the region was redrawn where it flagged a passing bright cell]. Ratios ([A/B]) of background-subtracted intensities were calculated, and intensities (F) and ratios (R) were normalised to timepoint [1] (F/F0, R/R0; time 0). Cells were included after visual inspection of the tracked outlines [and the automated quality-control notes]. For each dish, the mean of its included cells was calculated at every timepoint; data are shown as the mean ± SEM of the dish means (n = [N] dishes, SD with n - 1, SEM = SD/√n; [n] cells in total), using only frame times common to all dishes, without interpolation [state tests]. Analyses used Python [3.11.9] [ref] with NumPy [2.4.6] [ref], SciPy [1.17.1] [ref], scikit-image [0.26.0] [ref], nd2 [0.12.0] [ref], matplotlib [3.11.2] [ref], pyqtgraph [0.14.0] [ref], PySide6 [6.12.0] [ref] and openpyxl [3.1.5] [ref]; graphs were made in GraphPad Prism [version] [ref].
 
 ### 11.3 What to report
 
 - PeterPiper version; Python and package versions (Methods sheet, or `installed_versions.txt`).
 - Pixel size, frame interval, number of timepoints; Z projection if any; which stage position.
 - For each compartment: the tracking rule, channel(s) used for outlining, and whether ROIs were clicked, auto-detected and reviewed, or drawn by hand.
+- If Smart auto-select (or a trained auto-detect) proposed the cells: the bin (kind of experiment), **n** = the number of hand-picked movies it learned from and the number of ROIs in them, its **held-out F1** (each movie scored by the rule learned from the others; in the methods text), and that the proposals were reviewed - all written in the methods text of each run (section 8.13). The same person should have hand-picked the training movies and the analysed ones, or say who did.
 - The size guard (`size_tol`, default ±25%, a hard limit since V2.5; 0% = exactly the drawn pixel count), the largest movement (`max_move_um`, 3 µm), and - if used - `gate_snr` (IF, 5), `overlap_k` (AND, 3) and `mito_k` (mitochondria, 3).
 - Whether tracker boundary lines were drawn, and for how many cells.
 - The fraction of ROI-timepoints redrawn (reported after tracking and in the methods text).
@@ -1193,11 +1353,18 @@ Methods implemented by these libraries and used by PeterPiper:
 
 The generated methods text cites references 1-9, 11-13 in the order they first appear (it uses the Python Software Foundation and Dask Development Team forms).
 
+Colour and accessibility checks of the user interface (1.1, section 6.18; they do not concern any measurement):
+
+16. **Colour-blind-safe hues** - Okabe, M. & Ito, K. Color Universal Design (CUD): how to make figures and presentations that are friendly to colorblind people (2008). https://jfly.uni-koeln.de/color/
+17. **Colour-vision-deficiency simulation** - Machado, G.M., Oliveira, M.M. & Fernandes, L.A.F. A physiologically-based model for simulation of color vision deficiency. *IEEE Transactions on Visualization and Computer Graphics* 15(6), 1291-1298 (2009). https://doi.org/10.1109/TVCG.2009.113
+18. **CIEDE2000 colour difference** - Sharma, G., Wu, W. & Dalal, E.N. The CIEDE2000 color-difference formula: implementation notes, supplementary test data, and mathematical observations. *Color Research & Application* 30(1), 21-30 (2005). https://doi.org/10.1002/col.20070
+19. **WCAG 2 contrast** - World Wide Web Consortium (W3C). Web Content Accessibility Guidelines (WCAG) 2.1 (2018). https://www.w3.org/TR/WCAG21/
+
 ### 11.5 How to cite PeterPiper
 
-> DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 1.0.3 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper https://doi.org/10.5281/zenodo.24120837.
+> DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 1.1.0 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper https://doi.org/10.5281/zenodo.24120837.
 
-`CITATION.cff` in the repository holds the same (GitHub shows it as *Cite this repository*). Name the version you used (`PeterPiperV1.0`, shown in the window title, the Settings sheet and every methods text) and keep the exported methods text and provenance with your data.
+`CITATION.cff` in the repository holds the same (GitHub shows it as *Cite this repository*). Name the version you used (`1.1.0`; the program `PeterPiperV1.1`, shown in the window title, the Settings sheet and every methods text) and keep the exported methods text and provenance with your data.
 
 ## 12. Validation
 
@@ -1225,6 +1392,8 @@ The following automated checks were run for V2.3 (developer tests, not shipped i
 
 Not covered by automated tests: Excel and LibreOffice were not used to recalculate the workbooks (formulas were checked structurally); `.pzfx` files were not opened in Prism (their tables are identical to V2.2's); Prism 10 was not tested; the GUI was tested offscreen, not in an on-screen session on every Windows version.
 
+**PeterPiper 1.1.** Every developer test was run on the 1.1 code (15 November 2026, with the lab's movies), all passing. **New in 1.1** (688 checks): profiles, merge, keep-in-step and lab folder (`test_v11_profiles.py`) 74/74; storage & cloud, incl. a real Google Drive for desktop folder (`test_v11_cloud.py`) 106/106; colours, themes and accessibility - every theme's WCAG contrast, the cell palette's contrast and colour-vision-deficiency distances, cell colours identical in every theme (`test_v11_looks.py`) 99/99; start screen, movie queue and the hand-over between windows (`test_v11_start.py`) 81/81; analysis window - step pages, SAVE with a note, queue, events, Smart auto-select button, no scroll bars at 1366 x 768 and 1280 x 800 in both basic themes (`test_v11_mainwin.py`) 143/143; Compare - Open in analysis, output files, Save column (`test_v11_compare.py`) 46/46; Charlotte's Web - rarity rule (exactly 10 of 30 webs Rare/Epic), uniqueness of 200 webs, rendering time, the batch tray (`test_v11_charlotte.py`) 107/107; Check for updates against a stand-in for GitHub, never the network (`test_v11_update.py`) 32/32. **Earlier suites, unchanged results**: `test_peterpiper.py` 39/39; `test_v30.py` 80/80; `test_v29.py` 107/107; `test_v28.py` 54/54; `test_v27.py` 35/35 and `test_v27_batch.py` 17/17; kinetics 55/55; Compare runs 43/43; replicate averaging and the compare window 77/77; the V2.5 tracking features 51/51 with the real U2OS movie and the main-window features 25/25; provenance 47/47; tracking rules 37/37 and 33/33; GUI tracking rules 84/84; ROI / session files and run index 59/59; session memory 57/57; trace panel and graph look 63/63; graph statistics 160/160 and on real measurements 9/9; Prism look into `.prism` 52/52 and the Prism style field matrix with 0 failures; the V2.2 click-workflow regression 31/31; launcher 15/15. Tests changed on purpose: the analysis window now shows one step page at a time, so `test_v29.py` part D checks 'one step page at a time' instead of 'steps 1-2 open, 3-5 folded', and `test_gui_rules.py` opens the Track page before checking a tracking setting; the 1.1 suites written before an optional module existed start as if it were missing. The last change (Check for updates) was checked again with the start screen, analysis window, update and core suites. The analysis methods and every number are unchanged: 1.1 uses the same measurement, tracking, background, statistics and export code as 1.0.3, and every earlier test suite passes. Not yet checked: a real Mac screen.
+
 **PeterPiper 1.0.3.** `test_peterpiper.py` part F (12 checks, on Windows; the Mac's portable tests run in the release build) uses a real folder that cannot be made: the reason is said in words (read-only drive, with the NTFS note for a Mac drive under `/Volumes`; no permission), the write test leaves nothing behind, Start with such a folder asks, *Cancel* keeps the start window and *Save the results there* uses and makes `PeterPiper results/OUTPUT_<movie>/<user>`, a writable folder is not asked about, the batch log moves there and earlier runs saved there are looked for. The other suites were run again on 12 November 2026 without the lab's movies (those tests say *SKIPPED - lab data only*; the V2.2 regression, the batch test on a real movie and provenance's real-data part need them and were not run), all passing: `test_v29.py` 107/107, `test_v30.py` 75/75, `test_v28.py` 54/54, `test_v27.py` 35/35, kinetics 55/55, replicate averaging and the compare window 77/77, the V2.5 tracking features 46/46, tracking rules 37/37, graph statistics 160/160, provenance 39/39, the Prism style field matrix with 0 failures, launcher 15/15, and the self-test 10/10. A batch run of the self-test's synthetic movie, placed where its `OUTPUT_` folder cannot be made, found and tracked all 16 nuclei and exported 14 files into `PeterPiper results/OUTPUT_<movie>`, its log saying why.
 
 **PeterPiper 1.0.2 (the Mac app).** On GitHub's Mac machines (macOS 15, one Apple-chip, one Intel; Python 3.11.9 and the exact tested packages), the developer tests that do not need the lab's movies, GraphPad Prism for Windows or PD4nav's history all pass: `test_peterpiper.py` 24/24 (its real-console check is Windows only), `test_v29.py` 99/99, `test_v30.py` 75/75, tracking rules 37/37, graph statistics 153/153, kinetics 49/49, replicate averaging 62/62, `test_v28.py` 53/53 and `test_v27.py` 31/31; the self-test passes 10/10 from the code and **10/10 inside each finished PeterPiper.app** (every module, the complete `.nd2` reader, the logo; AUTO-DETECT finds the 16 synthetic nuclei, GFP F/F0 = 1.99 against a true 2.00, every export file type written and the workbook re-opened). The packaged Windows build passes the same self-test 10/10. Not yet checked: the Mac app on a real Mac with a screen, and a real `.nd2` opened in a packaged app.
@@ -1247,7 +1416,7 @@ Not covered by automated tests: Excel and LibreOffice were not used to recalcula
 - **Movement model**: one rigid translation per cell per timepoint (integer pixels, sub-pixel remainder carried), measured around the lead ROI, at most `max_move_um` (3 µm) per timepoint; faster cells, rotation and cells crossing each other may need re-drawing. Cell division, death or cells leaving the field are not modelled.
 - **Prism style.** The live look is written into the `.prism` files, but a few looks Prism cannot draw get the closest Prism look (section 9.4, brown note); a style file of your own that was not made from a PeterPiper `.prism` keeps its own look. Graph-look settings you changed in an earlier version are kept; those still at the old defaults take the template values once.
 - **Prism 10 untested**: `.prism` files were verified with Prism 11 only; Prism 9 or older cannot open `.prism` files - use `.pzfx`.
-- **Windows only**; 64-bit Python 3.11 - 3.14 for the exact tested packages (3.10 with compatible versions).
+- **Windows 10 / 11 and macOS 14+**; on Windows, 64-bit Python 3.11 - 3.14 for the exact tested packages (3.10 with compatible versions).
 - **Long paths.** Exports handle paths over 260 characters, but some other Windows programs cannot open files in very deep folders - keep the data folder reasonably short. The install folder must be short (≤ 85 characters) unless Windows long paths are turned on.
 - **Some parameters are not in the window**: `mito_k` and the QC thresholds - edit `settings.json` with PeterPiper closed (the largest movement and the IF / AND thresholds are in step 3 since V2.4). The values used are always recorded in the exports.
 - **Nucleus click fallback**: where no nucleus is found under a click, a circle of typical nucleus size is placed - check it.
@@ -1255,22 +1424,28 @@ Not covered by automated tests: Excel and LibreOffice were not used to recalcula
 - **AUTO-DETECT** is conservative and tuned on the lab's images; it may propose nothing on unusual images - click instead. Its brightness slider ranks on the timepoint shown; if you drop the dimmest cells, say so in the methods (it is an inclusion criterion).
 - **Tracking made before V2.5** keeps its original background values when loaded; only re-tracking gives the V2.5 background and the sums.
 - **Tested offscreen**: the GUI tests ran without a visible screen; wording and layout were reviewed on a real screen less systematically.
+- **Not yet tested on a real Mac screen** (1.1): the Mac app is built and self-tested on GitHub's Mac machines, but the 1.1 windows have not been checked on a Mac with a screen.
+- **No scroll bars only at the default text size** (1.1): the start screen, the analysis window and the Compare window are laid out to fit 1366 x 768 without scroll bars at the default text size; larger text may need scrolling.
+- **Smart auto-select learns nucleus selection** (1.1): it proposes nuclei; other compartments follow from your tracking rules. It reproduces the selections it learned from - consistent hand-picking makes a consistent rule - and its held-out F1 is the expected agreement on new movies of the same kind, not a guarantee. Always review its proposals.
+- **Cloud folders are found by their default locations** (1.1): *Storage & cloud* recognises the services' default folders (and, on Windows, read-only registry entries); a folder in an unusual place is not listed, but can be chosen with *Other folder...*.
+- **Keeping profiles in step relies on roughly correct clocks** (1.1): where both copies changed the same single value, the newer change wins, judged by file times and recorded change times on each computer.
+- **Union merging can bring back a deleted value** (1.1): merged and synced profiles are united, so a colour, setting or list entry deliberately deleted on one computer can come back from another copy that still has it.
 
 ## 14. Troubleshooting
 
-**Messages from `PeterPiperV1.0.bat`**
+**Messages from `PeterPiperV1.1.bat`**
 
 | Message | What to do |
 |---|---|
-| "PeterPiperV1.0 cannot run from inside the zip file." | Close the window, right-click the zip > *Extract All...*, open the extracted folder and double-click `PeterPiperV1.0.bat`. Extract somewhere simple like `D:\PeterPiperV1.0` (not OneDrive, not a network drive). |
+| "PeterPiperV1.1 cannot run from inside the zip file." | Close the window, right-click the zip > *Extract All...*, open the extracted folder and double-click `PeterPiperV1.1.bat`. Extract somewhere simple like `D:\PeterPiperV1.1` (not OneDrive, not a network drive). |
 | "Python is not installed on this computer." | Install 64-bit Python 3.13 (or 3.12 / 3.11) from https://www.python.org/downloads/windows/ - tick "Add python.exe to PATH" on the first screen - then double-click the `.bat` again. |
-| "This computer's Python cannot run PeterPiperV1.0: Python 3.x" ... "needs 64-bit Python 3.10 - 3.14" | The Python found is too old, too new or 32-bit. Install 64-bit Python 3.13 as above. |
+| "This computer's Python cannot run PeterPiperV1.1: Python 3.x" ... "needs 64-bit Python 3.10 - 3.14" | The Python found is too old, too new or 32-bit. Install 64-bit Python 3.13 as above. |
 | "The install folder's path is too long for Windows (over 85 characters)" | Set `PETERPIPER_HOME` to a short folder (e.g. `C:\PeterPiper`), or ask IT to turn on Windows long paths, then try again. |
-| "Could not set up the private Python" | Usually the folder is on OneDrive or a network drive: move the PeterPiperV1.0 folder to a local drive (e.g. `D:\PeterPiperV1.0`). If antivirus showed an alert, check it with IT first. |
+| "Could not set up the private Python" | Usually the folder is on OneDrive or a network drive: move the PeterPiperV1.1 folder to a local drive (e.g. `D:\PeterPiperV1.1`). If antivirus showed an alert, check it with IT first. |
 | "The exact tested versions could not be installed on this computer ... Trying the compatible versions instead" | Nothing to do; the program will work. For published work, note the versions in `installed_versions.txt` (or install on a computer with Python 3.11 - 3.14). |
 | "NOTE: this computer got COMPATIBLE package versions" | As above - report `installed_versions.txt` for published work. |
-| "Downloading the packages failed" | Usually no internet or a firewall blocking pypi.org. Fix the connection and double-click again (it carries on). If it keeps failing, delete the folder it names (`...\.PeterPiperV1.0\venv`) and try again. |
-| "PeterPiperV1.0 closed unexpectedly. Opening the error report ..." | Notepad opens `error_<number>.txt`: send it to whoever maintains PeterPiper. |
+| "Downloading the packages failed" | Usually no internet or a firewall blocking pypi.org. Fix the connection and double-click again (it carries on). If it keeps failing, delete the folder it names (`...\.PeterPiperV1.1\venv`) and try again. |
+| "PeterPiperV1.1 closed unexpectedly. Opening the error report ..." | Notepad opens `error_<number>.txt`: send it to whoever maintains PeterPiper. |
 | The black window flashes and closes / nothing happens | Run the `.bat` again and read the message; check that the folder is extracted and local. |
 
 **In the program**
@@ -1297,17 +1472,40 @@ Not covered by automated tests: Excel and LibreOffice were not used to recalcula
 | "No tracking to show" when loading | The file has no usable tracking (the reason is shown); answer Yes to "Track now?". |
 | "Different image size" | The ROI file belongs to another movie. |
 | "The results cannot be saved there" (start window); *Read-only file system* | The movie's drive cannot be written: on a Mac, usually an external drive formatted for Windows (NTFS) - macOS reads it but cannot write to it (Finder > the drive > *Get Info* says *You can only read*). Click *Save the results there* (your `PeterPiper results` folder) or *Choose another folder...*; the movie can stay on the drive. A full drive or a folder without permission gives the same message. |
-| "Could not save your work automatically" | Usually the results folder is read-only, full or on a disconnected drive. Use *File > Save ROIs now* to another place, or export. |
+| "Could not save your work automatically" | Usually the results folder is read-only, full or on a disconnected drive. Reconnect or free the drive (or fix its permission) and press SAVE again - keep the window open meanwhile, so nothing is lost. For later movies choose a writable results folder (start screen *Results folder > Change...*, or *Storage & cloud*). |
 | Raw TIFFs look black | Windows Photos shows raw 16-bit images almost black; open them in Fiji / ImageJ, or use the viewing copies. |
 | Excel shows no values in the derived sheets | Open the file in Excel or LibreOffice (not a CSV reader); in Excel's Protected View click *Enable Editing* so the formulas calculate. |
 | Antivirus alert | Stop and check it with IT; do not allowlist the folder without checking. |
 | OneDrive folders | Do not install or run PeterPiper from OneDrive; for data, make sure files are downloaded locally ("Always keep on this device"), because reading a cloud placeholder is slow or fails. |
-| Text too small / too big | *View > Larger text* (Ctrl +), *Smaller text* (Ctrl -), *Normal text size* (Ctrl 0); in the start window `A-` / `A+`. Remembered. |
-| The side panel is cut off | It scrolls; widen the window or make the text smaller. |
+| Text too small / too big | *View > Larger text* (Ctrl +), *Smaller text* (Ctrl -), *Normal text size* (Ctrl 0); on the start screen `A-` / `A+`. Remembered. |
+| The side panel is cut off | 1.1: the analysis window shows one step at a time and fits 1366 x 768 at the default text size; make the text smaller (Ctrl 0 for the default) or the window larger. |
+| *Smart auto-select (locked)* | It unlocks after you draw the cells by hand (at least one ROI added by hand) on 3 movies of a movie queue and press SAVE on each (section 6.15). Hover over the button for the count so far. |
+| *Smart auto-select (no bin for these channels)* / "No bin has the channels of this movie yet" | Open your bins (the button, or step 2 *More > Smart auto-select: your bins...*) and put hand-drawn movies with these channel names into a bin (*New bin...*). A bin needs at least 2 hand-picked movies whose run file and `.nd2` are on this computer. |
+| "This movie is stored only online ... it will be downloaded first" | The `.nd2` is a cloud placeholder (OneDrive, Google Drive, iCloud ...). Let it download (it can take a while for large movies), or make it available offline in the service's app first ("Always keep on this device"). |
+| The lab folder is read-only | This computer can read the lab folder but not write to it (permissions, or the cloud app is not syncing): the lab list is used as it is and changes are not saved there. Ask the lab's admin or IT for write access. |
+| Forgotten password | An admin can reset it (*Lab settings...* or the user list); on a single computer, deleting `password.json` in that user's folder (`PeterPiper data\users\<name>\`) also removes the password. Nothing else of the profile is affected. |
+| Emoji (✨, 🔒, 🕸) show as empty boxes | The computer has no emoji font; only the symbols are affected. On Windows the *Segoe UI Emoji* font is normally present. |
+| A movie from the queue (or a run list) opens the start screen instead of the analysis window | Its metadata needs a look (no pixel size or the 1.0 µm/px stand-in, no frame interval, uneven gaps, several stage positions, or unusable channel names): the start screen says what; check it and press *Open in the analysis window*. |
+| *Check for updates*: "Could not reach GitHub (no internet, or it is blocked here)" | No internet connection, or a firewall / proxy blocks GitHub. Nothing was changed. Try again later or download the new version from the Releases page. |
+| *Check for updates*: "This is a developer copy" | The program folder is a git checkout: update it with git; *Check for updates* never changes it. |
 
 ## 15. Version history
 
-**PeterPiper 1.0.3** (this version) - **movies on a drive PeterPiper cannot write to**. A drive formatted for Windows (NTFS, e.g. many external hard drives) can be read by a Mac but not written to, so the results folder next to the movie could not be made and *Start* ended in an error (*Read-only file system*). Now: if the movie's drive is read-only, the start window suggests a results folder on this computer at once (`PeterPiper results/OUTPUT_<movie>/<your name>` in your home folder); and before anything starts, PeterPiper checks that the results folder can really be written (on every system - also a full drive or a folder without permission) and, if not, says why in plain words and offers that folder or another one. The movie is only ever read, so it can stay where it is. A batch run puts each such movie's results there (the log says so), and the batch log too; *Compare* saves there instead of the home folder; earlier runs saved there are found when the movie is opened again. The methods and the numbers are unchanged.
+**PeterPiper 1.1.0** (this version) - the methods and the numbers are unchanged (the same measurement code; every earlier test suite passes, section 12). New:
+
+- **A new start screen** (section 6.1): opens maximized, no scroll bars at 1366 x 768; big choices *Analyse movies* (one `.nd2`, or several at once - a movie queue), *Continue your queue (N left)* and *Compare / average saved runs*; a movie card with every earlier check (pixel size, frame interval, uneven gaps, stage position, channel names, results folder with *Open results folder*, analysed before, read-only drives); tabs *Recent analyses* (open a run straight into the analysis window) and *Queue*; a footer with *Saved files*, *Storage & cloud*, *Check for updates*, *More*, text size and theme; the Smart auto-select status line. Movies opened from the queue or a run list skip it only when their metadata is complete.
+- **A redesigned analysis window** (section 6.2): opens maximized; one step page at a time; **SAVE** (with an optional note) and **EXPORT** always at the foot of the panel; a top row with *Another file*, *Open results folder*, *Compare*, *Undo* and, in a queue, *Movie 2 of 5*, *Skip*, *Next movie*; *File > Back up this analysis...*; *Help > Check for updates...*; *Help > Achievements...* once something is found.
+- **SAVE and the movie queue** (section 6.14): SAVE writes a saved ROI file with the tracking (kind `saved`) and your note, shown in Compare as *Saved: <note>*; queued movies are *to do* / *saved* / *exported* / *skipped*, kept per user; *Next movie* asks to SAVE first if needed. The autosave is unchanged.
+- **Smart auto-select** (sections 6.15, 8.13): cell selection learned from your own hand-picked movies, in named bins (one per kind of experiment); n hand-picked movies on the button and, with the ROI count and the held-out score, in the methods text of every run that used it. Unlocked by hand-drawing and SAVEing 3 movies of a movie queue. Plain and trained AUTO-DETECT are unchanged.
+- **Compare window** (section 6.10): eight buttons instead of twenty (menus *Add runs*, *Groups*, *Output files*, *List*, *More*), opens maximized, a clearer list with the new columns *Save* and *User*, **Open in analysis** (finds the run's movie and checks its fingerprint), *Open results folder* and *This run's output files*.
+- **Profiles and lab** (sections 6.0, 6.16): a redesigned *Who is using PeterPiper?*; **Merge profiles** (two spellings, or a profile from another computer; nothing deleted, the merged name becomes an alias); **Keep in step** through your own cloud or network folder; a **lab folder** with one lab user list, aliases, profiles and the lab's data folders for every linked computer; roles **User / Admin / Developer**; **optional passwords** (salted PBKDF2-SHA256 hash only).
+- **Storage & cloud** (section 6.17): results next to each movie or in a folder of your choice, e.g. in OneDrive, Google Drive, Box, Dropbox or iCloud Drive (through the services' own apps - PeterPiper never signs in); **Back up this analysis** without ever overwriting; a warning when a movie is stored only online.
+- **Colours and accessibility** (section 6.18): colour-blind-safe cell colours, the same in every theme, with line styles beyond six cells; a white trace plot in every theme; colour swatches in the cell list; every theme checked against WCAG 2 contrast minimums (the basic themes adjusted slightly); 18 optional colour palettes as a hidden extra.
+- **Check for updates** (section 3.6): on request only - asks GitHub's public release list, then updates changed program files in place (backups kept), unpacks a new version into its own folder, or (Mac) downloads the right `.dmg`; never touches your data. This is the only network use in the program (section 4).
+- **Charlotte's Web** (section 6.19): a small game that rewards hand annotation with a unique web per hand-picked movie; it never touches data, measurements or results. A few further optional hidden extras.
+- Own program folder and launcher `PeterPiperV1.1` / `PeterPiperV1.1.bat` and install folder `%USERPROFILE%\.PeterPiperV1.1` (one install of about 5 minutes per computer; the same package versions as 1.0); users and runs in `PeterPiper data` carry over from 1.0. Mac: `PeterPiper-1.1.0-macOS-AppleChip.dmg` / `-Intel.dmg`.
+
+**PeterPiper 1.0.3** - **movies on a drive PeterPiper cannot write to**. A drive formatted for Windows (NTFS, e.g. many external hard drives) can be read by a Mac but not written to, so the results folder next to the movie could not be made and *Start* ended in an error (*Read-only file system*). Now: if the movie's drive is read-only, the start window suggests a results folder on this computer at once (`PeterPiper results/OUTPUT_<movie>/<your name>` in your home folder); and before anything starts, PeterPiper checks that the results folder can really be written (on every system - also a full drive or a folder without permission) and, if not, says why in plain words and offers that folder or another one. The movie is only ever read, so it can stay where it is. A batch run puts each such movie's results there (the log says so), and the batch log too; *Compare* saves there instead of the home folder; earlier runs saved there are found when the movie is opened again. The methods and the numbers are unchanged.
 
 **PeterPiper 1.0.2** - **PeterPiper for Mac**: a self-contained `PeterPiper.app` for macOS 14 or newer, for Apple-chip and Intel Macs (section 3.7) - drag it into Applications and double-click; it carries its own Python and the tested package versions, so nothing has to be installed. It is the same program as on Windows, built for each release on GitHub's Mac machines, where the developer tests run on macOS and the finished app checks itself. New for both systems: `PeterPiper --selftest` (a whole analysis of a built-in synthetic movie with known answers, and optionally a real `.nd2`), and *Compare* recognises the same `.nd2` whatever the case and slash direction of its saved path on every system (a run saved on Windows can be compared on a Mac). On Windows nothing else changes (same launcher, same install).
 
@@ -1438,8 +1636,8 @@ Earlier versions, as far as they matter for opening their files:
 ## 16. File and code map
 
 ```
-PeterPiperV1.0\
-    PeterPiperV1.0.bat             launcher / installer (Windows batch)
+PeterPiperV1.1\
+    PeterPiperV1.1.bat             launcher / installer (Windows batch)
     READ ME.txt                quick start
     README.html, README.md     this manual
     CHANGELOG.md, CITATION.cff, LICENSE, CONTRIBUTING.md
@@ -1456,8 +1654,9 @@ PeterPiperV1.0\
         requirements-compatible.txt   fallback version ranges
         README.md, SECURITY.md
         peterpiper\
-            __init__.py        version (3.0.0), APP_NAME, PROJECT_URL / PROJECT_DOI
-            app.py             start: start window, then the main window; error dialog hook
+            __init__.py        version (1.1.0), APP_NAME, PROJECT_URL / PROJECT_DOI
+            app.py             start: start screen (or a queued / chosen run directly), then the
+                               analysis window; error dialog hook
             config.py          Experiment and Settings (every setting and default); settings.json
             nd2io.py           reading .nd2 (Z max projection, metadata); raw TIFF and viewing-copy export
             manual.py          drawing at a click, AUTO-DETECT, resize / split / add to cell,
@@ -1495,7 +1694,17 @@ PeterPiperV1.0\
             presets.py         saved analysis / plot settings (V2.7)
             outlog.py          the log of every file saved (V2.8)
             users.py           user profiles: own folder (version-free), results, whose
-                               run, rename / remove (V3.0)
+                               run, rename / remove (V3.0); 1.1: merge profiles, aliases,
+                               roles, optional salted password hashes
+            profilesync.py     1.1: keep a profile in step through a folder
+            labshare.py        1.1: the lab folder - lab user list, profiles, data folders
+            userprefs.py       1.1: the small per-user JSON files (storage, queue, ...)
+            batchqueue.py      1.1: the movie queue
+            smartselect.py     1.1: Smart auto-select - bins, unlocking, learning
+            events.py          1.1: in-process events (window -> optional parts)
+            achievements.py    1.1: which optional hidden extras a user has found
+            cloud.py           1.1: cloud / network folders, online-only files, back-ups
+            updater.py         1.1: Check for updates (the only network use, on request)
             syscheck.py        computer check: long-path setting, Python (V2.9)
             templates\PeterPiper_timecourse.prism   the built-in Prism graph template
             templates\PeterPiper_look.json          the template's look per data set
@@ -1505,16 +1714,25 @@ PeterPiperV1.0\
             history.py         fingerprints, earlier-runs search, run index, dedupe_runs
             safety.py          safe file names, never-overwrite and atomic own-file writes
             gui\
-                setup.py       start window
-                theme.py       Midnight / Daylight themes: style sheet, colours, icons (V2.9)
+                setup.py       start screen (1.1)
+                theme.py       themes and their WCAG contrast check (V2.9, 1.1)
+                colourvision.py 1.1: contrast, colour-vision simulation, CIEDE2000
+                storagedlg.py  1.1: 'Storage & cloud' and 'Back up this analysis'
+                updatedlg.py   1.1: 'Check for updates'
+                charlotte.py, charlotte_draw.py, charlotte_themes.py, charlotte_words.py
+                               1.1: Charlotte's Web (never touches data)
+                eggsdlg.py     1.1: Help > Achievements
                 traindlg.py    'Train auto-detect' window (V3.0)
-                userdlg.py     'Who is using PeterPiper?' (V2.9)
+                userdlg.py     'Who is using PeterPiper?', merge, keep in step, lab
+                               settings, passwords (V2.9, 1.1)
                 syscheckdlg.py 'Computer check' window (V2.9)
-                clickwin.py    main window: steps 1-5, tools, AUTO-DETECT slider, background
-                               (click / freehand), Tracker boundary, tracking, autosave, help
+                clickwin.py    analysis window: step pages 1-5, tools, AUTO-DETECT slider and
+                               Smart auto-select button, background (click / freehand),
+                               Tracker boundary, tracking, SAVE, the queue row, autosave, help
                 traces.py      trace panel: include / exclude, Check cells / As exported, styles,
                                the brown Prism note, Load look from a Prism file
-                comparewin.py  Compare / average runs window (groups, colours by cell line)
+                comparewin.py  Compare / average runs window (groups, colours by cell line;
+                               1.1: menus, Save / User columns, Open in analysis, Output files)
                 measurerow.py  the plot builder's sentence of dropdowns (V2.7, V2.8)
                 templatedlg.py Prism style templates dialog (V2.7)
                 batchdlg.py    batch analysis of .nd2 files (V2.7)
@@ -1524,8 +1742,8 @@ PeterPiperV1.0\
                 imageview.py   image canvas and brightness bar; freehand (lasso) and
                                polyline drawing; boundary lines and left-out background pixels
                 frames.py      background frame reading and cache (current frame first, V3.0); display copy (V2.9)
-                widgets.py, workers.py   small widgets (fading notes, folding steps);
-                               background jobs
+                widgets.py, workers.py   small widgets (fading notes, step pages, the
+                               cell colours and line styles, 1.1); background jobs
 ```
 
 `app\README.md` has a shorter code map; `app\SECURITY.md` the security notes.

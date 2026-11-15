@@ -1,6 +1,7 @@
 PeterPiper 1.1  -  quick start
 ==============================
-(PeterPiper was called PD4nav up to version 3.0; 1.0 continues PD4nav V3.0.)
+(PeterPiper was called PD4nav up to version 3.0; 1.0 continues PD4nav V3.0;
+1.1 keeps the same methods and numbers, with new windows and tools.)
 Full manual: README.html (double-click it - it opens in your web browser).
 It explains every step, how every number is made, every output file, and
 what to write in a paper.
@@ -20,6 +21,7 @@ ON A MAC (macOS 14 or newer)
 
 START IT (Windows)
   Double-click  "PeterPiperV1.1.bat".  That is the only file you ever open.
+  Users and runs from PeterPiper 1.0 carry over (PeterPiper data).
   Its window shows the PeterPiper logo; the first time, it also puts a
   PeterPiper shortcut with the logo on your Desktop, in the Start menu and in
   this folder - use that from then on (a .bat file cannot have its own icon).
@@ -33,27 +35,39 @@ START IT (Windows)
   "Cannot run from inside the zip"?  Right-click the zip > Extract All... first.
   "Python is missing"?  Install 64-bit Python 3.13 (or 3.12 / 3.11) from
   python.org and tick "Add python.exe to PATH" on the first screen.
-  Windows only (64-bit Windows 10 / 11).
+  The .bat is for 64-bit Windows 10 / 11 (Mac: see above).
 
-WHO IS USING IT?  (V2.9)
-  Pick your name (Enter), or type a new one and press Add user (no password).
+WHO IS USING IT?  (V2.9; 1.1)
+  Pick your name (Enter), or type a new one and press Add user. A password is
+  optional (More > Password...; off by default; only a salted hash is kept).
   Your settings, runs, groups and saved files are kept apart from everyone
   else's, in %USERPROFILE%\PeterPiper data (every PeterPiper version finds them);
   results go into OUTPUT_<movie>\<your name>. You only see your own analyses.
   PeterPiper starts empty: nothing is taken over from PD4nav (its data stays
   where it is; Import a profile... brings a PD4nav profile in). Rename... /
   Remove... (nothing is deleted). "Don't ask again" for computers where each
-  person has their own Windows login. Switch user... is in the first window.
+  person has their own Windows login. Switch user is on the start screen.
+  1.1, in the "Profile & lab" box: MERGE PROFILES (two spellings of one person,
+  or a profile from another computer - nothing is deleted); KEEP IN STEP (your
+  profile kept the same on all your computers through a folder of your own
+  OneDrive / Google Drive / Box / Dropbox / network drive); LAB FOLDER (an
+  admin links every lab computer to one shared folder: one lab user list,
+  everyone's profile, the lab's data folders). Roles: User / Admin / Developer.
 
-FIRST WINDOW
-  Only comparing / averaging runs you saved before? Press
-  "Compare / average runs..." at the top - no image needed.
-  Otherwise pick the .nd2 file, CHECK the pixel size and frame interval
-  (every size and time depends on them), rename the channels if you like, press
-  "Open image". Big files show "Opening... please wait" for a few seconds.
-  If the gaps between timepoints were uneven (e.g. the first frame taken
-  hours before the rest), an amber note under the summary says so (V3.0).
-  "Analysed before" tells you if earlier analyses of this file were found.
+START SCREEN  (1.1)
+  Three big choices:
+    ANALYSE MOVIES        choose one .nd2 - or several at once (Ctrl / Shift +
+                          click): they become your QUEUE, analysed one after
+                          another
+    CONTINUE YOUR QUEUE   the next movie still to do ("N left")
+    COMPARE / AVERAGE SAVED RUNS   runs you saved before - no image needed
+  Then CHECK the pixel size and frame interval (every size and time depends
+  on them), rename the channels if you like, and press "Open in the analysis
+  window". Uneven gaps between timepoints, several stage positions and
+  "Analysed before" are shown here; "Open results folder" opens the results.
+  Right: RECENT ANALYSES (double-click: the movie opens with that run loaded)
+  and QUEUE. Footer: Saved files, Storage & cloud, Check for updates, More
+  (batch, Prism templates, export / import profile), text size, theme.
 
 ANALYSED BEFORE?
   If this .nd2 was analysed before, a list of the earlier analyses appears:
@@ -61,10 +75,11 @@ ANALYSED BEFORE?
   export straight away), or "Start a fresh analysis". File > Earlier analyses
   of this file... shows the list at any time.
 
-MAIN WINDOW  -  the blue box at the top always says what to do next
-  The step bar above it (1 Rules ... 5 Export) shows where you are - click a
-  step to go there. Steps you are not on fold to their title: click the title
-  to open one (View > Fold finished steps turns this off).
+ANALYSIS WINDOW  -  the blue box at the top always says what to do next
+  The step bar above it (1 Rules ... 5 Export) shows where you are; one step
+  is shown at a time - click a step to go there. SAVE and EXPORT are always at
+  the foot of the panel. Top row: Another file, Open results folder, Compare,
+  Undo - and in a queue "Movie 2 of 5", Skip, Next movie.
   1  TRACKING RULES
        One rule per kind of ROI (Nucleus / Whole cell / Cytoplasm / Mitochondria):
          Auto-detect [Nucleus]  using [GFP]
@@ -87,6 +102,11 @@ MAIN WINDOW  -  the blue box at the top always says what to do next
                         brightest found (slide left: the dimmest go first;
                         brightness = mean in the ROI minus background).
                         Undo removes them all. Then fix the rest.
+       SMART AUTO-SELECT (1.1, beside AUTO-DETECT) picks cells the way YOU do,
+                        learned from movies you picked by hand (named bins, one
+                        per kind of experiment; n = hand-picked movies). Unlock
+                        it by drawing the cells by hand on 3 queued movies and
+                        pressing SAVE on each (README section 6.15).
        TRAIN AUTO-DETECT FROM MY RUNS... (V3.0) teaches it the cells YOU pick:
                         tick runs you outlined by hand, see its score and the
                         cells it gets right / misses / adds, answer a short
@@ -155,13 +175,21 @@ MAIN WINDOW  -  the blue box at the top always says what to do next
        .prism you styled in Prism.
   5  EXPORT
        Baseline timepoint = time 0 (earlier timepoints negative), F/F0 = 1.
-       "Choose outputs & export": put what you want on YOUR EXPORT LIST; only
+       "EXPORT...": put what you want on YOUR EXPORT LIST; only
        that is written, into a new folder each time:
          OUTPUT_<file name>\<you>\Export_<date>_<time>\<Compartment>\...
        The workbook and methods text carry the .nd2 name (e.g.
        movie1_nucleus.xlsx); graphs, CSV and Prism graphs inside do not repeat
        it (shorter paths). A "Name for the files" you type goes on every file.
        Long paths off (Help > Computer check...)? Too-long paths are warned.
+
+SAVE AND THE QUEUE  (1.1)
+  SAVE (foot of the panel, Ctrl+S) keeps this version of your work - ROIs,
+  include / exclude, tracking - with an optional short note; Compare shows it
+  as "Saved: <note>". In a queue, "Next movie" opens the next movie still to
+  do (it asks to SAVE first if you changed something); "Skip" passes one.
+  The start screen's Queue tab shows each movie: to do / saved / exported /
+  skipped.
 
 YOUR WORK IS SAVED AUTOMATICALLY
   ROIs, tracking, include / exclude, rules, baseline and graph look are saved
@@ -202,8 +230,8 @@ WHAT CAN BE EXPORTED (per compartment)
                    PowerPoint). For looking only - do not measure them.
 
 COMPARE / AVERAGE RUNS
-  First window (top), File > Compare / average runs..., or the button under
-  the export button. Tick saved runs (ROI / session files WITH tracking).
+  Start screen, the analysis window's top row, or File > Compare / average
+  runs... Tick saved runs (ROI / session files WITH tracking).
   Each run = one DISH. Put the dishes of one condition into one GROUP
   (type a name in the Group column, "Put in group...", or "Group by cell
   line"). Show:
@@ -250,6 +278,9 @@ COMPARE / AVERAGE RUNS
   or any measure. Optional: a second measure on a RIGHT Y axis. A red line
   says when a plot makes no sense. "Save plot settings..." keeps a plot
   for later; "Batch save..." saves several saved plots at once.
+  1.1: buttons Add runs / Groups / Open in analysis / Output files / List;
+  the SAVE column says Saved: <note> / Autosave / Export. OPEN IN ANALYSIS
+  (or double-click a run) opens that run's movie in the analysis window.
 
 PRISM STYLE TEMPLATES (V2.7)  -  File > Prism style templates...
   Open "PeterPiper graph style.prism" in Prism, change the look of graph 1,
@@ -266,6 +297,16 @@ SAVED SETTINGS AND BATCH (V2.7)
   and writes a log. Every file is flagged "automatic - check": open it and
   check it before you use its numbers.
 
+STORAGE & CLOUD  (1.1, start screen)
+  Results next to each movie (default) or in a folder you choose - e.g. in
+  OneDrive, Google Drive, Box, Dropbox or iCloud Drive: their own app does the
+  uploading; PeterPiper never signs in. File > Back up this analysis... copies
+  the results (and the movie, if you like) into a back-up folder - never
+  overwriting anything.
+
+CHARLOTTE'S WEB  (1.1)  the pink button: a small game - every movie you pick
+  by hand grows a web for your collection. It never touches your data.
+
 HOW THE NUMBERS ARE MADE
   ROI value = sum of the raw (full-resolution) pixel values under the ROI /
   number of pixels, for every channel; minus the background of the same
@@ -280,4 +321,7 @@ HOW THE NUMBERS ARE MADE
   (n = dishes). Details: README.html, section 8.
 
 Text too small?  View > Larger text (Ctrl +).   Dark or light?  View > Theme.
-Everything runs on this computer - nothing is uploaded anywhere.
+Everything runs on this computer - nothing is uploaded anywhere. The only
+network use is "Check for updates", and only when you press it: it asks
+GitHub for the newest version (nothing of yours is sent) and, if you choose,
+downloads it. Your profiles, runs and results are never touched by an update.

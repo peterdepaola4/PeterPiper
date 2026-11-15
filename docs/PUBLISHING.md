@@ -60,8 +60,12 @@ This puts the address in Help > About PeterPiper, `CITATION.cff`, the manual's c
 
 1. Build and check the zip: `python build/build_zip.py --out release --unzip release`
    (it says "byte-identical to the repository" when the zip matches the code).
-2. GitHub > **Releases > Draft a new release**: tag `v1.0.0`, title `PeterPiper 1.0`, paste the
-   PeterPiper 1.0 part of `CHANGELOG.md`, attach `release\PeterPiperV1.1.zip`, **Publish**.
+2. GitHub > **Releases > Draft a new release**: tag `v1.1.0`, title `PeterPiper 1.1`, paste the
+   PeterPiper 1.1.0 part of `CHANGELOG.md`, attach `release\PeterPiperV1.1.zip`, **Publish**.
+   The Mac workflow (`.github/workflows/mac-app.yml`) attaches
+   `PeterPiper-1.1.0-macOS-AppleChip.dmg` and `PeterPiper-1.1.0-macOS-Intel.dmg`.
+   *Check for updates* in the program reads this release list (the newest release's tag,
+   notes and these files), so keep the file names in this form.
 3. Users download the zip from the release page, extract it and double-click
    `PeterPiperV1.1.bat` (`READ ME.txt` says the rest).
 
@@ -74,7 +78,7 @@ This puts the address in Help > About PeterPiper, `CITATION.cff`, the manual's c
 
 ## Each new version
 
-1. Copy the folder to `PeterPiperV2.x`, set `__version__` / `APP_NAME` in
+1. Copy the folder to `PeterPiperV1.x`, set `__version__` / `APP_NAME` in
    `app/peterpiper/__init__.py`, rename the `.bat`, update `CITATION.cff` (version, date).
 2. Make the changes; run the tests (`CONTRIBUTING.md`); update the manual's version history
    and validation; `python _work/changelog.py` (or write the CHANGELOG entry by hand).

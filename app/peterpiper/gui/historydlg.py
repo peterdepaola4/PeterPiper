@@ -87,6 +87,8 @@ class PreviousRunsDialog(QDialog):
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setToolTip("Newest first. Double-click a run to load it.")
         first, first_trk = None, None
+        from . import theme as TH                  # 1.1: the theme's colours, not fixed ones
+        c_ok, c_warn = TH.current().ok, TH.current().warn
         for i, r in enumerate(self.runs):
             folder = Path(r.path).parent
             it = QTreeWidgetItem([
@@ -100,9 +102,9 @@ class PreviousRunsDialog(QDialog):
                 if col != 6:
                     it.setToolTip(col, r.label())
             if r.tracked:
-                it.setForeground(4, QBrush(QColor("#2e9e4f")))
+                it.setForeground(4, QBrush(QColor(c_ok)))
             if r.note:
-                it.setForeground(0, QBrush(QColor("#c07000")))
+                it.setForeground(0, QBrush(QColor(c_warn)))
             self.tree.addTopLevelItem(it)
             first = first or it
             if r.tracked and first_trk is None:

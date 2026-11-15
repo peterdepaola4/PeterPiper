@@ -33,6 +33,11 @@ class OutputsDialog(QDialog):
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
         self.resize(1200, 700)
         self.setMinimumSize(640, 360)
+        from PySide6.QtWidgets import QApplication
+        scr = QApplication.primaryScreen()         # 1.1: never taller than the screen
+        if scr is not None:
+            g = scr.availableGeometry()
+            self.resize(min(1200, max(640, g.width() - 40)), min(700, max(360, g.height() - 60)))
         lay = QVBoxLayout(self)
         lay.addWidget(W.wrapped_label(
             "Every save, newest first. Click a save to see its files; double-click a save to "

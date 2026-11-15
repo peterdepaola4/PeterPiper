@@ -27,7 +27,7 @@ import traceback
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
 
-from PySide6.QtCore import QElapsedTimer
+from PySide6.QtCore import QElapsedTimer, Qt
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QListWidget,
                                QMessageBox, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
@@ -192,9 +192,10 @@ def write_log(folder: str, rows: Sequence[dict], settings_name: str) -> str:
 
 
 class BatchDialog(QDialog):
-    def __init__(self, current: Settings, parent=None) -> None:
+    def __init__(self, current: Settings, parent=None, paths: Sequence[str] = ()) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Batch analyse .nd2 files")
+        self.setWindowTitle("Batch analyse .nd2 files (automatic, no clicking)")
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
         self.resize(1000, 640)
         self.current = current
         self.rows: List[dict] = []
@@ -231,6 +232,7 @@ class BatchDialog(QDialog):
         self.table.setHorizontalHeaderLabels(["File", "Status", "Cells included",
                                               "Background note", "Export folder"])
         lay.addWidget(self.table, 1)
+        self._add_paths(paths)                     # 1.1: the queue's movies still to do
 
     def _add_paths(self, paths) -> None:
         have = {self.files.item(i).text() for i in range(self.files.count())}

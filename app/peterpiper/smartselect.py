@@ -9,10 +9,9 @@ detector it uses is written into the run and its Methods like any trained
 auto-detect (name 'Smart auto-select', its rule and its held-out score). Plain
 AUTO-DETECT is unchanged and always available.
 
-How it is unlocked (a reward from the hidden Charlotte's Web game - see
-achievements.py; harmless, it only stores which movies you drew by hand):
-    1. find Charlotte's Web (achievements 'charlotte'), and
-    2. hand-draw cells on 3 or more movies from a movie queue and SAVE each.
+How it is unlocked (it goes with the Charlotte's Web game: every movie you
+draw by hand grows a web; this only stores which movies you drew by hand):
+hand-draw cells on 3 or more movies from a movie queue and SAVE each.
 
 Which movies count: a SAVE (event 'saved') of a movie that is in the movie queue
 and on which at least one cell was added by hand since it was opened. They are
@@ -71,7 +70,7 @@ def _on_saved(nd2=None, path=None, n_cells=0, **_kw) -> None:
     d["movies"] = movies
     d.pop("cache", None)                    # a new movie: learn again next time
     userprefs.save(_TOPIC, d)
-    if len(movies) >= NEEDED and achievements.unlocked("charlotte"):
+    if len(movies) >= NEEDED:
         achievements.unlock("smart_select")
 
 
@@ -92,18 +91,14 @@ def hand_drawn_movies() -> List[dict]:
 
 HOW = ("Smart auto-select picks cells the way you do, learned from your own "
        "hand-drawn movies (plain AUTO-DETECT is always there too).\n\n"
-       "To unlock it:\n"
-       "  1. Find Charlotte's Web - a hidden game. Hint: the PeterPiper logo likes to\n"
-       "     be clicked (20 times in a row), and Charlotte likes to hear her name:\n"
-       "     type 'cha' and hold down the r key for 2 seconds.\n"
-       f"  2. Choose several movies at once on the start screen (a movie queue) and\n"
-       f"     draw the cells BY HAND on {NEEDED} of them, pressing SAVE on each.\n\n"
+       "To unlock it: choose several movies at once on the start screen (a movie\n"
+       f"queue) and draw the cells BY HAND on {NEEDED} of them, pressing SAVE on each.\n"
+       "Each one also grows a web in Charlotte's Web (the pink button).\n\n"
        "It learns only from movies with the same channel names as the one you have open.")
 
 
 def unlocked() -> bool:
-    return (achievements.unlocked("charlotte")
-            and len(hand_drawn_movies()) >= NEEDED)
+    return len(hand_drawn_movies()) >= NEEDED
 
 
 def status() -> dict:
@@ -111,8 +106,6 @@ def status() -> dict:
     if unlocked():
         achievements.unlock("smart_select")
         text = f"{NAME}: ready - learns from your {n} hand-drawn movies"
-    elif not achievements.unlocked("charlotte"):
-        text = f"{NAME}: locked - find Charlotte's Web first"
     else:
         text = f"{NAME}: locked - {min(n, NEEDED)} of {NEEDED} hand-drawn queued movies"
     return {"unlocked": unlocked(), "text": text, "how": HOW, "count": n, "needed": NEEDED}

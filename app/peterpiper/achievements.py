@@ -37,7 +37,8 @@ _TOPIC = "achievements"
 # Every hidden extra, with the words shown once it is found (never before).
 CATALOGUE: Dict[str, str] = {
     "palettes": "Colour palettes - you clicked the piper 20 times in a row.",
-    "charlotte": "Charlotte's Web - a web for every movie you analyse.",
+    "charlotte": "Charlotte's Web magic - every web is Rare or Epic, and you can design "
+                 "your batch's webs before you collect them.",
     "crown": "A crown before your name - the piper clicked 100 times in a row "
              "(or his name typed).",
 }

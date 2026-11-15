@@ -148,6 +148,29 @@ class TracePanel(QWidget):
     export_requested = Signal(str)           # 'Save graph...': the quantity shown
     view_changed = Signal(str)               # VIEW_CHECK | VIEW_EXPORTED
 
+    def changeEvent(self, e) -> None:                               # noqa: N802
+        """1.1: a theme change restyles the accent buttons (Check cells / Zoom box)."""
+        super().changeEvent(e)
+        from PySide6.QtCore import QEvent
+        if e.type() in (QEvent.StyleChange, QEvent.PaletteChange) and \
+                getattr(self, "_accent_btns", None) and not getattr(self, "_restyling", False):
+            QTimer.singleShot(0, self._restyle_accent)
+
+    def _restyle_accent(self) -> None:
+        from . import theme as TH
+        if TH._current is None:
+            return
+        t = TH.current()
+        css = (f"QPushButton:checked {{ background: {t.accent}; color: {t.accent_text}; "
+               f"border-color: {t.accent}; }}")
+        self._restyling = True
+        try:
+            for b in self._accent_btns:
+                if b.styleSheet() != css:
+                    b.setStyleSheet(css)
+        finally:
+            self._restyling = False
+
     def __init__(self, exp: Experiment, parent=None, style: Optional[dict] = None) -> None:
         super().__init__(parent)
         self.exp = exp
@@ -203,10 +226,12 @@ class TracePanel(QWidget):
                                "like this, and so does a Prism file, except for the few "
                                "things Prism cannot draw (marked *; a note says what the "
                                "Prism file shows instead)."}
+        self._accent_btns: list = []               # 1.1: restyled when the theme changes
         for v in (VIEW_CHECK, VIEW_EXPORTED):
             b = QPushButton(VIEW_TEXT[v])
             b.setCheckable(True)
             b.setStyleSheet(on_style)
+            self._accent_btns.append(b)
             b.setToolTip(tips[v])
             b.clicked.connect(lambda _c=False, v=v: self._view_clicked(v))
             self._view_group.addButton(b)
@@ -243,6 +268,7 @@ class TracePanel(QWidget):
         self.btn_box.setToolTip("On: drag a rectangle on the plot to zoom into it. "
                                 "Off: drag moves the plot. The mouse wheel always zooms.")
         self.btn_box.setStyleSheet(on_style)
+        self._accent_btns.append(self.btn_box)
         self.btn_box.toggled.connect(self._box_mode)
         tl.addWidget(self.btn_box)
         tl.addWidget(W.button("Reset zoom", self.reset_zoom,

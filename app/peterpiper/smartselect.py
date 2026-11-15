@@ -19,7 +19,8 @@ Unlocking (it goes with the Charlotte's Web game: every movie you draw by hand
 grows a web): hand-draw the cells on 3 or more movies from a movie queue and
 SAVE each. Which movies count: a SAVE (event 'saved') of a movie that is in the
 movie queue and on which at least one cell was added by hand since it was opened.
-At the end of a batch you put its movies into bins (review_dialog). Kept per
+New hand-drawn movies are put into bins in the bins window (review_dialog),
+which opens the next time Smart auto-select is used. Kept per
 user in smartselect.json (userprefs): run file, movie, channel names, counts,
 bin. No images are stored.
 """
@@ -36,7 +37,6 @@ _TOPIC = "smartselect"
 NEEDED = 3                      # hand-drawn queued movies needed to unlock
 MIN_TRAIN = 2                   # movies a bin needs before it can pick cells
 NAME = "Smart auto-select"
-REVIEW_OFF = False              # tests: no dialog at the end of a batch
 
 _manual: Dict[str, int] = {}    # this session: movie -> cells added by hand
 
@@ -157,20 +157,9 @@ def _on_saved(nd2=None, path=None, n_cells=0, **_kw) -> None:
         achievements.unlock("smart_select")
 
 
-def _on_queue(**_kw) -> None:
-    """The end of a batch: offer to put its movies into bins."""
-    from . import batchqueue
-    its = batchqueue.items()
-    if REVIEW_OFF or not its or any(it["status"] == "todo" for it in its):
-        return
-    if not any(not m.get("reviewed") for m in hand_drawn_movies()):
-        return
-    try:
-        from PySide6.QtWidgets import QApplication
-        if QApplication.instance() is not None:
-            review_dialog(QApplication.activeWindow())
-    except Exception:                                              # noqa: BLE001
-        pass
+def to_sort() -> List[dict]:
+    """Hand-drawn movies not yet put into a bin (or left out on purpose)."""
+    return [m for m in hand_drawn_movies() if not m.get("reviewed")]
 
 
 def install() -> None:
@@ -178,7 +167,6 @@ def install() -> None:
     events.on("movie_opened", _on_opened)
     events.on("roi_added", _on_roi)
     events.on("saved", _on_saved)
-    events.on("queue_changed", _on_queue)
 
 
 install()
@@ -192,8 +180,8 @@ HOW = ("Smart auto-select picks cells the way you do. It learns from movies in w
        "better it selects on big samples. Plain AUTO-DETECT is always there too.\n\n"
        "To unlock it: choose several movies at once on the start screen (a movie\n"
        f"queue) and draw the cells BY HAND on {NEEDED} of them, pressing SAVE on each.\n"
-       "Each one also grows a web in Charlotte's Web (the pink button). At the end of\n"
-       "a batch you put its movies into bins (or make a new bin and name it).\n\n"
+       "Each one also grows a web in Charlotte's Web (the pink button). Then you put\n"
+       "those movies into bins (or make a new bin and name it).\n\n"
        "Its rule, the bin's n and its tested accuracy go into the Methods of every run.")
 
 
@@ -217,6 +205,7 @@ def bin_info(channels: Optional[Sequence[str]] = None) -> List[dict]:
 def status(channels: Optional[Sequence[str]] = None) -> dict:
     n = len(hand_drawn_movies())
     fit = bin_info(channels)
+    new = len(to_sort())
     if not unlocked():
         text = f"{NAME}: locked - {min(n, NEEDED)} of {NEEDED} hand-drawn queued movies"
         label = f"{NAME} (locked)"
@@ -232,8 +221,10 @@ def status(channels: Optional[Sequence[str]] = None) -> dict:
     else:
         text = f"{NAME}: {len(fit)} bins - " + ", ".join(b["label"] for b in fit)
         label = f"{NAME} ({len(fit)} bins)"
+    if unlocked() and new:
+        text += f" - {new} new hand-drawn movie(s) to put into bins"
     return {"unlocked": unlocked(), "text": text, "how": HOW, "label": label,
-            "bins": fit, "count": n, "needed": NEEDED}
+            "bins": fit, "count": n, "needed": NEEDED, "to_sort": new}
 
 
 # ------------------------------------------------------------------ learning
@@ -285,6 +276,8 @@ def run(window, bin_name: Optional[str] = None) -> None:
         QMessageBox.information(window, NAME, HOW)
         return
     names = list(window.exp.channels)
+    if bin_name is None and to_sort():          # new hand-drawn movies: sort them first
+        review_dialog(window)
     fit = bin_info(names)
     if bin_name is None:
         if not fit:
@@ -320,8 +313,16 @@ def run(window, bin_name: Optional[str] = None) -> None:
         return
     from .gui.workers import FuncJob
     window._start(FuncJob(learn, runs, main, hs, bin_name),
-                  lambda det: window._use_detector(det) if det is not None else None,
+                  _done(window),
                   f"{NAME} is learning from '{bin_name}' (n={len(runs)} hand-picked movies)...")
+
+
+def _done(window):
+    """After learning: pick the cells (use_detector handles None - ends busy)."""
+    use = getattr(window, "use_detector", None)
+    if use is not None:
+        return use
+    return lambda det: window._use_detector(det) if det is not None else window._busy(False)
 
 
 # ------------------------------------------------------------------ the bins window

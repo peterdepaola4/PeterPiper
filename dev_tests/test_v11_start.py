@@ -709,15 +709,23 @@ def part_d():
     fake = types.ModuleType("peterpiper.gui.charlotte")
     got = []
     fake.install = lambda app: got.append(app)
+    import peterpiper.gui as G
+    real_mod = sys.modules.get("peterpiper.gui.charlotte")
+    real_attr = getattr(G, "charlotte", None)
     sys.modules["peterpiper.gui.charlotte"] = fake
+    G.charlotte = fake                       # the real game may be imported already
     try:
         r1 = A._install_charlotte(APP)
         fake.install = lambda app: 1 / 0
         r2 = A._install_charlotte(APP)
     finally:
-        del sys.modules["peterpiper.gui.charlotte"]
-        import peterpiper.gui as G
-        if getattr(G, "charlotte", None) is fake:
+        if real_mod is not None:
+            sys.modules["peterpiper.gui.charlotte"] = real_mod
+        else:
+            sys.modules.pop("peterpiper.gui.charlotte", None)
+        if real_attr is not None:
+            G.charlotte = real_attr
+        elif getattr(G, "charlotte", None) is fake:
             delattr(G, "charlotte")
     ok("D ... installed with the app when there; an error in it is ignored",
        r1 is True and got == [APP] and r2 is False)

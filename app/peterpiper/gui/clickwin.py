@@ -2234,7 +2234,8 @@ class ClickWindow(QMainWindow):
             self.btn_play.setText("⏸  Pause")
             from . import theme as TH                  # V2.9: the theme's warning colour
             col = TH.current().warn if TH._current is not None else "#d98a1f"
-            self.btn_play.setStyleSheet(f"QPushButton {{ background: {col}; color: #101010; "
+            ink = TH.on_colour(col) if hasattr(TH, "on_colour") else "#101010"   # readable text
+            self.btn_play.setStyleSheet(f"QPushButton {{ background: {col}; color: {ink}; "
                                         f"font-weight: 600; border-color: {col}; }}")
             self.store.prefetch(self.cur_t, ahead=12, behind=0)
             self._play.start(int(1000 / max(1, self.cmb_fps.currentData() or 8)))

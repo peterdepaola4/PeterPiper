@@ -699,3 +699,47 @@ def indexed_runs(limit: int = 300) -> List[dict]:
     except Exception:                                          # noqa: BLE001
         pass
     return out[:limit]
+
+
+# ------------------------------------------- 1.1: merging two run lists (profiles)
+def _path_key(p) -> str:
+    """A run path compared across computers: slashes and case ignored (a Mac path
+    and a Windows path of the same run stay two entries - both are kept)."""
+    return str(p).replace("\\", "/").rstrip("/").lower()
+
+
+def merge_run_indexes(mine: dict, theirs: dict) -> dict:
+    """1.1 (profiles): two run lists (run_history.json contents) -> one, losing
+    nothing. Movies are matched by fingerprint (the index key); their runs are
+    united by file path (the same run seen from a Mac and from Windows has two
+    paths: both are kept, the run is found by the movie's fingerprint either way);
+    the movie's known places are united; 'last' is the later of the two. Entries
+    of `mine` come first. Never raises on odd entries (they are skipped)."""
+    out: dict = {}
+    for src in (mine, theirs):
+        if not isinstance(src, dict):
+            continue
+        for key, ent in src.items():
+            if not (isinstance(key, str) and isinstance(ent, dict)):
+                continue
+            cur = out.get(key)
+            if cur is None:
+                out[key] = dict(ent, runs=[r for r in _as_list(ent.get("runs"))
+                                           if isinstance(r, dict)],
+                                paths=[q for q in _as_list(ent.get("paths"))
+                                       if isinstance(q, str)])
+                continue
+            have = {_path_key(r.get("path", "")) for r in cur["runs"]}
+            for r in _as_list(ent.get("runs")):
+                if isinstance(r, dict) and _path_key(r.get("path", "")) not in have:
+                    cur["runs"].append(r)
+                    have.add(_path_key(r.get("path", "")))
+            known = {_path_key(q) for q in cur["paths"]}
+            cur["paths"] += [q for q in _as_list(ent.get("paths"))
+                             if isinstance(q, str) and _path_key(q) not in known]
+            for k, v in ent.items():                      # facts only one side has
+                if k not in cur:
+                    cur[k] = v
+            if str(ent.get("last", "")) > str(cur.get("last", "")):
+                cur["last"] = ent.get("last")
+    return out

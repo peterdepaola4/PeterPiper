@@ -54,6 +54,9 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 if os.name == "nt" and Path("C:/Windows/Fonts").is_dir():
     os.environ.setdefault("QT_QPA_FONTDIR", "C:/Windows/Fonts")
 sys.path.insert(0, str(REPO / "app"))
+# Written before smartselect.py existed: start as if it were missing (an import fails);
+# the parts that need it put in their own stand-in.
+sys.modules["peterpiper.smartselect"] = None
 
 from PySide6.QtCore import QEvent, Qt                                  # noqa: E402
 from PySide6.QtGui import QColor, QImage, QKeyEvent                    # noqa: E402

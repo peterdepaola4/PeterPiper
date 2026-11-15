@@ -64,6 +64,10 @@ os.environ["PETERPIPER_HOME"] = str(OUT / "home")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("MPLBACKEND", "Agg")
 sys.path.insert(0, str(REPO / "app"))
+# Written before smartselect.py existed: start as if it were missing (an import fails);
+# the parts that need it put in their own stand-in.
+sys.modules["peterpiper.smartselect"] = None
+sys.modules["peterpiper.gui.storagedlg"] = None       # likewise (written before it existed)
 sys.path.insert(0, str(HERE))
 
 from PySide6.QtCore import QObject, Qt, Signal                       # noqa: E402

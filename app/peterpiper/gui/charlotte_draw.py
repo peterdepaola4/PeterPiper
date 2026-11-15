@@ -2790,7 +2790,7 @@ class Scene:
             fm = QFontMetricsF(f)
             wd = fm.horizontalAdvance(word)
         x = self.cx - wd / 2
-        y = self.cy - self.R * 0.46 + self.prm.get("word_dy", 0) * self.S
+        y = self.cy - self.R * 0.6 + self.prm.get("word_dy", 0) * self.S
         y = max(fm.ascent() + 4 * self.u, y)
         path = QPainterPath()
         path.addText(QPointF(x, y), f, word)

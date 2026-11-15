@@ -253,7 +253,7 @@ def _write_new(path, data: bytes) -> Path:
     return Path(real)
 
 
-CAPTION = "PeterPiper · Charlotte's Web"      # the program is PeterPiper; this is its game
+CAPTION = "PeterPiper \u00b7 Charlotte's Web"      # the program is PeterPiper; this is its game
 
 
 def export_image(web: dict, size: int = 1600) -> QImage:
@@ -594,12 +594,6 @@ def _badge(rarity: str) -> str:
             f" font-weight: 600; }}")
 
 
-def _badge(rarity: str) -> str:
-    bg = RARITY_COLOUR.get(rarity, "#5f6670")
-    return (f"QLabel {{ background: {bg}; color: #ffffff; border-radius: 8px; padding: 1px 9px;"
-            f" font-weight: 600; }}")
-
-
 # ------------------------------------------------------------------- the window
 class WebWindow(QWidget):
     """Small non-modal, resizable tool window: the current web, the collection,
@@ -768,7 +762,11 @@ class WebWindow(QWidget):
         web = self.shown_web()
         if page == self.PAGE_WEB:
             self.canvas.set_web(web)
-        if web:
+        if page == self.PAGE_COLL:
+            self.lbl_title.setText("Your collection")
+            self.lbl_desc.setText("Double-click a web to see it large.")
+            self.lbl_badge.setVisible(False)
+        elif web:
             th = BY_KEY[shown_theme(web)]
             self.lbl_title.setText(th["name"])
             self.lbl_desc.setText(th["desc"])
@@ -780,7 +778,9 @@ class WebWindow(QWidget):
             self.lbl_title.setText("Charlotte's Web")
             self.lbl_desc.setText("Every movie you analyse spins its own web.")
             self.lbl_badge.setVisible(False)
-        self.lbl_status.setText(self.game.status_text(self.viewing if page == self.PAGE_WEB else None))
+        self.lbl_status.setText("" if page == self.PAGE_FINISH else
+                                self.game.status_text(self.viewing if page == self.PAGE_WEB else None))
+        self.lbl_status.setVisible(page != self.PAGE_FINISH)
         sm = _smart_line()
         self.lbl_smart.setVisible(bool(sm))
         self.lbl_smart.setText(sm or "")
@@ -1071,16 +1071,7 @@ class RevealDialog(QDialog):
             p.end()
 
 
-def make_pink_button(parent=None, text: str = "Charlotte's Web") -> QPushButton:
-    b = QPushButton(text, parent)
-    b.setObjectName("charlotteButton")
-    b.setStyleSheet(pink_button_style())
-    b.setCursor(Qt.PointingHandCursor)
-    b.setToolTip("Charlotte's Web - a web for every movie you analyse")
-    return b
-
-
-BUTTON_TEXT = "🕸 Charlotte's Web"
+BUTTON_TEXT = "\U0001F578 Charlotte's Web"
 BUTTON_TIP = ("A little game inside PeterPiper: every movie you analyse by hand grows a web "
               "for your collection")
 

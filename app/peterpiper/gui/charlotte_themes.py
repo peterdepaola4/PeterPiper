@@ -268,7 +268,7 @@ THEMES: List[dict] = [
       [("soil", ["#2b1d14", "#3b2a1d", "#4a3626"]), ("moss", "#3f6b2f")],
       ["#f2ead3", "#e0d6b8"], ["#e63946", "#f4a261", "#fff1e6"],
       ["#e63946", "#fff1e6", "#6b3a2a", "#ffffff"], "#fff6dc", creature="mushroom",
-      place="bottom"),
+      place="top"),
     T("honeycomb", "Honeycomb", "Busy bees draw honey threads across the comb.",
       False, "honey", "honeydrop",
       [("grad", ["#ffd166", "#f7b32b", "#e09f1f"]), ("honeycomb", "#c47f00", "#ffcb52")],

@@ -461,7 +461,7 @@ def part_f():
        and done.get("date") and not d["tray"])
     ok("F the finished web records queued=False and its hand-drawn n",
        done.get("queued") is False and done.get("n") == 3)
-    pump(2200)
+    pump(4600)
     ui.grab().save(str(SHOTS / "charlotte_window_word.png"))
     events.emit("saved", nd2=a, path="x.npz", n_cells=3)
     events.emit("saved", nd2=a, path="x.npz", n_cells=3)

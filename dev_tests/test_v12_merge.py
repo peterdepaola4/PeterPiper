@@ -21,8 +21,8 @@ A) roimerge on its own: touching ROIs and gaps of 1 - 6 px (3 um at 0.5 um/px) j
    other, brings along one only the second cell has, keeps the first cell's channel, and
    never changes the cells passed in.
 B) the window: a Merge button (tooltip, mode style as Split / Add to cell, in the row with
-   Split), no scroll bars at 1366 x 768 and 1280 x 800 with Merge on (before and after a
-   merge, screenshots); background compartment: no Merge; an empty spot or the same ROI
+   Split; tools in two rows, 4 + 3, every label whole), no scroll bars at 1366 x 768,
+   1280 x 800 and 1366 x 700 with Merge on (before and after a merge, screenshots); background compartment: no Merge; an empty spot or the same ROI
    twice: a gentle message and Merge stays on; a far pair: 'These two ROIs are not next
    to each other', nothing changes; Esc picks again, Esc again turns Merge off.
 C) the merge: one connected ROI with both areas + the bridge, the first cell's number
@@ -65,6 +65,7 @@ except Exception:                                                  # noqa: BLE00
     pass
 
 from PySide6.QtCore import Qt                                       # noqa: E402
+from PySide6.QtGui import QFont                                     # noqa: E402
 from PySide6.QtWidgets import (QAbstractItemView, QAbstractScrollArea,  # noqa: E402
                                QApplication, QMessageBox)
 from skimage.measure import label                                   # noqa: E402
@@ -349,8 +350,20 @@ def scroll_report(w):
     return bad
 
 
+def text_fits(w, key):
+    from PySide6.QtGui import QFontMetrics
+    from peterpiper.gui.clickwin import TOOLS
+    b = w._tool_btn[key]
+    label, _col, active = TOOLS[key]
+    f = QFont(b.font())
+    bold = QFont(f)
+    bold.setWeight(QFont.Weight.ExtraBold)
+    return (QFontMetrics(f).horizontalAdvance(label) + 6 <= b.width()
+            and QFontMetrics(bold).horizontalAdvance(active) + 6 <= b.width())
+
+
 def check_fits(w, tag):
-    for sw, sh in ((1366, 768), (1280, 800)):
+    for sw, sh in ((1366, 768), (1280, 800), (1366, 700)):
         w.resize(sw, sh)
         pump(0.5)
         w._show_page(1)
@@ -358,9 +371,9 @@ def check_fits(w, tag):
         bad = scroll_report(w)
         big = w.width() > sw or w.height() > sh
         b = w._tool_btn["merge"]
-        fm = b.fontMetrics()
-        fit = all(fm.horizontalAdvance(x.text()) + 8 <= x.width() for x in w._tool_btn.values())
-        ok(f"B {tag} {sw}x{sh}: no scroll bars, every tool button's text fits",
+        fit = all(text_fits(w, k) for k in w._tool_btn)
+        ok(f"B {tag} {sw}x{sh}: no scroll bars, every tool button's text (plain and the "
+           f"bold '● ...ING') fits whole",
            not bad and not big and b.isVisible() and fit,
            "; ".join(bad) + str([(x.text(), x.width()) for x in w._tool_btn.values()]))
         p = SHOTS / f"v12_merge_{tag}_{sw}x{sh}.png"
@@ -393,9 +406,10 @@ def part_bcde():
     ok("B four cells outlined (the nucleus as two ROIs, 2 px apart)", w._n_cells() == 4
        and all("nucleus" in c for c in w.cells))
     b = w._tool_btn.get("merge")
-    ok("B a Merge button with a hover tip, beside Split",
+    ok("B a Merge button with a hover tip, beside Split; two rows of tools (4 + 3)",
        b is not None and b.text() == "Merge" and "one" in b.toolTip()
-       and ("split", "merge") in TOOL_ROWS and b.isCheckable())
+       and TOOL_ROWS == (("add", "remove", "draw", "resize"), ("split", "merge", "extend"))
+       and b.isCheckable() and sorted(k for r in TOOL_ROWS for k in r) == sorted(w._tool_btn))
     w._set_tool("merge")
     pump(0.2)
     ok("B Merge on: the mode style of the other tools (coloured, '● MERGING', its line)",

@@ -116,8 +116,8 @@ TOOLS = {"add": ("Add", "#2e9e4f", "● ADDING"),
          "split": ("Split", "#1f8a99", "● SPLITTING"),
          "merge": ("Merge", "#4a63b8", "● MERGING"),
          "extend": ("Add to cell", "#b0458f", "● ADDING TO CELL")}
-# 1.2: the tool buttons' rows (make / change one cell's shape / cut or join cells)
-TOOL_ROWS = (("add", "remove", "draw"), ("resize", "extend"), ("split", "merge"))
+# 1.2: the tool buttons' two rows (each button as wide as its text needs)
+TOOL_ROWS = (("add", "remove", "draw", "resize"), ("split", "merge", "extend"))
 ACTIVE = {"add": "ADDING {c} on {ch}: click each one. Click Add again (or Esc) to stop.",
           "remove": "REMOVING {c}: click the ones to delete. Click Remove again (or Esc) to stop.",
           "draw": "DRAWING {c} by hand: click around it, double-click to finish. Click again "
@@ -705,14 +705,15 @@ class ClickWindow(QMainWindow):
         self.lbl_hint = W.wrapped_label("", muted=True)
         form.addRow(self.lbl_hint)
         tools = QWidget()
-        tl = QGridLayout(tools)                   # never too wide (1.2: three rows)
+        tl = QVBoxLayout(tools)                   # never too wide (1.2: 4 + 3, two rows)
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(4)
-        for c in range(6):                        # 6 columns: rows of three or of two
-            tl.setColumnStretch(c, 1)
-        # Add | Remove | Draw by hand  /  Resize | Add to cell  /  Split | Merge
-        place = {key: (r, i, len(row)) for r, row in enumerate(TOOL_ROWS)
-                 for i, key in enumerate(row)}
+        rows = []
+        for _r in TOOL_ROWS:
+            rl = QHBoxLayout()
+            rl.setSpacing(4)
+            tl.addLayout(rl)
+            rows.append(rl)
         self._tool_btn = {}
         from PySide6.QtWidgets import QSizePolicy
         for i, (key, (label, _col, _txt)) in enumerate(TOOLS.items()):
@@ -723,8 +724,17 @@ class ClickWindow(QMainWindow):
             b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)   # never widens the panel
             b.setMinimumWidth(40)
             self._tool_btn[key] = b
-            row, i_row, n_row = place[key]
-            tl.addWidget(b, row, i_row * (6 // n_row), 1, 6 // n_row)
+        # each button as wide as its longer text needs (plain or bold '● ...ING'), so
+        # every label fits whole in two rows
+        from PySide6.QtGui import QFontMetrics
+        bold = b.font()
+        bold.setWeight(bold.Weight.ExtraBold)
+        fm, fb = b.fontMetrics(), QFontMetrics(bold)
+        for r, keys in enumerate(TOOL_ROWS):
+            for key in keys:
+                label, _col, active = TOOLS[key]
+                need = max(fm.horizontalAdvance(label), fb.horizontalAdvance(active)) + 8
+                rows[r].addWidget(self._tool_btn[key], need)
         form.addRow(tools)
         self.chk_resize_all = QCheckBox("Resize all cells together")
         self.chk_resize_all.setToolTip("Scrolling then redraws every ROI of this compartment "

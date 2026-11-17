@@ -44,6 +44,18 @@ TESTS = [
     ("prism_live", "test_prism_live.py", []),
     ("prism_style", "test_prism_style.py", []),
     ("pack_bat", "test_pack_bat.py", []),
+    ("v11_start", "test_v11_start.py", []),
+    ("v11_mainwin", "test_v11_mainwin.py", []),
+    ("v11_compare", "test_v11_compare.py", []),
+    ("v11_profiles", "test_v11_profiles.py", []),
+    ("v11_cloud", "test_v11_cloud.py", []),
+    ("v11_looks", "test_v11_looks.py", []),
+    ("v11_charlotte", "test_v11_charlotte.py", []),
+    ("v11_update", "test_v11_update.py", []),
+    ("v12_launcher", "test_v12_launcher.py", []),
+    ("v12_progress", "test_v12_progress.py", []),
+    ("v12_merge", "test_v12_merge.py", []),
+    ("v12_export", "test_v12_export.py", []),
 ]
 
 

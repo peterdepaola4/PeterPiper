@@ -5,8 +5,11 @@ fluorescence time series. See `READ ME.txt` next to `PeterPiperV1.2.bat` for how
 
 Install: `PeterPiperV1.2.bat` makes a private Python environment in
 `%USERPROFILE%\.PeterPiperV1.2\venv` from the exact versions in `requirements.txt`
-(fallback: `requirements-compatible.txt`); what was really installed is written to
-`venv\installed_versions.txt`. After that everything runs locally (see `SECURITY.md`).
+(fallback: `requirements-compatible.txt`), or reuses an earlier PeterPiper install made
+from a byte-identical list (1.1, then 1.0, then PD4nav's); what was really installed is
+written to `venv\installed_versions.txt`. While pip runs, `install_progress.py` (standard
+library only) adds a "still working" line whenever pip is quiet and checks the packages
+one by one. After that everything runs locally (see `SECURITY.md`).
 
 Code map (`peterpiper/`):
 - `manual.py` - drawing an ROI at a click, auto-select, linking ROIs into cells,
@@ -55,7 +58,7 @@ Code map (`peterpiper/`):
   file is written and read with the extended-length form, so results deeper than 260
   characters still work)
 
-PeterPiper 1.2 (see the manual, sections 6.14 - 6.19 and 8.13):
+PeterPiper 1.1 (see the manual, sections 6.14 - 6.19 and 8.13):
 - `gui/setup.py` - the start screen (Analyse movies / Continue your queue / Compare,
   recent analyses, the queue); `gui/clickwin.py` - the analysis window (step pages,
   SAVE and EXPORT, the queue row, Smart auto-select)
@@ -70,3 +73,18 @@ PeterPiper 1.2 (see the manual, sections 6.14 - 6.19 and 8.13):
   contrast check, colour-vision checks, the colour-blind-safe cell colours
 - `gui/charlotte*.py`, `achievements.py`, `gui/eggsdlg.py` - Charlotte's Web and the
   optional hidden extras (they never touch data)
+
+PeterPiper 1.2 (see the manual, sections 3.2, 3.8, 6.2, 6.4, 6.7 and 8.2):
+- `absorb.py`, `gui/absorbdlg.py` - finding older PeterPiper versions on the computer and
+  taking them in (what they kept copied into PeterPiper data, shortcuts re-pointed,
+  program files and private Python moved to the Recycle Bin; the user's files stay)
+- `roimerge.py` - the Merge tool: two ROIs next to each other (and their cells) joined
+  into one by the smallest bridge, never on another cell's pixels
+- `exportpaths.py`, `export.py`, `gui/exportdlg.py` - the export's 'Save in' folder, the
+  planned path lengths (Excel 218, Explorer 259) and shorter names that fit
+- `syscheck.py`, `gui/syscheckdlg.py` - 'Turn on Windows long paths' (Windows' own
+  administrator approval)
+- `gui/widgets.py` - the loading bars: percent, time left, a detail line naming the file
+  or folder (`BusyPanel`, `ProgressStrip`, `TimeLeft`, `run_with_progress`, `busy`)
+- `gui/batchdlg.py` - 'Save exports in' for a batch; `gui/comparewin.py` - Close button
+- `../install_progress.py` - what the launcher shows while pip installs

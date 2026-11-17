@@ -1,5 +1,83 @@
 # Changelog
 
+## PeterPiper 1.2.0 (2026-11-16)
+
+**Merge for ROIs, a choice of export folder with help for paths too long for
+Windows, loading bars with the percent and the time left, a launcher that reuses an
+identical earlier install, and taking in older PeterPiper versions.** The methods
+and the numbers are unchanged (the same measurement code; every earlier test suite
+that could run passes - README section 12); the only new editing step is the Merge tool.
+
+- Program folder and launcher `PeterPiperV1.2` / `PeterPiperV1.2.bat`, install folder
+  `%USERPROFILE%\.PeterPiperV1.2`; the same package versions as 1.0 and 1.1; users
+  and runs in `PeterPiper data` carry over. Mac: `PeterPiper-1.2.0-macOS-AppleChip.dmg`
+  / `-Intel.dmg`.
+- **Merge** (analysis window, step 2; the tool buttons are now two rows: Add, Remove,
+  Draw by hand, Resize / Split, Merge, Add to cell): click an ROI, then the one next
+  to it that belongs to the same cell; they become one ROI with the first one's
+  number. The gap is filled by the smallest closing (radius 1, 2, 3 ... px) that
+  makes them one 4-connected piece, kept only between them and never on another
+  cell's pixels; holes the join closes in are filled. Refused beyond 3 µm ("These
+  two ROIs are not next to each other") or when another cell lies between them.
+  Compartments both cells have are merged the same way (or the merge is refused,
+  naming the compartment); one only the second cell has comes along. Tracking is
+  cleared, Undo restores both, a merge is not counted as a hand-drawn ROI
+  (`roimerge.merge_rois`, `merge_cells`). The Methods text says ROIs "could be
+  resized, split, merged, extended or drawn by hand".
+- **Export folder**: the export list has *Save in:* with *Change...* and *Usual
+  folder*; the export goes to `<chosen folder>/Export_<date>_<time>`, an unwritable
+  folder is refused, autosaves and SAVE stay in the results folder, and the choice is
+  kept for the movie's next export. Batch analysis: *Save exports in* (one subfolder
+  per movie, `<chosen>/<movie name>/Export_...`; the batch log goes there too).
+- **Long paths**: with Windows' long paths off, an export whose paths would be too
+  long (Excel does not open a workbook whose path is over 218 characters; Explorer
+  has trouble over 259) offers *Shorten names for me* (default; shows the new name
+  and the longest path first; cuts the middle of the name, then may use the short
+  folder name `Export_yymmdd-hhmm`), *Show Details...*, *Choose another folder...*,
+  *Turn on Windows long paths* (Windows' own administrator approval, then checked
+  again), *Export anyway* and *Cancel* (`exportpaths.py`). Batch runs shorten by
+  themselves and say so in the log. Graph titles keep the full name. *Help >
+  Computer check* has the same *Turn on Windows long paths* button.
+- **Loading bars**: every working window and the analysis window's progress strip
+  show a bar with the percent (or a moving bar when the amount is unknown), "about 1
+  min 20 s left" / "estimating time left..." / "almost done" (or "12 s so far"), what
+  is happening and a detail line naming the file, folder or count (shortened in the
+  middle; the whole text on hover); a finished strip says "took ...". Folder
+  searches give a real fraction; saving and exporting name each file; reading a saved
+  run, the recent analyses, adding several runs in Compare and a batch folder have
+  bars too. Window titles are never empty (a drive root such as `D:\` is named in
+  full).
+- **Launcher**: reuses an identical earlier install (`.PeterPiperV1.1`, then
+  `.PeterPiperV1.0`, then PD4nav's), so 1.2 opens at once on a computer with 1.1.
+  While installing, `app/install_progress.py` (standard library only) passes pip's
+  output through and, whenever pip is quiet for 5 s, prints a "still working - ..."
+  line (package looked up / downloading <name> (<size>) - n of 45 / installing ...,
+  with the time so far and about how long is left); step [3/3] checks each package
+  one by one ("checking numpy ... OK (1 of 14)"); step [1/3] says it takes about
+  10-30 s; each start says "Starting PeterPiper - the window opens in about 10-20
+  seconds." after an install, else "... in a few seconds.". pip's own bars now appear
+  when each download is finished, not live. A real install took 132 s.
+- **Taking in older versions** (start screen, once per start; `absorb.py`,
+  `gui/absorbdlg.py`): older PeterPiper versions (1.0 and later, never PD4nav),
+  found through `%USERPROFILE%\.PeterPiperVx.y` folders, `shortcuts_for.txt`, the
+  `PeterPiper.lnk` shortcuts (Desktop, Start menu, program folder) and
+  `PeterPiperVx.y` folders next to this one, are listed with their program folder,
+  private Python and sizes: *Absorb* / *Not now* / *Don't ask again for these*
+  (remembered in `PeterPiper data/absorb.json`). Absorb copies what the old version
+  kept for itself into `PeterPiper data` (error logs and `installed_versions.txt` to
+  `logs/PeterPiperVx.y`; settings files to the user or `carried over/`; run lists
+  merged; nothing overwritten), points the Desktop and Start-menu shortcuts at this
+  version, then moves its recognised program files and its private Python to the
+  Recycle Bin (restorable; Mac: Trash). Never touched: the user's own files in the old
+  folder (listed), a developer copy (`.git`), the private Python this version uses,
+  the running program, `PeterPiper data`. An open version is left alone ("close it,
+  then try again"); drives without a Recycle Bin are refused; with a newer version
+  present nothing is offered. `PETERPIPER_NO_ABSORB=1` turns it off.
+- **Compare window**: a *Close* button at the bottom right (the same as the window's
+  X).
+- Manual: new section 3.8; sections 3, 6.0, 6.2, 6.4, 6.7, 6.10, 6.12, 8.2, 8.12,
+  9.1, 12 - 16 updated.
+
 ## PeterPiper 1.1.0 (2026-11-15)
 
 **A new start screen and analysis window, the movie queue with SAVE, Smart

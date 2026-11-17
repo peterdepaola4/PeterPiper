@@ -16,7 +16,8 @@ enough.
 
 Windows 10 / 11, 64-bit Python 3.11 - 3.14. The launcher (`PeterPiperV1.2.bat`) installs the
 exact package versions in `app/requirements.txt` into a private environment; for development
-use that environment's Python (`%USERPROFILE%\.PeterPiperV1.2\venv\Scripts\python.exe`) or a
+use that environment's Python (`%USERPROFILE%\.PeterPiperV1.2\venv\Scripts\python.exe`, or
+the earlier version's install the launcher reuses, e.g. `.PeterPiperV1.1\venv`) or a
 virtual environment with the same requirements.
 
 ## Tests
@@ -43,6 +44,11 @@ It prints PASS / FAIL / SKIPPED per test (logs in `_out/tests/`).
 - Each test writes only to `_out/` in the repository and uses its own settings folder
   (`PETERPIPER_HOME`), so it never touches your own settings or data. Movies are only read.
 - Tests that drive GraphPad Prism (`test_prism_live.py`, `test_prism_style.py`) need Prism 11.
+- Tests never change the computer: absorbing older versions (`test_v12_launcher.py`) works
+  in a made-up user folder under `_out` with a stand-in Recycle Bin (one temporary test file
+  really goes to the Recycle Bin), and *Turn on Windows long paths* (`test_v12_export.py`)
+  uses stand-ins for Windows' administrator approval and the registry
+  (`PETERPIPER_NO_ELEVATE` is set, so the real approval is never asked for).
 - Any modal dialog a test opens must be answered (stubbed) in the test, or it waits forever.
 
 ## Code

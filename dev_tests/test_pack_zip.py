@@ -79,7 +79,7 @@ def main() -> int:
                                  text=True, check=True).stdout.splitlines())
     untracked = [n for n in files if n[len(name) + 1:] not in tracked]
     check("every shipped file is tracked by git", not untracked, str(untracked[:5]))
-    must = [f"{name}/{name}.bat", f"{name}/READ ME.txt", f"{name}/app/PeterPiper.py",
+    must = [f"{name}/{name}.bat", f"{name}/READ ME.txt", f"{name}/app/PeterPiper.py", f"{name}/app/install_progress.py",
             f"{name}/app/requirements.txt", f"{name}/app/requirements-compatible.txt",
             f"{name}/app/peterpiper/__init__.py", f"{name}/app/peterpiper/templates/PeterPiper_timecourse.prism",
             f"{name}/app/peterpiper/templates/PeterPiper_look.json"]

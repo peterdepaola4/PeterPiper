@@ -80,6 +80,10 @@ This puts the address in Help > About PeterPiper, `CITATION.cff`, the manual's c
 
 1. Copy the folder to `PeterPiperV1.x`, set `__version__` / `APP_NAME` in
    `app/peterpiper/__init__.py`, rename the `.bat`, update `CITATION.cff` (version, date).
+   Leave `app/requirements.txt` and `app/requirements-compatible.txt` byte for byte as they
+   are (header lines included) unless the packages change: the launcher reuses an earlier
+   version's install only when its package list is byte-identical (manual, section 3.2).
+   Add the previous version's install folder to the front of the launcher's reuse list.
 2. Make the changes; run the tests (`CONTRIBUTING.md`); update the manual's version history
    and validation; `python _work/changelog.py` (or write the CHANGELOG entry by hand).
 3. Commit, push, release as above. User profiles live in `%USERPROFILE%\PeterPiper data`, so every

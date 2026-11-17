@@ -8,7 +8,7 @@ Events emitted by the app (keyword arguments in brackets):
     main_window_ready  (window)                  the analysis window is open
     movie_opened       (nd2, window)             a movie is open in it
     roi_added          (nd2, manual, n_cells)    a cell ROI was added (manual=True: by hand)
-    roi_removed        (nd2, n_cells)
+    roi_removed        (nd2, n_cells[, merged=True when two cells became one])
     saved              (nd2, path, n_cells)      SAVE / Save ROIs now wrote a file
     exported           (nd2, folder)             an export finished
     movie_closed       (nd2)

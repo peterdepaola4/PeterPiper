@@ -1,7 +1,9 @@
 PeterPiper 1.2  -  quick start
 ==============================
 (PeterPiper was called PD4nav up to version 3.0; 1.0 continues PD4nav V3.0;
-1.1 keeps the same methods and numbers, with new windows and tools.)
+1.1 keeps the same methods and numbers, with new windows and tools; 1.2 keeps
+them too and adds Merge, a choice of export folder, help with too-long paths,
+clearer loading bars and a tidy-up of older PeterPiper versions.)
 Full manual: README.html (double-click it - it opens in your web browser).
 It explains every step, how every number is made, every output file, and
 what to write in a paper.
@@ -21,14 +23,17 @@ ON A MAC (macOS 14 or newer)
 
 START IT (Windows)
   Double-click  "PeterPiperV1.2.bat".  That is the only file you ever open.
-  Users and runs from PeterPiper 1.0 carry over (PeterPiper data).
+  Users and runs from PeterPiper 1.0 and 1.1 carry over (PeterPiper data).
   Its window shows the PeterPiper logo; the first time, it also puts a
   PeterPiper shortcut with the logo on your Desktop, in the Start menu and in
   this folder - use that from then on (a .bat file cannot have its own icon).
-  First time on a computer it installs itself (about 5 minutes, internet once,
-  about 250 MB) into its own folder  %USERPROFILE%\.PeterPiperV1.2 ; after that it
-  opens straight away and everything runs on this computer - nothing is
-  uploaded. It installs the exact package versions PeterPiperV1.2 was tested with
+  If PeterPiper 1.1 (or 1.0) is installed with the same packages, 1.2 uses
+  that install and opens at once. Otherwise, the first time on a computer it
+  installs itself (about 2 - 5 minutes, internet once, about 250 MB) into its
+  own folder  %USERPROFILE%\.PeterPiperV1.2 ; while it installs, a
+  "still working - ..." line every few seconds says what it is doing and about
+  how long is left. After that it opens straight away and everything runs on
+  this computer - nothing is uploaded. It installs the exact package versions PeterPiperV1.2 was tested with
   (app\requirements.txt); if this computer cannot use them it installs
   compatible versions instead and says so. The versions really installed are
   listed in  %USERPROFILE%\.PeterPiperV1.2\venv\installed_versions.txt .
@@ -36,6 +41,11 @@ START IT (Windows)
   "Python is missing"?  Install 64-bit Python 3.13 (or 3.12 / 3.11) from
   python.org and tick "Add python.exe to PATH" on the first screen.
   The .bat is for 64-bit Windows 10 / 11 (Mac: see above).
+  OLDER VERSIONS (1.2): if older PeterPiper versions are on the computer, the
+  start screen offers once per start to take them in: their shortcuts then
+  start 1.2, and their program files and private Python go to the Recycle Bin
+  (you can restore them from there). Your own files in their folders stay.
+  "Not now" or "Don't ask again for these" leave them as they are.
 
 WHO IS USING IT?  (V2.9; 1.1)
   Pick your name (Enter), or type a new one and press Add user. A password is
@@ -123,7 +133,12 @@ ANALYSIS WINDOW  -  the blue box at the top always says what to do next
                                 "Resize all cells together" does every cell
        SPLIT   (teal when on)   hold the left button and draw a line across
                                 an ROI: it is cut into two cells
-       ADD TO CELL (pink)       click a cell's ROI, then click each missed
+       MERGE   (blue, 1.2)      click an ROI, then the one next to it that is
+                                part of the same cell: they become one ROI
+                                (the first one's number; the gap is filled,
+                                never with another cell's pixels; up to 3 um
+                                apart). Track again afterwards; Undo undoes it
+       ADD TO CELL (pink)     click a cell's ROI, then click each missed
                                 part just outside it: that part is joined on
        Click a tool again (or Esc) to turn it off. With no tool on, clicking a
        cell selects it. Right-click an ROI: move it to another cell / make it a
@@ -181,7 +196,14 @@ ANALYSIS WINDOW  -  the blue box at the top always says what to do next
        The workbook and methods text carry the .nd2 name (e.g.
        movie1_nucleus.xlsx); graphs, CSV and Prism graphs inside do not repeat
        it (shorter paths). A "Name for the files" you type goes on every file.
-       Long paths off (Help > Computer check...)? Too-long paths are warned.
+       SAVE IN (1.2): where the export goes - the movie's results folder, or
+       "Change..." for another folder (your autosaves stay in the results
+       folder); "Usual folder" goes back.
+       Long paths off (Help > Computer check...)? If a path would be too long
+       for Explorer (259 characters) or Excel (218), a warning offers
+       "Shorten names for me" (the usual answer), "Choose another folder...",
+       "Turn on Windows long paths" (needs administrator approval) or
+       "Export anyway".
 
 SAVE AND THE QUEUE  (1.1)
   SAVE (foot of the panel, Ctrl+S) keeps this version of your work - ROIs,
@@ -281,6 +303,7 @@ COMPARE / AVERAGE RUNS
   1.1: buttons Add runs / Groups / Open in analysis / Output files / List;
   the SAVE column says Saved: <note> / Autosave / Export. OPEN IN ANALYSIS
   (or double-click a run) opens that run's movie in the analysis window.
+  1.2: a Close button at the bottom right.
 
 PRISM STYLE TEMPLATES (V2.7)  -  File > Prism style templates...
   Open "PeterPiper graph style.prism" in Prism, change the look of graph 1,
@@ -295,7 +318,9 @@ SAVED SETTINGS AND BATCH (V2.7)
   "Batch analyse .nd2 files..." (first window or File menu) runs saved
   settings on many .nd2 files without clicking (auto-detect, track, export)
   and writes a log. Every file is flagged "automatic - check": open it and
-  check it before you use its numbers.
+  check it before you use its numbers. 1.2: "Save exports in" puts every
+  movie's export into one folder (a subfolder per movie); names too long for
+  Windows are shortened by themselves (the log says so).
 
 STORAGE & CLOUD  (1.1, start screen)
   Results next to each movie (default) or in a folder you choose - e.g. in
@@ -320,6 +345,8 @@ HOW THE NUMBERS ARE MADE
   sqrt(n) also given); across dishes: mean +/- SD of the dish means
   (n = dishes). Details: README.html, section 8.
 
+Loading bars (1.2) show the percent, about how long is left and which file or
+folder is being read.
 Text too small?  View > Larger text (Ctrl +).   Dark or light?  View > Theme.
 Everything runs on this computer - nothing is uploaded anywhere. The only
 network use is "Check for updates", and only when you press it: it asks

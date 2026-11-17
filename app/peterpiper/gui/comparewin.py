@@ -1451,8 +1451,25 @@ class CompareWindow(QDialog):
         folder = self.out_dir or (str(Path(paths[-1]).parent) if paths else "")
         paths, _f = QFileDialog.getOpenFileNames(self, "Add run file", folder,
                                                  "PeterPiper ROI / session files (*.npz)")
+        if len(paths) > 1:                           # 1.2: read in the background, with a bar
+
+            def read(progress):
+                got = {}
+                for i, p in enumerate(paths):
+                    progress(i / len(paths), "Reading the runs",
+                             detail=W.count_detail(i + 1, len(paths), "run", p))
+                    try:
+                        got[str(p)] = C.load_run(p)
+                    except ValueError as e:
+                        got[str(p)] = e
+                    except Exception:                              # noqa: BLE001
+                        pass                         # read again when ticked (as before)
+                return got
+            self._preloaded.update(W.run_with_progress(self, f"Adding {len(paths)} runs", read))
         for p in paths:
             self.add_run_file(p)
+        for p in paths:                              # 1.2: not kept when not used
+            self._preloaded.pop(str(p), None)
 
     def _my_data_is_in(self) -> None:
         """V3.0 portable profiles: runs in your list whose files are elsewhere on this

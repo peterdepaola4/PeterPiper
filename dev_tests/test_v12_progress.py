@@ -478,6 +478,36 @@ def part_d_window():
     return path
 
 
+def part_d_add(path):
+    """Compare's 'Add run file...' with several files: read in the background."""
+    from peterpiper.gui.comparewin import CompareWindow
+    CompareWindow.ASK_UNKNOWN = False
+    cw = CompareWindow()
+    junk = OUT / "tree" / "alpha" / "one" / "deep" / "alpha_one_ROIs.npz"
+    rec = []
+    orig_rwp, orig_open = W.run_with_progress, QFileDialog.getOpenFileNames
+
+    def fake_rwp(parent, title, fn, delay_ms=350):
+        calls = []
+        rec.append((title, calls))
+        return fn(lambda fraction=None, text="", detail=None: calls.append(
+            (fraction, text, detail)) or True)
+    W.run_with_progress = fake_rwp
+    QFileDialog.getOpenFileNames = staticmethod(lambda *a, **k: ([str(path), str(junk)], ""))
+    try:
+        cw._add_clicked()
+    finally:
+        W.run_with_progress, QFileDialog.getOpenFileNames = orig_rwp, orig_open
+    title, calls = rec[0] if rec else ("", [])
+    ok("D Compare 'Add run file' with 2 files: a bar, each run named",
+       title == "Adding 2 runs" and [c[0] for c in calls] == [0.0, 0.5]
+       and calls[1][2] == f"run 2 of 2 - {junk}", f"{title} {calls}")
+    ok("D ... the good run is added and read (ticked), nothing left over",
+       any(Path(p) == Path(path) for p in cw._runs) and not cw._preloaded,
+       f"{list(cw._runs)} {list(cw._preloaded)}")
+    cw.close()
+
+
 def part_d_saving():
     from peterpiper.export import save_graph_files
     cap = []
@@ -521,7 +551,8 @@ def main():
     part_b()
     part_c()
     part_d_history()
-    part_d_window()
+    path = part_d_window()
+    part_d_add(path)
     part_d_saving()
     part_e()
     print("screenshots:", *SHOT_FILES, sep="\n  ")

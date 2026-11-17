@@ -1,10 +1,13 @@
 """
 V2.9 'Computer check' window (peterpiper.syscheck): the long-path setting and the
 Python version, each with what was found and what to do. Nothing is changed by
-PeterPiper - a command to copy is offered where it helps.
+PeterPiper unless you press a button that says so - a command to copy is offered
+where it helps, and (1.2) 'Turn on Windows long paths' runs it for you after
+Windows' own administrator approval.
 """
 from __future__ import annotations
 
+import sys
 from typing import List, Optional
 
 from PySide6.QtCore import Qt
@@ -30,7 +33,7 @@ class ComputerCheckDialog(QDialog):
         lay.addWidget(t)
         lay.addWidget(W.wrapped_label(
             "Is this computer set up the way PeterPiper needs? PeterPiper only looks - it changes "
-            "nothing. This window comes back by itself only if something here changes; it is "
+            "nothing unless you press a button that says so. This window comes back by itself only if something here changes; it is "
             "always under Help > Computer check...", muted=True))
         self._box = QVBoxLayout()
         lay.addLayout(self._box)
@@ -93,16 +96,41 @@ class ComputerCheckDialog(QDialog):
                            "Copy it, open PowerShell with 'Run as administrator', paste, "
                            "press Enter, restart Windows.")
             col.addWidget(cmd)
-            r = W.row(btn)
+            if it.key == "long_paths" and sys.platform == "win32":     # 1.2
+                self.btn_turn_on = W.button(
+                    "Turn on Windows long paths", self._turn_on,
+                    "Runs the command for you: Windows asks for administrator approval. "
+                    "Explorer and Excel may still not open very long paths even then.")
+                r = W.row(self.btn_turn_on, btn)
+            else:
+                r = W.row(btn)
             r.layout().addStretch(1)
             r.setStyleSheet("background: transparent;")
             col.addWidget(r)
         cl.addLayout(col, 1)
         return card
 
+    def _turn_on(self) -> None:
+        """1.2: 'Turn on Windows long paths' - then look again."""
+        turn_on_long_paths(self)
+        self._fill(SC.run_checks())
+
     def done(self, r: int) -> None:                               # noqa: D401
         SC.remember(self.items, self.chk_again.isChecked())
         super().done(r)
+
+
+def turn_on_long_paths(parent=None) -> Optional[bool]:
+    """1.2: turn on Windows' long paths (Windows asks for administrator approval;
+    syscheck.turn_on_long_paths) and say plainly what happened. Used by the
+    computer check and the long-path warning of an export. True = on now."""
+    from PySide6.QtWidgets import QMessageBox
+    on, text = SC.turn_on_long_paths(poll=QApplication.processEvents)
+    if on is True:
+        QMessageBox.information(parent, "Windows long paths", text)
+    else:
+        QMessageBox.warning(parent, "Windows long paths", text)
+    return on
 
 
 def maybe_show(parent=None) -> None:

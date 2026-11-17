@@ -21,22 +21,77 @@ from ..prismfile import template_takes_style
 from . import widgets as W
 
 
+class _PathLabel(QLabel):
+    """A folder path cut in the middle to fit ('C:\\Users\\...\\OUTPUT_movie\\Peter'),
+    the whole path on hover; never makes the window wider."""
+
+    def __init__(self) -> None:
+        super().__init__("")
+        self._path, self._note = "", ""
+        self.setMinimumWidth(80)
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+    def set_path(self, path: str, note: str = "") -> None:
+        self._path, self._note = str(path), note
+        self.setToolTip(self._path + note)
+        self._elide()
+
+    def full_text(self) -> str:
+        return self._path + self._note
+
+    def resizeEvent(self, ev) -> None:                        # noqa: N802
+        super().resizeEvent(ev)
+        self._elide()
+
+    def _elide(self) -> None:
+        fm = self.fontMetrics()
+        room = max(40, self.width() - fm.horizontalAdvance(self._note) - 4)
+        self.setText(fm.elidedText(self._path, Qt.ElideMiddle, room) + self._note)
+
+
 class ExportDialog(QDialog):
 
     def __init__(self, cat: Sequence[dict], chosen: Sequence[str], standard: Sequence[str],
                  where: str, parent=None, template: str = "", prefix: str = "",
-                 graph_look: str = "", graph_style: dict = None) -> None:
+                 graph_look: str = "", graph_style: dict = None, folder: str = "",
+                 usual: str = "") -> None:
         super().__init__(parent)
         self._graph_style = dict(graph_style or {})
         self.setWindowTitle("Choose outputs")
         self.resize(1000, 620)
         self._cat = {it["key"]: it for it in cat}
         self._standard = [k for k in standard if k in self._cat]
+        # 1.2: 'Save in' - the folder the export goes into (Export_<date>_<time> inside it)
+        self._usual = str(usual or folder or "")
+        self._folder = str(folder or self._usual)
         lay = QVBoxLayout(self)
         lay.addWidget(W.wrapped_label(
             "Put what you want on YOUR EXPORT LIST (right): select items on the left and press "
+            "'Add', or double-click them. Only the list is written, into a new folder "
+            "Export_<date>_<time> in the folder under 'Save in'." if self._folder else
+            "Put what you want on YOUR EXPORT LIST (right): select items on the left and press "
             "'Add', or double-click them. Only the list is written, into a new folder:  "
             + where, muted=True))
+        self.lbl_folder = None
+        if self._folder:
+            frow = QWidget()
+            fl = QHBoxLayout(frow)
+            fl.setContentsMargins(0, 0, 0, 0)
+            fl.addWidget(QLabel("<b>Save in:</b>"))
+            self.lbl_folder = _PathLabel()
+            fl.addWidget(self.lbl_folder, 1)
+            self.btn_folder = W.button("Change...", self._choose_folder,
+                                       "Save this export in another folder (a new "
+                                       "Export_<date>_<time> folder is made in it). Your "
+                                       "autosaves and SAVE stay in the movie's results folder.")
+            fl.addWidget(self.btn_folder)
+            self.btn_usual = W.button("Usual folder", lambda: self._set_folder(self._usual),
+                                      "Back to this movie's results folder.")
+            fl.addWidget(self.btn_usual)
+            lay.addWidget(frow)
+            self._set_folder(self._folder)
 
         from PySide6.QtWidgets import QLineEdit
         nrow = QWidget()
@@ -144,6 +199,55 @@ class ExportDialog(QDialog):
                 self._put(k)
         self._sync()
         self._show_example()
+
+    # ------------------------------------------------------- 1.2: 'Save in'
+    def folder(self) -> str:
+        """The folder this export goes into (Export_<date>_<time> is made in it)."""
+        return self._folder
+
+    def _set_folder(self, path: str) -> None:
+        self._folder = str(path)
+        if self.lbl_folder is None:
+            return
+        usual = self._norm(self._folder) == self._norm(self._usual)
+        self.lbl_folder.set_path(self._folder, "  (this movie's results folder)" if usual
+                                 else "  (not the movie's results folder - your autosaves "
+                                      "stay there)")
+        self.btn_usual.setEnabled(not usual)
+
+    @staticmethod
+    def _norm(p: str) -> str:
+        import os
+        return os.path.normcase(os.path.normpath(str(p))) if p else ""
+
+    def _choose_folder(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        d = QFileDialog.getExistingDirectory(self, "Save the export in", self._folder)
+        if not d:
+            return
+        if self._refuse(d):
+            return
+        import os
+        self._set_folder(os.path.normpath(d))
+
+    def _refuse(self, path: str) -> bool:
+        """True (and says why, plainly) if results cannot be written in `path`."""
+        from PySide6.QtWidgets import QMessageBox
+        from ..safety import folder_problem, plain_path
+        why = folder_problem(path)
+        if why is None:
+            return False
+        QMessageBox.warning(self, "Cannot save there",
+                            f"PeterPiper cannot write in {plain_path(path)}: {why}. "
+                            f"Choose another folder (or 'Usual folder').")
+        return True
+
+    def accept(self) -> None:                                     # noqa: D401
+        # a chosen folder may have gone away (a USB drive) or become read-only since
+        if self._folder and self._norm(self._folder) != self._norm(self._usual) \
+                and self._refuse(self._folder):
+            return
+        super().accept()
 
     # -------------------------------------------------------------- file names
     def prefix(self) -> str:

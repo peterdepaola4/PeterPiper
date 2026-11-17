@@ -955,6 +955,11 @@ class CompareWindow(QDialog):
         rl.addWidget(self.lbl_warn)
         srow = W.row(self.btn_save, self.btn_save_more)
         srow.layout().addStretch(1)
+        # 1.2: a clear way out at the bottom right - exactly what the window's X does
+        self.btn_close = W.button("Close", self.close,
+                                  "Close this window (the same as its X); your choices here "
+                                  "are remembered for next time.")
+        srow.layout().addWidget(self.btn_close)
         rl.addWidget(srow)
         right.setMinimumWidth(360)
         split.addWidget(right)

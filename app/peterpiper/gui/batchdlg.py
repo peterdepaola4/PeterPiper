@@ -9,7 +9,9 @@ main window, with the same code:
      (the setting's detection, size and IF-gate settings);
   3. TRACK & MEASURE (the setting's tracking rules, QC);
   4. Export: the setting's export list (else the standard list) into the file's
-     OUTPUT_<name> folder, with the ROI file, methods and provenance as always.
+     OUTPUT_<name> folder, with the ROI file, methods and provenance as always
+     (1.2: or <a folder you chose>/<movie name>; paths too long for Explorer /
+     Excel get shorter names by themselves, said in the log's Messages).
 
 Nothing is curated by hand, so every file is flagged 'automatic - check'. A log
 (PeterPiper batch <date>.csv) lists per file: what was found and included per
@@ -28,8 +30,9 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
 
 from PySide6.QtCore import QElapsedTimer, Qt
-from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QListWidget,
-                               QMessageBox, QTableWidget, QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QLabel,
+                               QListWidget, QMessageBox, QTableWidget, QTableWidgetItem,
+                               QVBoxLayout)
 
 from .. import presets as PR
 from ..config import Settings
@@ -91,9 +94,20 @@ def _settle(w, quiet_ms: int = 300) -> None:
             t.restart()
 
 
+def export_dir_for(export_dir: str, path: str) -> str:
+    """1.2: a batch's exports in a folder you chose: one subfolder per movie
+    (<chosen>/<movie name>/Export_...), so the movies' exports stay apart."""
+    from ..export import clean_prefix
+    return str(Path(export_dir) / (clean_prefix(Path(path).stem, 60) or "movie"))
+
+
 def analyse_one(path: str, s: Settings, progress: Optional[Callable[[str], None]] = None,
-                out_dir: Optional[str] = None) -> dict:
-    """One .nd2 with settings s (see the module text). Returns a log row dict."""
+                out_dir: Optional[str] = None, export_dir: Optional[str] = None) -> dict:
+    """One .nd2 with settings s (see the module text). Returns a log row dict.
+    export_dir (1.2): the export goes to <export_dir>/<movie name>/Export_... instead
+    of the movie's results folder (where the run itself is still saved). Paths too
+    long for Explorer / Excel (Windows' long paths off): the names are shortened by
+    themselves, and the log's Messages say so."""
     from ..export import catalog, standard
     from ..manual import background_warning
     from ..nd2io import describe, open_source
@@ -153,8 +167,13 @@ def analyse_one(path: str, s: Settings, progress: Optional[Callable[[str], None]
                 standard(cat, {c: w._prefer_sheets(c, d["M"]) for c, d in comps.items()})
             say(f"{Path(path).name}: exporting {len(keys)} item(s) ...")
             _settle(w)
+            w._auto_shorten = True                     # 1.2: long paths - no question
+            if export_dir:
+                w._export_root = export_dir_for(export_dir, path)
             w._run_export(comps, keys)
             _wait(w)
+            if getattr(w, "_path_note", "") and getattr(w, "_exported", None):
+                msgs.append(w._path_note)
             row["Export folder"] = str(getattr(w, "_exported", "") or "")
             row["Status"] = ("automatic - check" if row["Export folder"] else
                              "tracked, export failed")
@@ -203,8 +222,8 @@ class BatchDialog(QDialog):
         lay.addWidget(W.wrapped_label(
             "Every file is analysed without clicking, with the chosen settings: automatic "
             "background, AUTO-DETECT for each compartment with a tracking rule, TRACK & "
-            "MEASURE, then the settings' export list into the file's OUTPUT folder (ROI file, "
-            "methods and provenance as always). Nothing is checked by hand - open each file "
+            "MEASURE, then the settings' export list into the file's OUTPUT folder or the "
+            "folder under 'Save exports in' (ROI file, methods and provenance as always). Nothing is checked by hand - open each file "
             "afterwards (File > Earlier analyses of this file) to check or correct it. A log "
             "(CSV) lists what was found per file."))
         self.files = QListWidget()
@@ -224,6 +243,20 @@ class BatchDialog(QDialog):
                 self.cmb.addItem(PR.describe(blob)[:140], str(p))
         lay.addWidget(W.row(W.wrapped_label("Settings:"), self.cmb,
                             W.button("Other file...", self._other)))
+        # 1.2: where the exports go (the runs themselves stay in each movie's results folder)
+        self.export_dir = ""
+        self.lbl_export = W.wrapped_label("")
+        self.btn_export_usual = W.button("Usual folders", lambda: self._set_export_dir(""),
+                                         "Back to each movie's own results folder.")
+        erow = W.row(QLabel("<b>Save exports in:</b>"), self.lbl_export,
+                     W.button("Change...", self._choose_export_dir,
+                              "One folder for this batch's exports: each movie gets its own "
+                              "subfolder there, and the batch log goes there too. The runs "
+                              "themselves (autosaves) stay in each movie's results folder."),
+                     self.btn_export_usual)
+        erow.layout().setStretch(1, 1)
+        lay.addWidget(erow)
+        self._set_export_dir("")
         self.btn = W.button("Run", self._run, strong=True)
         lay.addWidget(self.btn)
         self.lbl = W.wrapped_label("", muted=True)
@@ -248,6 +281,28 @@ class BatchDialog(QDialog):
         d = QFileDialog.getExistingDirectory(self, "Folder with .nd2 files")
         if d:
             self._add_paths(sorted(str(p) for p in Path(d).rglob("*.nd2")))
+
+    def _set_export_dir(self, path: str) -> None:
+        self.export_dir = str(path or "")
+        self.lbl_export.setText(plain_path(self.export_dir) + "  (one subfolder per movie)"
+                                if self.export_dir else
+                                "each movie's own results folder (OUTPUT_<movie>), as usual")
+        self.lbl_export.setToolTip(self.export_dir)
+        self.btn_export_usual.setEnabled(bool(self.export_dir))
+
+    def _choose_export_dir(self) -> None:
+        d = QFileDialog.getExistingDirectory(self, "Save this batch's exports in",
+                                             self.export_dir)
+        if not d:
+            return
+        why = folder_problem(d)
+        if why is not None:
+            QMessageBox.warning(self, "Cannot save there",
+                                f"PeterPiper cannot write in {plain_path(d)}: {why}. Choose "
+                                f"another folder.")
+            return
+        import os
+        self._set_export_dir(os.path.normpath(d))
 
     def _other(self) -> None:
         p, _f = QFileDialog.getOpenFileName(self, "Saved settings", str(PR.folder()),
@@ -281,7 +336,8 @@ class BatchDialog(QDialog):
         try:
             for k, p in enumerate(paths):
                 self.lbl.setText(f"{k + 1} / {len(paths)}: {Path(p).name}")
-                r = analyse_one(p, s, progress=self.lbl.setText)
+                r = analyse_one(p, s, progress=self.lbl.setText,
+                                export_dir=self.export_dir or None)
                 self.rows.append(r)
                 i = self.table.rowCount()
                 self.table.insertRow(i)
@@ -290,7 +346,7 @@ class BatchDialog(QDialog):
                     self.table.setItem(i, j, QTableWidgetItem(Path(r[h]).name if h == "File"
                                                               else str(r[h])))
                 QApplication.processEvents()
-            log = write_log(str(Path(paths[0]).parent), self.rows, name)
+            log = write_log(self.export_dir or str(Path(paths[0]).parent), self.rows, name)
             from .. import outlog
             outlog.record("batch", f"Batch of {len(paths)} file(s) - {name}", [log],
                           "The batch log; each file's export is listed on its own.")

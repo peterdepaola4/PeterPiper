@@ -11,7 +11,8 @@ and feeds stdin from NUL, so no 'pause' can block. Nothing is written outside
 Quick tests (no network): not-extracted message; no Python; unsupported
 Python (a fake python.cmd, which also proves a .cmd/.bat shim returns control
 to the launcher); reuse of an earlier version's install only when its stamp is
-byte-identical (fake USERPROFILE).
+byte-identical (fake USERPROFILE); 1.2: PeterPiper 1.1's, then 1.0's identical
+install is reused before PD4nav's.
 
 --install: (1) fresh install into "<repo>/_home/inst test/venv" (path with a
 space) -> pip freeze must equal app/requirements.txt exactly, the stamp and
@@ -90,7 +91,8 @@ def mini_copy(dest: Path, req_text: bytes | None = None, compat_text: bytes | No
     """The launcher plus the few app files it looks at, in <dest>."""
     (dest / "app").mkdir(parents=True, exist_ok=True)
     shutil.copy2(BAT, dest / BAT.name)
-    for f in ("PeterPiper.py", "requirements.txt", "requirements-compatible.txt"):
+    for f in ("PeterPiper.py", "requirements.txt", "requirements-compatible.txt",
+              "install_progress.py"):                  # 1.2: the install progress helper
         shutil.copy2(REPO / "app" / f, dest / "app" / f)
     shutil.copytree(REPO / "app" / "peterpiper" / "assets", dest / "app" / "peterpiper" / "assets",
                     dirs_exist_ok=True)                # the logo the launcher shows
@@ -180,6 +182,20 @@ def quick_tests():
           rc == 1 and "first-time setup" in out and "Python is not installed" in out, f"rc={rc}")
     check("fake user folder: .PeterPiperV1.2 created there, not in the real profile",
           (prof / ".PeterPiperV1.2").is_dir())
+    # 1.2: an identical earlier PeterPiper install comes before PD4nav's (newest first)
+    prof2 = base / "profile2"
+    for ver in (".PD4navV3.0", ".PeterPiperV1.0", ".PeterPiperV1.1"):
+        v = prof2 / ver / "venv"
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(v)], check=True)
+        (v / "installed_requirements.txt").write_bytes(req)
+    env2 = {"USERPROFILE": str(prof2), "PATH": SYS32}
+    rc2, out2, _ = run_bat(bat, env2, "bat_reuse_pp11.log", drop=("PETERPIPER_HOME",))
+    check("1.2: identical PeterPiper 1.1 install is reused first (before 1.0 and PD4nav's)",
+          rc2 == 0 and ".PeterPiperV1.1\\venv" in out2, f"rc={rc2}")
+    shutil.rmtree(prof2 / ".PeterPiperV1.1", ignore_errors=True)
+    rc2, out2, _ = run_bat(bat, env2, "bat_reuse_pp10.log", drop=("PETERPIPER_HOME",))
+    check("1.2: ... then PeterPiper 1.0's, still before PD4nav 3.0's",
+          rc2 == 0 and ".PeterPiperV1.0\\venv" in out2, f"rc={rc2}")
     head = out[:out.index("first-time setup")].splitlines()
     check("first-time setup starts with the PeterPiper logo (its block-character lines, not "
           "the plain heading)", sum(1 for s in head if len(s.strip()) > 30) >= 8
@@ -207,6 +223,9 @@ def install_tests(keep: bool, home_base: Path):
           rc == 0 and "Setup finished" in out and "all packages OK" in out, f"rc={rc}")
     check("run 1: exact list used, no fallback",
           "Trying the compatible" not in out and "COMPATIBLE" not in out)
+    check("run 1 (1.2): 'still working' lines while pip is quiet, packages checked one by one",
+          "  still working - " in out and "checking numpy ... OK  (1 of 14)" in out
+          and "checking matplotlib ... OK  (14 of 14)" in out)
     py = venv / "Scripts" / "python.exe"
     want = pins(REPO / "app" / "requirements.txt")
     got = freeze(py) if py.exists() else {}

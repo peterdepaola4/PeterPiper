@@ -262,6 +262,11 @@ def part_d():
        sc.index("if defined PETERPIPER_NO_SHORTCUTS exit /b 0") < sc.index("powershell")
        and 'if /i "%MADE%"=="%PP_BAT%" exit /b 0' in sc and "$env:PP_BAT" in sc
        and "%PP_BAT%\"" not in sc.split("powershell", 1)[1].split("\n", 1)[0])
+    ok("D launcher (1.2): 'Starting PeterPiper ...' after the logo, before the program starts; "
+       "the install shows progress through app/install_progress.py",
+       launch.index("call :logo") < launch.index("Starting PeterPiper") < launch.index("pythonw.exe")
+       and '"%APP%\\install_progress.py" install' in bat
+       and (REPO / "app" / "install_progress.py").is_file())
 
 
 def W_ASSETS():

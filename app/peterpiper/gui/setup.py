@@ -770,6 +770,18 @@ class SetupDialog(QDialog):
         if self._preload and not self._preload_done:
             self._preload_done = True
             QTimer.singleShot(0, self._do_preload)
+        if not getattr(self, "_absorb_asked", False):  # 1.2: older versions to take in
+            self._absorb_asked = True
+            QTimer.singleShot(500, self._offer_absorb)
+
+    def _offer_absorb(self) -> None:
+        """1.2: once per program start, if older PeterPiper versions can be taken in,
+        a window offers it (not blocking this one). Never raises."""
+        try:
+            from .absorbdlg import offer_on_start
+            self.absorb_dlg = offer_on_start(self)
+        except Exception:                                          # noqa: BLE001
+            self.absorb_dlg = None
 
     def _refresh_smart(self) -> None:
         """The Smart auto-select line: its state in one line, the directions as the

@@ -5,7 +5,7 @@ title: ""
 labels: bug
 ---
 
-**PeterPiper version** (in the window title, e.g. PeterPiperV1.1):
+**PeterPiper version** (in the window title, e.g. PeterPiperV1.2):
 
 **Computer check** (Help > Computer check... - long paths on/off, Python version):
 

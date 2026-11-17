@@ -1,5 +1,5 @@
 """
-Check for updates (PeterPiper 1.1) - the ONLY place PeterPiper uses the network,
+Check for updates (PeterPiper 1.2) - the ONLY place PeterPiper uses the network,
 and only when you press "Check for updates".
 
 What it sends: one HTTPS request to GitHub's public release list of this project
@@ -10,8 +10,8 @@ result of yours is sent; the request carries only a generic User-Agent.
 What it changes (never your data: profiles, settings, run lists, saved files,
 logs and results live in "PeterPiper data" and next to your movies - outside the
 program folder - and are never touched):
-- Windows, a release of the same program folder (e.g. 1.1.0 -> 1.1.1, same
-  PeterPiperV1.1 and the same package list): only the program files that differ
+- Windows, a release of the same program folder (e.g. 1.2.0 -> 1.2.1, same
+  PeterPiperV1.2 and the same package list): only the program files that differ
   from the release zip are replaced; each replaced file is first copied to
   <program folder>/_update_backup/<old version>_<time>/. Nothing outside the
   zip's own file list is touched.

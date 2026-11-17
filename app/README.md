@@ -1,10 +1,10 @@
-# PeterPiperV1.1
+# PeterPiperV1.2
 
 Click-to-draw (plus 'auto-select the obvious ones') ROI tracking for Nikon .nd2
-fluorescence time series. See `READ ME.txt` next to `PeterPiperV1.1.bat` for how to use it.
+fluorescence time series. See `READ ME.txt` next to `PeterPiperV1.2.bat` for how to use it.
 
-Install: `PeterPiperV1.1.bat` makes a private Python environment in
-`%USERPROFILE%\.PeterPiperV1.1\venv` from the exact versions in `requirements.txt`
+Install: `PeterPiperV1.2.bat` makes a private Python environment in
+`%USERPROFILE%\.PeterPiperV1.2\venv` from the exact versions in `requirements.txt`
 (fallback: `requirements-compatible.txt`); what was really installed is written to
 `venv\installed_versions.txt`. After that everything runs locally (see `SECURITY.md`).
 
@@ -55,7 +55,7 @@ Code map (`peterpiper/`):
   file is written and read with the extended-length form, so results deeper than 260
   characters still work)
 
-PeterPiper 1.1 (see the manual, sections 6.14 - 6.19 and 8.13):
+PeterPiper 1.2 (see the manual, sections 6.14 - 6.19 and 8.13):
 - `gui/setup.py` - the start screen (Analyse movies / Continue your queue / Compare,
   recent analyses, the queue); `gui/clickwin.py` - the analysis window (step pages,
   SAVE and EXPORT, the queue row, Smart auto-select)

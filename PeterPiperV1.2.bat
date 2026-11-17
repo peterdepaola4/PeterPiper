@@ -3,15 +3,15 @@ setlocal DisableDelayedExpansion
 rem other software's Python settings must not reach PeterPiper's private Python
 set "PYTHONHOME="
 set "PYTHONPATH="
-title PeterPiper 1.1
+title PeterPiper 1.2
 rem ===================================================================
-rem  PeterPiperV1.1 - the only file you need to double-click.
+rem  PeterPiperV1.2 - the only file you need to double-click.
 rem
 rem  First time on a computer: it installs what it needs (about 5 min,
 rem  needs internet once). Every time after that: it just opens, and
 rem  everything runs on this computer (nothing is uploaded).
 rem
-rem  The install lives in  %USERPROFILE%\.PeterPiperV1.1\venv
+rem  The install lives in  %USERPROFILE%\.PeterPiperV1.2\venv
 rem  (delete that folder to start fresh). IT / testing: set PETERPIPER_HOME
 rem  to put the install somewhere else; set PETERPIPER_INSTALL_ONLY=1 to
 rem  install / check only, without opening the app; set
@@ -32,7 +32,7 @@ rem ===================================================================
 
 set "HERE=%~dp0"
 set "APP=%HERE%app"
-set "HOME_DIR=%USERPROFILE%\.PeterPiperV1.1"
+set "HOME_DIR=%USERPROFILE%\.PeterPiperV1.2"
 if defined PETERPIPER_HOME set "HOME_DIR=%PETERPIPER_HOME%"
 set "ENV=%HOME_DIR%\venv"
 rem a log per launch, so a second copy of the app can open while one is running
@@ -81,10 +81,10 @@ rem ===================================================================
 set "FRESH=1"
 if not defined ONLY cls
 call :logo
-echo   PeterPiper 1.1 - first-time setup
+echo   PeterPiper 1.2 - first-time setup
 echo   ---------------------------------
 echo.
-echo   Installing what PeterPiperV1.1 needs. This happens only once
+echo   Installing what PeterPiperV1.2 needs. This happens only once
 echo   and takes about 5 minutes. Please keep this window open.
 echo.
 title PLEASE WAIT FOR INSTALLATIONS - do not close this window
@@ -147,8 +147,8 @@ rem the exact tested versions exist for Python 3.11 - 3.14 only (not 3.14.1:
 rem networkx, needed by scikit-image, refuses that one release)
 "%VPY%" -c "import sys;sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,14) and sys.version_info[:3]!=(3,14,1) else 1)"
 if errorlevel 1 goto compatonly
-set "LIST=requirements.txt - the exact versions PeterPiperV1.1 was tested with"
-echo   [2/3] Downloading packages: the exact versions PeterPiperV1.1 was
+set "LIST=requirements.txt - the exact versions PeterPiperV1.2 was tested with"
+echo   [2/3] Downloading packages: the exact versions PeterPiperV1.2 was
 echo         tested with - about 250 MB, progress bars below ...
 echo.
 echo   PLEASE WAIT: when the text stops at "Installing collected packages"
@@ -185,19 +185,19 @@ echo   [3/3] Checking ...
 if errorlevel 1 goto checkfail
 
 rem record what was really installed (for methods sections and bug reports)
-> "%ENV%\installed_versions.txt" echo # PeterPiperV1.1 install, %DATE% %TIME%
+> "%ENV%\installed_versions.txt" echo # PeterPiperV1.2 install, %DATE% %TIME%
 >> "%ENV%\installed_versions.txt" echo # package list: %LIST%
 "%VPY%" -c "import sys,platform;print('# Python '+sys.version.split()[0]+', '+platform.platform())" >> "%ENV%\installed_versions.txt"
 "%VPY%" -m pip freeze --disable-pip-version-check >> "%ENV%\installed_versions.txt"
 copy /y "%APP%\requirements.txt" "%STAMP%" >nul
 
 echo.
-title PeterPiper 1.1
+title PeterPiper 1.2
 echo   Setup finished.
 if not defined COMPAT goto setupdone
 echo.
 echo   NOTE: this computer got COMPATIBLE package versions, not the exact
-echo   ones PeterPiperV1.1 was tested with. The app works the same way; for
+echo   ones PeterPiperV1.2 was tested with. The app works the same way; for
 echo   published work, report the versions listed in
 echo   "%ENV%\installed_versions.txt"
 echo.
@@ -216,10 +216,10 @@ ping -n 3 127.0.0.1 >nul
 rem ===================================================================
 :launch
 if defined ONLY goto installonly
-title PeterPiper 1.1
+title PeterPiper 1.2
 cls
 call :logo
-echo   PeterPiper 1.1 is open in its own window.
+echo   PeterPiper 1.2 is open in its own window.
 echo   Keep this window open while you work - it closes by itself when you
 echo   quit PeterPiper.
 echo.
@@ -244,13 +244,13 @@ exit /b 0
 rem ===================================================================
 :notextracted
 echo.
-echo   PeterPiperV1.1 cannot run from inside the zip file.
+echo   PeterPiperV1.2 cannot run from inside the zip file.
 echo.
 echo   1. Close this window.
 echo   2. Right-click the zip file and choose  "Extract All..."
-echo   3. Open the extracted folder and double-click  PeterPiperV1.1.bat
+echo   3. Open the extracted folder and double-click  PeterPiperV1.2.bat
 echo.
-echo   Tip: extract it somewhere simple like  D:\PeterPiperV1.1
+echo   Tip: extract it somewhere simple like  D:\PeterPiperV1.2
 echo   (not OneDrive, not a network drive).
 echo.
 %WAIT%
@@ -264,17 +264,17 @@ echo   1. Go to  https://www.python.org/downloads/windows/
 echo   2. Download Python 3.13 (or 3.12 / 3.11), "Windows installer (64-bit)",
 echo      and run it.
 echo   3. IMPORTANT: on the first screen tick  "Add python.exe to PATH".
-echo   4. Then double-click  PeterPiperV1.1.bat  again.
+echo   4. Then double-click  PeterPiperV1.2.bat  again.
 echo.
 %WAIT%
 exit /b 1
 
 :badpython
 echo.
-echo   This computer's Python cannot run PeterPiperV1.1:
+echo   This computer's Python cannot run PeterPiperV1.2:
 call %ANYPY% --version <nul
-echo   PeterPiperV1.1 needs 64-bit Python 3.10 - 3.14 (3.11 - 3.14 is best).
-echo   Python 3.15 and newer are not supported yet (the packages PeterPiperV1.1
+echo   PeterPiperV1.2 needs 64-bit Python 3.10 - 3.14 (3.11 - 3.14 is best).
+echo   Python 3.15 and newer are not supported yet (the packages PeterPiperV1.2
 echo   needs are not available for them), and 32-bit Python does not work.
 echo   You can keep your Python: the one below is installed next to it.
 echo   Install Python 3.13 from https://www.python.org/downloads/windows/
@@ -288,7 +288,7 @@ exit /b 1
 echo.
 echo   Could not set up the private Python (the message above says why).
 echo   Most often: the folder is on OneDrive or a network drive. Move the
-echo   PeterPiperV1.1 folder to a local drive (e.g. D:\PeterPiperV1.1) and
+echo   PeterPiperV1.2 folder to a local drive (e.g. D:\PeterPiperV1.2) and
 echo   try again. If antivirus showed an alert, check it with IT first.
 echo.
 %WAIT%
@@ -302,7 +302,7 @@ echo   removed a file, or the download was cut off. Delete the folder
 echo   "%ENV%"
 echo   and double-click this file again (a completely fresh install). If it
 echo   fails again, send a screenshot of this window to whoever maintains
-echo   PeterPiperV1.1.
+echo   PeterPiperV1.2.
 echo.
 %WAIT%
 exit /b 1
@@ -331,10 +331,10 @@ echo.
 exit /b 1
 
 :crashed
->> "%LOG%" echo PeterPiperV1.1 exit code %errorlevel%
+>> "%LOG%" echo PeterPiperV1.2 exit code %errorlevel%
 echo.
-echo   PeterPiperV1.1 closed unexpectedly. Opening the error report ...
-echo   (Send that file to whoever maintains PeterPiperV1.1.)
+echo   PeterPiperV1.2 closed unexpectedly. Opening the error report ...
+echo   (Send that file to whoever maintains PeterPiperV1.2.)
 echo.
 start "" notepad "%LOG%"
 pause
@@ -368,7 +368,7 @@ type "%ART%"
 echo.
 exit /b 0
 :logotext
-echo   PeterPiper 1.1
+echo   PeterPiper 1.2
 echo.
 exit /b 0
 
@@ -396,7 +396,7 @@ if not exist "%PP_ICO%" exit /b 0
 set "MADE="
 if exist "%HOME_DIR%\shortcuts_for.txt" set /p MADE=<"%HOME_DIR%\shortcuts_for.txt"
 if /i "%MADE%"=="%PP_BAT%" exit /b 0
-powershell -NoProfile -NonInteractive -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @($env:PP_DIR,[Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){ if($d){ $l=$w.CreateShortcut((Join-Path $d 'PeterPiper.lnk')); $l.TargetPath=$env:PP_BAT; $l.WorkingDirectory=$env:PP_DIR; $l.IconLocation=$env:PP_ICO+',0'; $l.Description='PeterPiper 1.1 - single-cell fluorescence time courses'; $l.Save() } }" >nul 2>&1
+powershell -NoProfile -NonInteractive -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @($env:PP_DIR,[Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){ if($d){ $l=$w.CreateShortcut((Join-Path $d 'PeterPiper.lnk')); $l.TargetPath=$env:PP_BAT; $l.WorkingDirectory=$env:PP_DIR; $l.IconLocation=$env:PP_ICO+',0'; $l.Description='PeterPiper 1.2 - single-cell fluorescence time courses'; $l.Save() } }" >nul 2>&1
 if errorlevel 1 exit /b 0
 > "%HOME_DIR%\shortcuts_for.txt" echo %PP_BAT%
 echo   A PeterPiper shortcut with the logo is on your Desktop, in the Start

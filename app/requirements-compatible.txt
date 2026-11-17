@@ -1,6 +1,6 @@
 # PeterPiper - FALLBACK package list (version ranges, not exact versions).
 #
-# Used by PeterPiperV1.1.bat ONLY when the exact, tested versions in
+# Used by PeterPiperV1.2.bat ONLY when the exact, tested versions in
 # requirements.txt cannot be installed on a computer (for example Python 3.10,
 # or a computer PyPI has no ready-made packages for). The launcher says so on
 # screen. pip picks the newest versions inside these ranges that suit that

@@ -14,9 +14,9 @@ enough.
 
 ## Setting up
 
-Windows 10 / 11, 64-bit Python 3.11 - 3.14. The launcher (`PeterPiperV1.1.bat`) installs the
+Windows 10 / 11, 64-bit Python 3.11 - 3.14. The launcher (`PeterPiperV1.2.bat`) installs the
 exact package versions in `app/requirements.txt` into a private environment; for development
-use that environment's Python (`%USERPROFILE%\.PeterPiperV1.1\venv\Scripts\python.exe`) or a
+use that environment's Python (`%USERPROFILE%\.PeterPiperV1.2\venv\Scripts\python.exe`) or a
 virtual environment with the same requirements.
 
 ## Tests

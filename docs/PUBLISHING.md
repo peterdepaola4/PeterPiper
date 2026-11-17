@@ -60,10 +60,10 @@ This puts the address in Help > About PeterPiper, `CITATION.cff`, the manual's c
 
 1. Build and check the zip: `python build/build_zip.py --out release --unzip release`
    (it says "byte-identical to the repository" when the zip matches the code).
-2. GitHub > **Releases > Draft a new release**: tag `v1.2.1`, title `PeterPiper 1.2`, paste the
+2. GitHub > **Releases > Draft a new release**: tag `v1.2.2`, title `PeterPiper 1.2`, paste the
    PeterPiper 1.2.0 part of `CHANGELOG.md`, attach `release\PeterPiperV1.2.zip`, **Publish**.
    The Mac workflow (`.github/workflows/mac-app.yml`) attaches
-   `PeterPiper-1.2.1-macOS-AppleChip.dmg` and `PeterPiper-1.2.1-macOS-Intel.dmg`.
+   `PeterPiper-1.2.2-macOS-AppleChip.dmg` and `PeterPiper-1.2.2-macOS-Intel.dmg`.
    *Check for updates* in the program reads this release list (the newest release's tag,
    notes and these files), so keep the file names in this form.
 3. Users download the zip from the release page, extract it and double-click

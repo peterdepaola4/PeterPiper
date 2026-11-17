@@ -832,6 +832,142 @@ def backup(nd2_path, out_dir, target_root, include_movie: bool = True,
     return report
 
 
+# ------------------------------------------------- 1.2.2: a second copy of results
+COPY_MANIFEST = ".peterpiper-copies.json"   # in each copied results folder: what we wrote
+
+
+def _norm(p) -> str:
+    return os.path.normcase(os.path.abspath(plain_path(str(p)))).rstrip("\\/")
+
+
+def copy_target(nd2_path, out_dir, root) -> Path:
+    """Where keep_copy puts this movie's results: <root>/OUTPUT_<movie>/<user>."""
+    nd2 = Path(plain_path(str(nd2_path)))
+    return Path(plain_path(str(root))) / _results_rel(nd2, Path(plain_path(str(out_dir))))
+
+
+def keep_copy(nd2_path, out_dir, root=None, extra=(), progress=None,
+              cancel=None) -> BackupReport:
+    """1.2.2: keep a second copy of this movie's results (OUTPUT_<movie>/<user>:
+    autosaves, SAVEs, exports) in <root>/OUTPUT_<movie>/<user> (root: the user's
+    'Also keep a copy in' folder). Only PeterPiper's own result files are copied -
+    never the movie. New files are copied; identical ones skipped; a file that
+    changed (an autosave written again) replaces OUR earlier copy only if that copy
+    is untouched since we wrote it (remembered in COPY_MANIFEST) - any other file
+    of the same name is kept and the new copy gets _2, _3 ... `extra`: further
+    folders to copy in as <copy>/<their name> (an export saved outside the results
+    folder). Never raises; runs fine in a worker thread."""
+    report = BackupReport()
+    root = root if root is not None else copy_root()
+    if not root:
+        report.problem = "no folder is set for a second copy."
+        return report
+    try:
+        out = Path(plain_path(str(out_dir)))
+        dst_root = copy_target(nd2_path, out, root)
+        report.folder = str(dst_root)
+        if _norm(dst_root) == _norm(out):
+            report.problem = "the second copy would be the results folder itself."
+            return report
+        why = folder_problem(Path(plain_path(str(root))))
+        if why:
+            report.problem = f"PeterPiper cannot write in {plain_path(str(root))}: {why}."
+            return report
+        man_p = dst_root / COPY_MANIFEST
+        try:
+            man = json.loads(open(long_path(man_p), encoding="utf-8").read())
+            man = man if isinstance(man, dict) else {}
+        except (OSError, ValueError):
+            man = {}
+        sources = [(out, Path("."))] + [(Path(plain_path(str(e))), Path(Path(str(e)).name))
+                                        for e in extra if e]
+        plan = []
+        for base, sub in sources:
+            if not os.path.isdir(long_path(base)):
+                continue
+            if base != out and _norm(base).startswith(_norm(out) + os.sep):
+                continue                        # inside the results folder: copied anyway
+            for dirpath, dirnames, filenames in os.walk(long_path(base)):
+                dirnames[:] = sorted(d for d in dirnames if not _junk(d))
+                here = Path(plain_path(dirpath))
+                for n in sorted(filenames):
+                    if _junk(n) or n == COPY_MANIFEST:
+                        continue
+                    src = here / n
+                    rel = (sub / src.relative_to(base)).as_posix()
+                    try:
+                        st = os.stat(long_path(src))
+                    except OSError as exc:
+                        report.failed.append((str(src), error_text(exc)))
+                        continue
+                    dst = dst_root / rel
+                    try:
+                        dst_st = os.stat(long_path(dst))
+                    except FileNotFoundError:
+                        plan.append((src, dst, st, rel, False))
+                        continue
+                    except OSError as exc:
+                        report.failed.append((str(src), error_text(exc)))
+                        continue
+                    if _same(st, dst_st):
+                        report.skipped.append((str(src), str(dst)))
+                    elif man.get(rel) == [dst_st.st_size, dst_st.st_mtime_ns]:
+                        plan.append((src, dst, st, rel, True))      # our own older copy
+                    else:
+                        try:
+                            to, same = _where_to(st, dst)
+                        except OSError as exc:
+                            report.failed.append((str(src), error_text(exc)))
+                            continue
+                        if same is not None:
+                            report.skipped.append((str(src), str(same)))
+                        else:
+                            plan.append((src, to, st, None, False))
+        report.total_bytes = sum(p[2].st_size for p in plan)
+        for src, dst, st, rel, replace in plan:
+            if _cancelled(cancel):
+                report.cancelled = True
+                break
+            try:
+                if replace:
+                    tmp = dst.with_name(f"{dst.name}.peterpiper-new")
+                    final = _copy_one(src, tmp, st, report, progress, cancel)
+                    os.replace(long_path(final), long_path(dst))
+                    final = dst
+                else:
+                    final = _copy_one(src, dst, st, report, progress, cancel)
+                if rel is not None and Path(final) == dst:
+                    fst = os.stat(long_path(final))
+                    man[rel] = [fst.st_size, fst.st_mtime_ns]
+                report.copied.append((str(src), plain_path(str(final))))
+            except InterruptedError:
+                break
+            except OSError as exc:
+                report.failed.append((str(src), error_text(exc)))
+        if report.copied:
+            try:
+                make_dirs(dst_root)
+                tmp = man_p.with_name(man_p.name + ".tmp")
+                with open(long_path(tmp), "w", encoding="utf-8") as fh:
+                    json.dump(man, fh)
+                os.replace(long_path(tmp), long_path(man_p))
+            except OSError:
+                pass
+    except Exception as exc:                                       # noqa: BLE001
+        report.problem = error_text(exc)
+    return report
+
+
+def copy_root() -> str:
+    """1.2.2: the user's 'Also keep a copy in' folder, or '' (off)."""
+    return _get("copy_root")
+
+
+def set_copy_root(path, check: bool = True) -> None:
+    """None / '' = off. A folder that cannot be written is refused (ValueError)."""
+    _set("copy_root", path, check)
+
+
 # ----------------------------------------------------- where things go (per user)
 def _get(key: str) -> str:
     from . import userprefs

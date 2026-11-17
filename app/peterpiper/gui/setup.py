@@ -712,7 +712,7 @@ class SetupDialog(QDialog):
         self.btn_storage = None
         opener = _storage_opener()
         if opener is not None:                       # 1.1: only when the part is there
-            self.btn_storage = W.button("Storage & cloud", lambda: opener(self),
+            self.btn_storage = W.button("Storage && cloud", lambda: opener(self),
                                         "Where results are kept, and back-ups.")
             lay.addWidget(self.btn_storage)
         self.btn_update = W.button(                  # 1.1: the only network use, on request

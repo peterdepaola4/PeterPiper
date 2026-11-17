@@ -307,6 +307,7 @@ def _has_outline(r) -> bool:
 
 
 class ClickWindow(QMainWindow):
+    _copyDone = Signal(str)                 # 1.2.2: the second copy finished (text)
 
     def __init__(self, src: ImageSource, exp: Experiment, s: Settings) -> None:
         super().__init__()
@@ -4202,7 +4203,9 @@ class ClickWindow(QMainWindow):
         self._since_save = False                # the export has the ROI file with the tracking
         self.lbl_save_info.setText(f"Exported {datetime.now():%H:%M} (with its ROI file).")
         self._queue_mark("exported")
-        self._emit("exported", nd2=str(self.exp.nd2_path), folder=str(out["folder"]))
+        self._emit("exported", nd2=str(self.exp.nd2_path), folder=str(out["folder"]),
+                   out_dir=str(self.exp.out_dir))
+        self._keep_copy(extra=[out["folder"]])  # 1.2.2: also into the second folder
         self._update_next()
 
     # ======================================================== live graph
@@ -4374,6 +4377,13 @@ class ClickWindow(QMainWindow):
             self.ed_note.setPlaceholderText(f"Note (optional) - last: {note}")
         self._queue_mark("saved")
         self._emit("saved", nd2=str(self.exp.nd2_path), path=str(path), n_cells=self._n_cells())
+        try:                                    # 1.2.2: SAVE is in 'Saved files' too
+            from .. import outlog
+            outlog.record("saved", Path(self.exp.nd2_path).name, [str(path)],
+                          f"SAVE{': ' + note if note else ''}")
+        except Exception:                                          # noqa: BLE001
+            pass
+        self._keep_copy()                       # 1.2.2: also into the second folder
         self._refresh_smart()                   # a SAVE can unlock Smart auto-select
         if not silent:
             what = ("with the tracking (every ROI at every timepoint)" if self.track is not None
@@ -4710,6 +4720,70 @@ class ClickWindow(QMainWindow):
             else "ROIs only - not tracked yet"
         self.lbl_saved.setText(f"Autosaved at {datetime.now():%H:%M:%S} ({with_trk}).")
         self.lbl_saved.setToolTip(path)
+        self._keep_copy()                       # 1.2.2: also into the second folder
+
+    # ---------------------------------------------- 1.2.2: the second copy
+    def _keep_copy(self, extra=()) -> None:
+        """Copy this movie's results to the user's 'Also keep a copy in' folder, in
+        the background (one copy at a time; a request while one runs is done after it).
+        Off when no such folder is set."""
+        try:
+            from .. import cloud
+            root = cloud.copy_root()
+        except Exception:                                          # noqa: BLE001
+            return
+        if not root:
+            return
+        import threading
+        st = self.__dict__.setdefault("_copy_state", {"thread": None, "again": None,
+                                                      "lock": threading.Lock()})
+        out = str(self.exp.out_dir)
+        extra = [str(e) for e in extra if e and not str(e).startswith(out)]
+        with st["lock"]:
+            if st["thread"] is not None:          # one is running: done right after it
+                st["again"] = (st["again"] or []) + extra
+                return
+            st["thread"] = True
+        if not getattr(self, "_copy_hooked", False):
+            self._copyDone.connect(self._on_copy_done)
+            self._copy_hooked = True
+        nd2 = str(self.exp.nd2_path)
+
+        def work(extra=extra):
+            while True:
+                try:
+                    rep = cloud.keep_copy(nd2, out, root, extra=extra)
+                    if rep.problem:
+                        text = f"Second copy not kept: {rep.problem}"
+                    elif rep.failed:
+                        text = (f"Second copy: {len(rep.failed)} file(s) could not be copied to "
+                                f"{rep.folder} ({rep.failed[0][1]})")
+                    else:
+                        text = f"Copy kept in {rep.folder}"
+                except Exception as exc:                           # noqa: BLE001
+                    text = f"Second copy not kept: {exc}"
+                try:
+                    self._copyDone.emit(text)
+                except Exception:                                  # noqa: BLE001
+                    pass
+                with st["lock"]:
+                    again, st["again"] = st["again"], None
+                    if again is None:
+                        st["thread"] = None
+                        return
+                extra = again
+
+        th = threading.Thread(target=work, name="peterpiper-copy")   # not a daemon:
+        with st["lock"]:                                              # finishes on exit
+            st["thread"] = th
+        th.start()
+
+    def _on_copy_done(self, text: str) -> None:
+        self._last_copy = text
+        tip = self.lbl_saved.toolTip()
+        self.lbl_saved.setToolTip((tip.split(chr(10))[0] + chr(10) if tip else "") + text)
+        if not text.startswith("Copy kept"):
+            self.set_status(text)
 
     def _saved_text(self) -> str:
         if getattr(self.settings, "autosave_sessions", True):

@@ -1,5 +1,20 @@
 # Changelog
 
+## PeterPiper 1.2.2 (2026-11-17)
+
+The methods and the numbers are unchanged; the same program folder as 1.2.0, so
+*Check for updates* updates 1.2.0 / 1.2.1 in place.
+
+- **Also keep a copy in** (*Storage & cloud*): a second results folder - e.g. the
+  cloud and your own drive. Every autosave, SAVE and export is copied there in the
+  background (`cloud.keep_copy`); only results, never the movie; PeterPiper's own
+  earlier copy is updated, anything else of the same name is kept (`_2`).
+- **Saved files** lists every analysis (SAVE logged; the run list shown even when the
+  log is empty); its buttons are greyed out when there is nothing to open, and *Open
+  file* opens the picked save's first file.
+- The start screen's *Storage & cloud* button no longer reads "Storage _cloud".
+- New developer test `dev_tests/test_v122_storage.py`.
+
 ## PeterPiper 1.2.1 (2026-11-16)
 
 **A correction to *Keep in step*.** The methods and the numbers are unchanged; the same

@@ -57,6 +57,7 @@ TESTS = [
     ("v12_merge", "test_v12_merge.py", []),
     ("v12_export", "test_v12_export.py", []),
     ("v121_sync", "test_v121_sync.py", []),
+    ("v122_storage", "test_v122_storage.py", []),
 ]
 
 

@@ -13,6 +13,7 @@ nothing here uses the network.
 """
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 from typing import List, Optional
@@ -172,7 +173,7 @@ class StorageDialog(QDialog):
         box = QGroupBox("Results go")
         v = QVBoxLayout(box)
         v.setContentsMargins(10, 8, 10, 8)
-        self.rb_next = QRadioButton("Next to each movie (default): OUTPUT_<movie> beside the .nd2")
+        self.rb_next = QRadioButton("Next to each movie (default): OUTPUT_<movie> beside it")
         self.rb_folder = QRadioButton("In a folder:")
         grp = QButtonGroup(self)
         grp.addButton(self.rb_next)
@@ -191,7 +192,36 @@ class StorageDialog(QDialog):
         root = C.results_root()
         self.lbl_results.set_path(root)
         (self.rb_folder if root else self.rb_next).setChecked(True)
-        lay.addWidget(box)
+        pair = QHBoxLayout()                       # 1.2.2: results and the copy side by side
+        pair.addWidget(box, 1)
+
+        # -- 1.2.2: a second copy (e.g. the cloud AND your own drive)
+        box = QGroupBox("Also keep a copy in")
+        v = QVBoxLayout(box)
+        v.setContentsMargins(10, 8, 10, 8)
+        self.rb_copy_off = QRadioButton("Off (default)")
+        self.rb_copy_on = QRadioButton("This folder too:")
+        grp2 = QButtonGroup(self)
+        grp2.addButton(self.rb_copy_off)
+        grp2.addButton(self.rb_copy_on)
+        self.lbl_copy = _PathLabel("", "not chosen yet")
+        self.btn_copy = W.button("Choose...", self._choose_copy,
+                                 "Pick your own drive, a cloud folder or any folder.")
+        r = QHBoxLayout()
+        r.addWidget(self.rb_copy_on)
+        r.addWidget(self.lbl_copy, 1)
+        r.addWidget(self.btn_copy)
+        v.addWidget(self.rb_copy_off)
+        v.addLayout(r)
+        v.addWidget(W.wrapped_label(
+            "Every autosave, SAVE and export is copied there too (OUTPUT_<movie>/<your "
+            "name>) - e.g. the cloud and your own drive. Never the movies; nothing there "
+            "is deleted.", muted=True))
+        croot = C.copy_root()
+        self.lbl_copy.set_path(croot)
+        (self.rb_copy_on if croot else self.rb_copy_off).setChecked(True)
+        pair.addWidget(box, 1)
+        lay.addLayout(pair)
 
         # -- backup
         box = QGroupBox("Back up to")
@@ -217,7 +247,8 @@ class StorageDialog(QDialog):
                                  strong=True)
         bl.addWidget(self.btn_save)
         lay.addLayout(bl)
-        self.resize(660, self.sizeHint().height())
+        self.setMinimumWidth(900)                  # 1.2.2: two boxes side by side
+        self.resize(940, self.sizeHint().height())
 
     # where a menu would choose (tests replace this)
     def _menu_choice(self, button: QPushButton, extra=None) -> Optional[str]:
@@ -244,6 +275,12 @@ class StorageDialog(QDialog):
             self.lbl_results.set_path(path)
             self.rb_folder.setChecked(True)
 
+    def _choose_copy(self) -> None:
+        path = self._pick(self.btn_copy, True)
+        if path:
+            self.lbl_copy.set_path(path)
+            self.rb_copy_on.setChecked(True)
+
     def _choose_backup(self) -> None:
         path = self._pick(self.btn_backup, False,
                           extra=[("No backup folder (ask each time)", "none")])
@@ -257,9 +294,21 @@ class StorageDialog(QDialog):
         if self.rb_folder.isChecked() and not res:
             QMessageBox.information(self, "PeterPiper", "Choose the folder for results first.")
             return
+        cp = self.lbl_copy.path() if self.rb_copy_on.isChecked() else ""
+        if self.rb_copy_on.isChecked() and not cp:
+            QMessageBox.information(self, "PeterPiper", "Choose the folder for the second "
+                                                        "copy first.")
+            return
+        if cp and res and os.path.normcase(os.path.abspath(cp)) == \
+                os.path.normcase(os.path.abspath(res)):
+            QMessageBox.information(self, "PeterPiper", "The second copy needs a different "
+                                                        "folder from where results go.")
+            return
         try:
             if res != C.results_root():
                 C.set_results_root(res or None)
+            if cp != C.copy_root():
+                C.set_copy_root(cp or None)
             bk = self.lbl_backup.path()
             if bk != C.backup_root():
                 C.set_backup_root(bk or None)

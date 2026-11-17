@@ -19,7 +19,36 @@ from ..safety import plain_path
 from . import widgets as W
 
 KINDS = {"export": "Export", "compare": "Compare / average", "graph": "Graph",
-         "batch": "Batch analysis", "kinetics": "Kinetics"}
+         "batch": "Batch analysis", "kinetics": "Kinetics", "saved": "SAVE",
+         "session": "Autosave", "run": "Saved run"}
+
+
+def run_entries(seen=()) -> list:
+    """1.2.2: this user's saved runs from the run list (autosaves, SAVEs, exports'
+    ROI files) as log-like entries, for files the log does not list yet - so the
+    window shows every analysis, also those saved before SAVE was logged. Reads
+    only the run list (no file is opened). Never raises."""
+    out = []
+    try:
+        from .. import history as H
+        idx = H._load_index()
+    except Exception:                                              # noqa: BLE001
+        return out
+    seen = {os.path.normcase(plain_path(str(s))) for s in seen}
+    for ent in idx.values():
+        for r in ent.get("runs", []):
+            f = str(r.get("path") or "")
+            if not f or os.path.normcase(plain_path(f)) in seen:
+                continue
+            kind = {"session": "session", "saved": "saved", "export": "export"}.get(
+                str(r.get("kind") or ""), "run")
+            n = r.get("n_cells")
+            out.append(dict(when=str(r.get("saved") or r.get("recorded") or ""), kind=kind,
+                            name=str(ent.get("nd2_name") or Path(f).name),
+                            folder=str(Path(f).parent), files=[f],
+                            detail=f"{KINDS.get(kind, kind)} of {ent.get('nd2_name', '')}"
+                                   + (f" - {n} cells" if n else "")))
+    return out
 
 
 def _open(path: str) -> None:
@@ -64,15 +93,23 @@ class OutputsDialog(QDialog):
         split.addWidget(self.files)
         split.setSizes([420, 220])
         lay.addWidget(split, 1)
-        lay.addWidget(W.row(W.button("Open folder", self._open_folder),
-                            W.button("Open file", self._open_file),
-                            W.button("Close", self.accept)))
+        self.files.currentItemChanged.connect(lambda *_a: self._buttons())
+        self.btn_folder = W.button("Open folder", self._open_folder,
+                                   "Open the folder of the save picked above.")
+        self.btn_file = W.button("Open file", self._open_file,
+                                 "Open the file picked below (or the save's first file).")
+        lay.addWidget(W.row(self.btn_folder, self.btn_file, W.button("Close", self.accept)))
+        self.table.itemSelectionChanged.connect(self._buttons)
         self._rows = []
         self._fill()
 
     def _fill(self) -> None:
         q = self.ed.text().strip().lower()
-        self._rows = [e for e in outlog.entries() if not q or q in " ".join(
+        logged = outlog.entries()
+        seen = [f for e in logged for f in (e.get("files") or [])]
+        every = sorted(logged + run_entries(seen),          # 1.2.2: the run list too
+                       key=lambda d: str(d.get("when", "")), reverse=True)
+        self._rows = [e for e in every if not q or q in " ".join(
             str(e.get(k, "")) for k in ("name", "folder", "kind", "detail")).lower()]
         self.table.setRowCount(0)
         from .historydlg import when_text
@@ -92,6 +129,13 @@ class OutputsDialog(QDialog):
         else:
             self.files.clear()
             self.files.addItem("Nothing saved yet (or nothing matches the filter).")
+        self._buttons()
+
+    def _buttons(self) -> None:
+        """1.2.2: the buttons are usable only when there is something to open."""
+        has = 0 <= self.table.currentRow() < len(self._rows)
+        self.btn_folder.setEnabled(has)
+        self.btn_file.setEnabled(has)
 
     def _show_files(self) -> None:
         self.files.clear()
@@ -113,5 +157,10 @@ class OutputsDialog(QDialog):
 
     def _open_file(self) -> None:
         it = self.files.currentItem()
+        if it is None or not it.data(Qt.UserRole):          # 1.2.2: the save's first file
+            it = next((self.files.item(i) for i in range(self.files.count())
+                       if self.files.item(i).data(Qt.UserRole)
+                       and os.path.exists(plain_path(self.files.item(i).data(Qt.UserRole)))),
+                      None)
         if it is not None and it.data(Qt.UserRole):
             _open(it.data(Qt.UserRole))

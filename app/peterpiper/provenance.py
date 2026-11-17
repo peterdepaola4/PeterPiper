@@ -1050,7 +1050,7 @@ def methods_text(settings, exp, track_params: Optional[Mapping] = None,
     paras.append(
         f"Regions of interest. {names[:1].upper() + names[1:]} ROIs were drawn on timepoint "
         f"{t0} by clicking on each cell; each outline was computed from the image around the "
-        f"click and could be resized, split, extended or drawn by hand where needed (clearly "
+        f"click and could be resized, split, merged, extended or drawn by hand where needed (clearly "
         f"isolated objects could also be proposed automatically and were then reviewed "
         f"[delete if not used]). {draw}".rstrip())
 

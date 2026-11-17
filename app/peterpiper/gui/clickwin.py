@@ -10,7 +10,9 @@ Right, top to bottom (the blue box always says what to do next):
                             (every channel is measured in every ROI - always)
     2  Add ROIs             Compartment (drawn and followed on its rule's image);
                             on/off tools: Add, Remove, Draw by hand, Resize, Split,
-                            Add to cell (click a tool again to turn it off).
+                            Merge (1.2: two ROIs next to each other become one
+                            cell - roimerge.py), Add to cell (click a tool again
+                            to turn it off).
                             Right-click an ROI to move it to another cell or make
                             it a cell of its own.
     3  Track and measure    every ROI redrawn at every timepoint
@@ -112,7 +114,10 @@ TOOLS = {"add": ("Add", "#2e9e4f", "● ADDING"),
          "draw": ("Draw by hand", "#d98a1f", "● DRAWING"),
          "resize": ("Resize", "#7b4fc9", "● RESIZING"),
          "split": ("Split", "#1f8a99", "● SPLITTING"),
+         "merge": ("Merge", "#4a63b8", "● MERGING"),
          "extend": ("Add to cell", "#b0458f", "● ADDING TO CELL")}
+# 1.2: the tool buttons' rows (make / change one cell's shape / cut or join cells)
+TOOL_ROWS = (("add", "remove", "draw"), ("resize", "extend"), ("split", "merge"))
 ACTIVE = {"add": "ADDING {c} on {ch}: click each one. Click Add again (or Esc) to stop.",
           "remove": "REMOVING {c}: click the ones to delete. Click Remove again (or Esc) to stop.",
           "draw": "DRAWING {c} by hand: click around it, double-click to finish. Click again "
@@ -121,6 +126,8 @@ ACTIVE = {"add": "ADDING {c} on {ch}: click each one. Click Add again (or Esc) t
                     "as far as you like. Click Resize again (or Esc) to stop.",
           "split": "SPLITTING {c}: hold the left button and draw a line through an ROI - it "
                    "becomes two cells. Click Split again (or Esc) to stop.",
+          "merge": "MERGING {c}: click an ROI, then the one next to it - they become one "
+                   "cell. Click Merge again (or Esc) to stop.",
           "extend": "ADDING TO A CELL ({c}): click the cell's ROI, then click each missed "
                     "part next to it. Click the tool again (or Esc) to stop."}
 TOOL_HELP = {
@@ -135,6 +142,10 @@ TOOL_HELP = {
     "split": "Hold the left mouse button and draw a line across an ROI: it is cut along "
              "the line into two cells (the line's ends are continued, so roughly across "
              "is enough).",
+    "merge": "Two ROIs next to each other that are really one cell: click one, then the "
+             "other - they become one ROI (the gap between them filled; other cells' "
+             "pixels are never taken). It keeps the first one's number. Track again "
+             "afterwards; Undo takes it back.",
     "extend": "Click an ROI to pick its cell, then click outside it where the cell continues: "
               "that part is outlined from the image and joined to the ROI.",
 }
@@ -433,6 +444,7 @@ class ClickWindow(QMainWindow):
         self.view.lasso_done.connect(self._on_lasso)
         self.view.polyline_done.connect(self._on_boundary_line)
         self._extend_k: Optional[int] = None          # Add to cell: the cell being added to
+        self._merge_k: Optional[int] = None           # 1.2 Merge: the first cell clicked
         self.view.context_requested.connect(self._on_context)
         self.view.escape_pressed.connect(self._on_escape)
         self.view.wheel_steps.connect(self._on_wheel)
@@ -693,9 +705,14 @@ class ClickWindow(QMainWindow):
         self.lbl_hint = W.wrapped_label("", muted=True)
         form.addRow(self.lbl_hint)
         tools = QWidget()
-        tl = QGridLayout(tools)                   # two rows of three: never too wide
+        tl = QGridLayout(tools)                   # never too wide (1.2: three rows)
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(4)
+        for c in range(6):                        # 6 columns: rows of three or of two
+            tl.setColumnStretch(c, 1)
+        # Add | Remove | Draw by hand  /  Resize | Add to cell  /  Split | Merge
+        place = {key: (r, i, len(row)) for r, row in enumerate(TOOL_ROWS)
+                 for i, key in enumerate(row)}
         self._tool_btn = {}
         from PySide6.QtWidgets import QSizePolicy
         for i, (key, (label, _col, _txt)) in enumerate(TOOLS.items()):
@@ -706,7 +723,8 @@ class ClickWindow(QMainWindow):
             b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)   # never widens the panel
             b.setMinimumWidth(40)
             self._tool_btn[key] = b
-            tl.addWidget(b, i // 3, i % 3)
+            row, i_row, n_row = place[key]
+            tl.addWidget(b, row, i_row * (6 // n_row), 1, 6 // n_row)
         form.addRow(tools)
         self.chk_resize_all = QCheckBox("Resize all cells together")
         self.chk_resize_all.setToolTip("Scrolling then redraws every ROI of this compartment "
@@ -2279,7 +2297,8 @@ class ClickWindow(QMainWindow):
                 rule = self._rule(self.comp)
                 self._show_item(("guide", self.comp) if rule.effective_mode() in ("with", HELP)
                                 else ("ch", int(rule.a)))
-        if self.comp == "background" and self.tool in ("remove", "resize", "split", "extend"):
+        if self.comp == "background" and self.tool in ("remove", "resize", "split", "merge",
+                                                       "extend"):
             self._set_tool(None)
         else:
             self._set_tool(self.tool)                 # relabel the active tool
@@ -2340,13 +2359,13 @@ class ClickWindow(QMainWindow):
 
     def _set_tool(self, key: Optional[str]) -> None:
         self._end_live()
-        if key in ("remove", "resize", "split", "extend") and self.comp == "background":
+        if key in ("remove", "resize", "split", "merge", "extend") and self.comp == "background":
             self.set_status("For the background: Add (click to put a square there) or Draw by "
                             "hand (draw around the region).")
             key = None
         if key is not None and getattr(self, "_bound_on", False):
             self.btn_bound.setChecked(False)          # one tool at a time
-        if key in ("draw", "resize", "split", "extend") and self.t0 is not None \
+        if key in ("draw", "resize", "split", "merge", "extend") and self.t0 is not None \
                 and self.cur_t != self.t0:
             self._stop_play()
             self.slider.setValue(self.t0 + 1)
@@ -2364,6 +2383,7 @@ class ClickWindow(QMainWindow):
                             "QPushButton { padding: 6px 2px; }")     # 1.1: three in a row
         self._link_from = None
         self._extend_k = None
+        self._merge_k = None
         if key == "draw" and self.comp == "background":
             self.view.start_lasso()                   # V2.5: a freehand background outline
         elif key == "draw":
@@ -2419,6 +2439,12 @@ class ClickWindow(QMainWindow):
             self._link_from = None
             self.set_status("Move cancelled.")
             self._refresh()
+        elif self.tool == "merge" and self._merge_k is not None:     # 1.2: pick again
+            self._merge_k = None
+            self.selected = None
+            self._refresh()
+            self.set_status("Merge: start again - click the first of the two ROIs (Esc again "
+                            "turns Merge off).")
         elif self.tool is not None:
             self._set_tool(None)
             self.set_status("Tool off.")
@@ -2721,6 +2747,10 @@ class ClickWindow(QMainWindow):
                 self.set_status(f"First click the {LABELS[comp].lower()} ROI you want to add to.")
                 return
             self._extend_click(self._extend_k, comp, x, y)
+            return
+        if self.tool == "merge":                   # 1.2: two ROIs -> one cell
+            if self._ensure_t0():
+                self._merge_click(k, comp, x, y)
             return
         if self.tool == "add":
             if k is not None:
@@ -3224,6 +3254,91 @@ class ClickWindow(QMainWindow):
         self.set_status(f"Added {(_region(new).area - _region(old).area) * um2:.0f} um2 to cell "
                         f"{k + 1}'s {LABELS[comp].lower()} (now {_region(new).area * um2:.0f} "
                         f"um2). Click more parts, or Undo.")
+
+    # ===================================================== 1.2 merge
+    def _merge_click(self, k: Optional[int], comp: str, x: float, y: float) -> None:
+        """Merge: the first click picks a cell, the second the ROI to join to it."""
+        lab = LABELS[comp].lower()
+        first = self._merge_k
+        if first is not None and not (0 <= first < len(self.cells)
+                                      and comp in self.cells[first]):
+            first = self._merge_k = None              # (undone, or another compartment)
+        if k is None:
+            other = self._cell_at(x, y)
+            self.set_status(f"No {lab} ROI there - click inside one." +
+                            (f" (That is part of cell {other + 1} - switch Compartment to "
+                             f"merge another kind of ROI.)" if other is not None else "") +
+                            (f" Cell {first + 1} is picked: click the {lab} next to it."
+                             if first is not None else ""))
+            return
+        if first is None:
+            self._merge_k = k
+            self._select(k)
+            self.set_status(f"Merging: cell {k + 1}'s {lab} picked. Now click the {lab} next "
+                            f"to it that is part of the same cell (Esc: pick again).")
+            return
+        if k == first:
+            self.set_status(f"That is cell {k + 1} itself - click the other {lab}, the one next "
+                            f"to it.")
+            return
+        self._merge(first, k, comp)
+
+    def _merge(self, k1: int, k2: int, comp: str) -> bool:
+        """Join cell k2 to cell k1 (k1 keeps its number; k2 is removed). The ROIs of
+        compartment comp become one (roimerge.merge_cells: the gap between them filled,
+        no pixel of a third cell taken); so do the cells' other compartments both have,
+        and one only k2 has comes along. Tracking is cleared: TRACK & MEASURE again."""
+        from .. import roimerge as RM
+        lab = LABELS[comp].lower()
+        third = [c for j, c in enumerate(self.cells) if j not in (k1, k2) and c]
+        new, why, info = RM.merge_cells(self.cells[k1], self.cells[k2], comp,
+                                        self.exp.um_per_px, (self.exp.height, self.exp.width),
+                                        third)
+        if new is None:
+            reason, c = why
+            if c != comp:
+                msg = (f"Cell {k1 + 1} and cell {k2 + 1} each have a {LABELS[c].lower()}, and "
+                       f"those are not next to each other - one cell holds one "
+                       f"{LABELS[c].lower()}. Remove one of them first (or right-click it > "
+                       f"make it a cell of its own).")
+            elif reason == RM.BLOCKED:
+                msg = (f"Another cell lies between these two {lab} ROIs - they cannot be "
+                       f"joined without taking its pixels.")
+            else:
+                msg = (f"These two ROIs are not next to each other - only ROIs that touch or "
+                       f"nearly touch (up to {RM.MAX_GAP_UM:g} µm apart) can be merged.")
+            self.set_status(msg + f" Click another {lab} next to cell {k1 + 1}, or Esc to "
+                                  f"start again.")
+            return False
+        self._push_undo()
+        self.cells[k1] = new
+        self.cells[k2] = {}                            # cell k2 is gone (numbers stay)
+        for c in list(self.excl):
+            was_out = k2 in self.excl[c]
+            self.excl[c].discard(k2)
+            why2 = self._gate_why.setdefault(c, {}).pop(k2, None)
+            if c in info["moved"] and was_out:         # came from k2: its choice comes too
+                self.excl[c].add(k1)
+                if why2:
+                    self._gate_why[c][k1] = why2
+        self.boundaries.pop(k2, None)                  # its tracker boundary lines go with it
+        self._merge_k = None
+        self.selected = k1
+        self._structure_changed()
+        # a cell fewer (not a new hand-drawn ROI): listeners count it as a removal
+        self._emit("roi_removed", nd2=str(self.exp.nd2_path), n_cells=self._n_cells(),
+                   merged=True)
+        um2 = self.exp.um_per_px ** 2
+        filled = sum(max(0, v) for v in info["added_px"].values()) * um2
+        also = [LABELS[c].lower() for c in info["merged"] if c != comp]
+        moved = [LABELS[c].lower() for c in info["moved"]]
+        self.set_status(f"Cell {k2 + 1}'s {lab} joined to cell {k1 + 1}: one ROI now "
+                        f"({filled:.0f} um2 filled between them)."
+                        + (f" Their {' and '.join(also)} joined too." if also else "")
+                        + (f" Cell {k2 + 1}'s {' and '.join(moved)} now belongs to cell "
+                           f"{k1 + 1}." if moved else "")
+                        + " Press TRACK & MEASURE again to follow it; Undo takes it back.")
+        return True
 
     def _on_polygon(self, points) -> None:
         if self.tool != "draw":
@@ -4612,7 +4727,9 @@ class ClickWindow(QMainWindow):
             "around your click (scroll right after to make it bigger / smaller). REMOVE (red) "
             "deletes ROIs; DRAW BY HAND (orange) for awkward shapes; RESIZE (purple) any cell "
             "with the wheel, no limit; SPLIT (teal) - drag a line across an ROI to cut it into "
-            "two cells; ADD TO CELL (pink) - click a cell, then its missed parts. ROIs on the "
+            "two cells; MERGE (blue) - click two ROIs next to each other that are one cell: "
+            "they become one (it keeps the first one's number); ADD TO CELL (pink) - click "
+            "a cell, then its missed parts. ROIs on the "
             "same cell share one number; right-click an ROI to "
             "move it to another cell. Undo (Ctrl+Z) takes anything back.\n\n"
             "3  TRACK & MEASURE - every ROI is redrawn at every timepoint from that frame's "

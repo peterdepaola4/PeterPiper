@@ -760,6 +760,18 @@ class SyncDialog(QDialog):
             f"PeterPiper only reads and writes the folder - the cloud app copies it. When "
             f"{user} is chosen the folder's changes come in; when PeterPiper closes this "
             f"computer's go out. Nothing is deleted; runs and lists are united.", muted=True))
+        lab_t = None                                   # 1.2.1: the lab folder covers it
+        try:
+            lab = _labshare()
+            lab_t = lab.profile_target(user) if lab else None
+        except Exception:                                           # noqa: BLE001
+            lab_t = None
+        self.lbl_lab = W.wrapped_label(
+            f"{user}'s profile is already kept in step through the lab folder "
+            f"({lab_t[0]}). You need this only for a folder of your own; the lab "
+            f"folder cannot be chosen here." if lab_t else "")
+        self.lbl_lab.setVisible(bool(lab_t))
+        lay.addWidget(self.lbl_lab)
         self.rb_off = QRadioButton("Off")
         self.rb_on = QRadioButton("Through this folder:")
         grp = QButtonGroup(self)
@@ -815,6 +827,9 @@ class SyncDialog(QDialog):
             self.set_folder(p)
 
     def set_folder(self, path: str) -> None:
+        if self.ps is not None and self.ps.lab_conflict(path):      # 1.2.1
+            QMessageBox.information(self, "Keep in step", self.ps.LAB_CONFLICT)
+            return
         self.folder = str(path)
         self.target = None
         self.rb_on.setChecked(True)
@@ -858,6 +873,9 @@ class SyncDialog(QDialog):
                                        lambda _p: _p(None, "Copying the profile",
                                                      detail=str(folder))
                                        and ps.set_folder(u, folder, target))
+        except ValueError as exc:                                  # 1.2.1: a lab folder
+            QMessageBox.information(self, "Keep in step", str(exc))
+            return
         except OSError as exc:
             note = f"Not kept in step: {exc}"
         self.lbl_status.setText((note or "Done.") + "  -  " + ps.status(self.user))

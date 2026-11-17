@@ -1,5 +1,18 @@
 # Changelog
 
+## PeterPiper 1.2.1 (2026-11-16)
+
+**A correction to *Keep in step*.** The methods and the numbers are unchanged; the same
+program folder as 1.2.0, so *Check for updates* updates 1.2.0 in place.
+
+- *Keep in step* refuses the lab folder, or a folder inside it, as a person's own
+  folder (`profilesync.lab_conflict`): the lab folder already keeps every profile in
+  step in `PeterPiper profiles`, so choosing it made a second copy in the lab's shared
+  folder. The window says when the lab folder covers the profile; an older setting
+  that points into the lab folder is no longer used (the note says so), and the lab
+  folder's copy carries on.
+- New developer test `dev_tests/test_v121_sync.py`.
+
 ## PeterPiper 1.2.0 (2026-11-16)
 
 **Merge for ROIs, a choice of export folder with help for paths too long for

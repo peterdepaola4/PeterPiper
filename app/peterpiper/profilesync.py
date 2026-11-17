@@ -183,9 +183,51 @@ def folder_of(user: str) -> Optional[str]:
     return load_state(user).get("folder") or None
 
 
+def _norm(p) -> str:
+    return os.path.normcase(os.path.abspath(str(p))).rstrip("\\/")
+
+
+def _inside(a: str, b: str) -> bool:
+    """a is b or inside b (both _norm'ed)."""
+    return a == b or a.startswith(b + os.sep)
+
+
+LAB_CONFLICT = ("This is your lab's shared folder (or a folder inside it). "
+                "The lab folder already keeps each person's profile in step (in its "
+                "'PeterPiper profiles' folder), so a second copy is not needed here - and "
+                "everyone in the lab would see it. Choose a folder of your own (not shared "
+                "with the lab), or leave this Off.")
+
+
+def lab_conflict(folder) -> Optional[str]:
+    """1.2.1: the lab folder that `folder` would duplicate - the linked lab folder
+    itself or a folder inside it, or a folder (or one of its parents) with a lab
+    list in it - the copy would land in the lab's shared folder. None when the folder is fine for a personal copy."""
+    if not folder:
+        return None
+    f = _norm(folder)
+    try:
+        from . import labshare
+        lab = labshare.linked_folder()
+        if lab:
+            g = _norm(lab)
+            if _inside(f, g):
+                return str(lab)
+        p = Path(f)
+        for q in [p, *list(p.parents)[:6]]:
+            if labshare.is_lab_folder(q):
+                return str(q)
+    except Exception:                                           # noqa: BLE001
+        pass
+    return None
+
+
 def set_folder(user: str, folder, target=None, sync_now: bool = True) -> str:
     """Keep `user` in step through `folder` (target: the profile folder in it to
-    use - e.g. the one the Mac made under another spelling). Returns the note."""
+    use - e.g. the one the Mac made under another spelling). Returns the note.
+    1.2.1: a lab folder (see lab_conflict) is refused with ValueError(LAB_CONFLICT)."""
+    if lab_conflict(folder):
+        raise ValueError(LAB_CONFLICT)
     st = load_state(user)
     st["folder"] = str(folder)
     st["target"] = str(Path(target) if target else target_in(folder, user))
@@ -233,17 +275,20 @@ def _targets(user: str) -> List[Tuple[str, Path, Path, bool]]:
     """[(what, root folder, profile folder, may write)] for this user."""
     out = []
     st = load_state(user)
-    if st.get("folder"):
-        out.append(("your folder", Path(st["folder"]),
-                    Path(st.get("target") or target_in(st["folder"], user)), True))
+    lab_t = None
     try:
         from . import labshare
-        t = labshare.profile_target(user)
-        if t is not None:
-            root, target, writable = t
-            out.append(("the lab folder", Path(root), Path(target), bool(writable)))
+        lab_t = labshare.profile_target(user)
     except Exception:                                           # noqa: BLE001
         pass
+    # 1.2.1: a personal folder that is (in) the lab folder is not used - the lab
+    # folder already keeps this profile in step (no second copy in the lab's folder)
+    if st.get("folder") and not (lab_t is not None and lab_conflict(st["folder"])):
+        out.append(("your folder", Path(st["folder"]),
+                    Path(st.get("target") or target_in(st["folder"], user)), True))
+    if lab_t is not None:
+        root, target, writable = lab_t
+        out.append(("the lab folder", Path(root), Path(target), bool(writable)))
     return out
 
 
@@ -256,7 +301,11 @@ def sync_user(user: str) -> str:
     st = load_state(user)
     bases: Dict[str, dict] = dict(st.get("base") or {})
     any_ok = False
-    for what, root, target, writable in _targets(user):
+    targets = _targets(user)
+    if st.get("folder") and all(t[0] != "your folder" for t in targets):
+        notes.append("your folder is the lab folder - not used (the lab folder keeps your "
+                     "profile in step)")
+    for what, root, target, writable in targets:
         try:
             if not os.path.isdir(root):
                 notes.append(f"{what} is not reachable now (offline?) - skipped")

@@ -524,7 +524,8 @@ def _auto_nuclei(plane: np.ndarray, um: float, taken: Sequence[Roi], tick, ok_ed
     cand: list = []
     for i, (y, x) in enumerate(seeds):
         if i % 40 == 0:
-            tick(0.2 + 0.75 * i / max(1, len(seeds)), f"Checking blob {i + 1} of {len(seeds)}...")
+            tick(0.2 + 0.75 * i / max(1, len(seeds)), f"Checking nucleus-sized blobs..."
+                                                       f"\nblob {i + 1} of {len(seeds)}")
         if claimed[y, x]:
             continue
         res = None
@@ -631,7 +632,8 @@ def auto_select(plane: np.ndarray, comp: str, um: float, s, nuclei: Sequence[Roi
             seeds = _peaks(plane, um, 4.0, 12.0, 8.0)[:600]
         for i, (y, x) in enumerate(seeds):
             if i % 10 == 0:
-                tick(0.1 + 0.8 * i / max(1, len(seeds)), f"Checking cell {i + 1} of {len(seeds)}...")
+                tick(0.1 + 0.8 * i / max(1, len(seeds)), f"Checking cells..."
+                                                         f"\ncell {i + 1} of {len(seeds)}")
             if is_taken(y, x):
                 continue
             r = draw_at(comp, plane, y, x, um, s, nuclei)
@@ -1992,7 +1994,6 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         else:
             holes.append(None)
     ref_area = [{c: float(_region(r).area) for c, r in cell.items()} for cell in cells]
-    t_start = time.time()
     done = [0]
 
     def record(t: int, stack: np.ndarray, cur, q) -> None:
@@ -2009,11 +2010,8 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                                       meter.roi_mask([r for cell in cur for r in cell.values()])))
         done[0] += 1
         if progress:
-            el = time.time() - t_start
-            left = el / done[0] * (T - done[0])
-            if not progress(done[0] / T, f"Following and redrawing {N} cells: timepoint "
-                                         f"{t + 1} of {T}  ({done[0]} done, about "
-                                         f"{int(left) + 1} s left)"):
+            if not progress(done[0] / T, f"Following and redrawing {N} cells"   # 1.2: the bar
+                                         f"\ntimepoint {t + 1} of {T} ({done[0]} done)"):
                 raise Cancelled()
 
     def measured(stack: np.ndarray, cur, q):

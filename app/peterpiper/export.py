@@ -232,7 +232,9 @@ def run_export(out_root: str, exp: Experiment, s: Settings, comps: Dict[str, dic
 
     def tick(msg: str) -> None:
         done[0] += 1
-        if progress and not progress(min(0.99, done[0] / total), msg):
+        last = files[-1] if files else str(folder)      # 1.2: the detail - the file just written
+        if progress and not progress(min(0.99, done[0] / total),
+                                     f"{msg}\nstep {done[0]} of {total} - {last}"):
             from .manual import Cancelled
             raise Cancelled()
 
@@ -253,7 +255,10 @@ def run_export(out_root: str, exp: Experiment, s: Settings, comps: Dict[str, dic
             info = build_roi_info(exp, s2, M, cells, d["seeds"], t0, d.get("qc"))
             files.append(write_workbook(str(cdir / f"{base}.xlsx"), exp, s2, M, cells, info,
                                         qc=d.get("qc"), include=d["include"], why=d["why"],
-                                        provenance=prov))
+                                        provenance=prov,
+                                        progress=lambda f, m: progress(   # 1.2: inside it too
+                                            min(0.99, (done[0] + f) / total), m)
+                                        if progress else True))
             tick(f"{d['label']}: Excel workbook written")
         chosen = [k.split("|", 1)[1] for k in mine if k.startswith("graph|")]
         qs = chosen or preferred_sheets(M, s2)
@@ -427,7 +432,8 @@ def save_graph_files(folder, name: str, formats: Sequence[str], x, y, names: Seq
     want = [f for f in GRAPH_FORMATS if f in set(formats)]
     out: List[str] = []
     for i, f in enumerate(want):
-        if progress and not progress(i / max(1, len(want)), f"Saving the graph ({f.upper()})"):
+        if progress and not progress(i / max(1, len(want)), f"Saving the graph ({f.upper()})"
+                                     f"\nfile {i + 1} of {len(want)} - {folder / name}.{f}"):
             from .manual import Cancelled
             raise Cancelled()
         if f == "prism":

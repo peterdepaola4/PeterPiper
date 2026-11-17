@@ -130,7 +130,9 @@ def download(url: str, dest: Path, size: int = 0,
             done += len(b)
             if progress and size:
                 progress(min(0.99, done / size), f"Downloading... {done / 1e6:.0f} of "
-                                                 f"{size / 1e6:.0f} MB")
+                                                 f"{size / 1e6:.0f} MB\n{dest}")
+            elif progress:                          # 1.2: no size known - a moving bar
+                progress(None, f"Downloading... {done / 1e6:.0f} MB\n{dest}")
     if size and done != size:
         raise RuntimeError(f"The download is incomplete ({done} of {size} bytes).")
     return dest

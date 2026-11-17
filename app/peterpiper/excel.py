@@ -230,8 +230,8 @@ def write_workbook(path: str, exp: Experiment, s: Settings, M: Measurements,
     def tick(msg: str) -> None:
         nonlocal done
         done += 1
-        if progress:
-            progress(min(0.99, done / steps), msg)
+        if progress:                       # 1.2: the detail names the workbook
+            progress(min(0.99, done / steps), f"{msg}\nsheet step {done} of {steps} - {path}")
 
     # ---------------------------------------------------------------- Raw
     bgsub_names: List[str] = []
@@ -709,6 +709,8 @@ def write_workbook(path: str, exp: Experiment, s: Settings, M: Measurements,
 
     wb.calculation.fullCalcOnLoad = True
     out = Path(path)
+    if progress:
+        progress(min(0.99, done / steps), f"Saving the workbook\n{out}")
     with new_output_file(out) as (out, stream):
         wb.save(stream)
     if progress:

@@ -229,7 +229,10 @@ def candidates(stack: np.ndarray, channels: Sequence[str], main: str,
     rois: List[Roi] = []
     for i, (label, pl) in enumerate(planes):
         def tick(f, m, i=i):
-            if progress and not progress((i + f) / len(planes), f"Blobs on {label}: {m}"):
+            if progress and not progress((i + f) / len(planes), f"Blobs on {label}: "
+                                         f"{str(m).partition(chr(10))[0]}\nimage {i + 1} of "
+                                         f"{len(planes)} - {label} "
+                                         f"{str(m).partition(chr(10))[2]}"):
                 raise manual.Cancelled()
         for c in manual.nucleus_candidates(pl, um, tick=tick):
             r = c["roi"]
@@ -419,7 +422,8 @@ def fit(movies: Sequence[Movie], chans: Sequence[str], progress: ProgressFn = No
         moved = False
         for j, (key, c, grid) in enumerate(axes):
             if progress and not progress((rnd + j / len(axes)) / rounds,
-                                         f"Trying rules: round {rnd + 1}, mean F1 {best:.2f}"):
+                                         f"Trying rules: round {rnd + 1}, mean F1 {best:.2f}"
+                                         f"\nlimit {j + 1} of {len(axes)} - {key} {c or ''}"):
                 raise manual.Cancelled()
             tries = []
             for v in grid:
@@ -452,9 +456,12 @@ def held_out(movies: Sequence[Movie], chans: Sequence[str],
     if len(movies) < 2:
         return out
     for i, m in enumerate(movies):
-        def sub(f, msg, i=i):
+        def sub(f, msg, i=i, m=m):
             return progress((i + f) / len(movies), f"Movie {i + 1} of {len(movies)} left "
-                                                   f"out - {msg}") if progress else True
+                                                   f"out - {str(msg).partition(chr(10))[0]}"
+                                                   f"\n{m.name} "
+                                                   f"{str(msg).partition(chr(10))[2]}") \
+                if progress else True
         L = fit([x for j, x in enumerate(movies) if j != i], chans, sub)
         out.append(score(m, select(m.feat, L, chans)))
     return out

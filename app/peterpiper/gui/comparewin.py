@@ -1217,11 +1217,14 @@ class CompareWindow(QDialog):
 
         def read_all(progress):                     # V2.9: in the background, with a bar
             paths = []
+            lo = 0.3 if nd2_path else 0.0            # 1.2: the share of the bar for the search
             if nd2_path:
-                progress(None, "Looking for earlier analyses of this movie...")
+                progress(None, "Looking for earlier analyses of this movie...",
+                         detail=str(nd2_path))
                 try:
                     prev = [r for r in history.find_previous_runs(
-                        nd2_path, out_dir, image_shape, n_timepoints) if r.tracked]
+                        nd2_path, out_dir, image_shape, n_timepoints,
+                        progress=lambda f, t: progress(lo * f, t)) if r.tracked]
                     paths += [r.path for r in sorted(prev, key=lambda r: r.kind == "session")]
                 except Exception:                                  # noqa: BLE001
                     pass
@@ -1232,7 +1235,8 @@ class CompareWindow(QDialog):
             paths += [r["path"] for r in idx if r.get("kind") != "session"]
             paths += [r["path"] for r in idx if r.get("kind") == "session"]
             for i, p in enumerate(paths):           # each file read once (remembered)
-                progress(i / max(1, len(paths)), f"Run {i + 1} of {len(paths)}: {Path(p).name}")
+                progress(lo + (1 - lo) * i / max(1, len(paths)), "Reading your saved runs",
+                         detail=W.count_detail(i + 1, len(paths), "run", p))
                 read_summary(p)
             return paths
         paths = W.run_with_progress(self.parent(), "Reading your saved runs", read_all)
@@ -1463,7 +1467,7 @@ class CompareWindow(QDialog):
             self.out_dir or "")
         if not folder:
             return
-        got = W.run_with_progress(self, f"Looking for your runs in {Path(folder).name}",
+        got = W.run_with_progress(self, f"Looking for your runs in {W.place_name(folder)}",
                                   lambda p: history.relocate_runs(folder, p))
         before = set(self._paths)
         for r in history.indexed_runs():
@@ -1496,14 +1500,16 @@ class CompareWindow(QDialog):
 
         def find(progress):                         # in the background, with a bar
             from ..roifile import read_summary
-            got = history.find_runs_in_folder(folder, progress)
+            got = history.find_runs_in_folder(folder, lambda f, t: progress(0.8 * f, t))
             for i, p in enumerate(got["mine"]):     # remembered in your list of runs
-                progress((i + 1) / max(1, len(got["mine"])), f"Adding {Path(p).name}")
+                progress(0.8 + 0.2 * i / max(1, len(got["mine"])), "Adding your runs to the list",
+                         detail=W.count_detail(i + 1, len(got["mine"]), "run", p))
                 s = read_summary(p) or {}
                 nd2 = str(s.get("nd2_path") or "")
                 history.record_run(nd2 if nd2 and Path(nd2).exists() else "", p, s)
             return got
-        got = W.run_with_progress(self, f"Looking for your runs in {Path(folder).name}", find)
+        got = W.run_with_progress(self, f"Looking for your runs in {W.place_name(folder)}",
+                                  find)
         for p in got["mine"]:
             if p not in before:
                 self.add_run_file(p, quiet=True, check=False)
@@ -2195,8 +2201,8 @@ class CompareWindow(QDialog):
         def read(progress):
             got = {}
             for i, p in enumerate(need):
-                progress(i / max(1, len(need)), f"Run {i + 1} of {len(need)}: "
-                                                f"{self._labels.get(p, Path(p).stem)}")
+                progress(i / max(1, len(need)), f"Reading {self._labels.get(p, Path(p).stem)}",
+                         detail=W.count_detail(i + 1, len(need), "run", p))
                 try:
                     got[p] = C.load_run(p)
                 except ValueError as e:
@@ -3513,7 +3519,7 @@ class CompareWindow(QDialog):
                 files = W.run_with_progress(           # V2.9: a bar while writing
                     self, f"Saving '{name}'",
                     lambda _p: XP.save(folder, name, formats, plines, pcols, self.style, sp,
-                                       title, notes, right=right))
+                                       title, notes, right=right, progress=_p))
             else:
                 sp = self.spec()
                 right = None
@@ -3528,7 +3534,8 @@ class CompareWindow(QDialog):
                     self, f"Saving '{name}'",
                     lambda _p: C.save(folder, name, formats, lines, colours, self.style, comp,
                                       q, title, notes, kinetics=kin,
-                                      kinetics_same_window=same, right=right))
+                                      kinetics_same_window=same, right=right,
+                                      progress=_p))
         except (OSError, ValueError) as e:
             if not quiet:
                 QMessageBox.warning(self, "Compare runs", "The comparison could not be "

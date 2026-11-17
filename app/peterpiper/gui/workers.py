@@ -35,9 +35,16 @@ class Job(QObject):
     def cancel(self) -> None:
         self._cancel = True
 
-    # available to run_job as the `progress` callback of the core functions
-    def progress(self, fraction: float, message: str) -> bool:
-        self.progressed.emit(float(fraction), str(message))
+    # available to run_job as the `progress` callback of the core functions.
+    # 1.2: fraction None = not known (sent as -1: a moving bar and the time so far);
+    # detail (or the part of message after a line break) names what is being
+    # worked on - ProgressStrip.update shows it on the message line.
+    def progress(self, fraction, message: str = "", detail=None) -> bool:
+        f = -1.0 if fraction is None else float(fraction)
+        msg = str(message or "")
+        if detail:
+            msg = f"{msg}\n{detail}"
+        self.progressed.emit(f, msg)
         return not self._cancel
 
     def run_job(self) -> Any:

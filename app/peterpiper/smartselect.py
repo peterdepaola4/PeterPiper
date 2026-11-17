@@ -252,11 +252,14 @@ def learn(runs: List[dict], main: str, helpers, bin_name: str = "", progress=Non
     n = len(runs)
     for i, r in enumerate(runs):
         movies.append(DT.load_movie(r["run"], r["nd2"], main, list(helpers),
-                                    lambda f, m, i=i: prog(0.6 * (i + f) / n,
-                                                           f"Reading your movie {i + 1} of {n}"),
+                                    lambda f, m, i=i, r=r: prog(0.6 * (i + f) / n,
+                                                                f"Reading your movie {i + 1} of "
+                                                                f"{n}\n{r['nd2']}"),
                                     keep_frame=False))
-    held = DT.held_out(movies, chans, lambda f, m: prog(0.6 + 0.3 * f, "Checking itself..."))
-    limits = DT.fit(movies, chans, lambda f, m: prog(0.9 + 0.1 * f, "Learning your way..."))
+    held = DT.held_out(movies, chans, lambda f, m: prog(0.6 + 0.3 * f, "Checking itself...\n"
+                                                        + str(m).replace("\n", " - ")))
+    limits = DT.fit(movies, chans, lambda f, m: prog(0.9 + 0.1 * f, "Learning your way...\n"
+                                                     + str(m).replace("\n", " - ")))
     n_rois = int(sum(m.n_yours for m in movies))
     what = f"{bin_name} - " if bin_name else ""
     return DT.Detector(

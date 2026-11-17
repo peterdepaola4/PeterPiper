@@ -133,12 +133,12 @@ def part_c():
 def part_d():
     folder = make_install(OUT / "inst_d" / "PeterPiperV1.1", BASE)
     before = {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
-    zp = make_zip(OUT / "rel_d.zip", "PeterPiperV1.2", dict(BASE, **{"PeterPiperV1.2.bat": b"x"}))
+    zp = make_zip(OUT / "rel_d.zip", "PeterPiperV1.9", dict(BASE, **{"PeterPiperV1.9.bat": b"x"}))
     p = U.plan(zp, folder)
     ok("D a new program folder -> new folder", p["mode"] == "new_folder" and "new" in p["why"])
     dest = U.unpack_new_folder(zp, folder)
-    ok("D unpacked next to this one", dest == folder.parent / "PeterPiperV1.2"
-       and (dest / "PeterPiperV1.2.bat").exists())
+    ok("D unpacked next to this one", dest == folder.parent / "PeterPiperV1.9"
+       and (dest / "PeterPiperV1.9.bat").exists())
     ok("D this folder unchanged", all(q.read_bytes() == b for q, b in before.items()))
     try:
         U.unpack_new_folder(zp, folder)

@@ -3874,10 +3874,14 @@ class ClickWindow(QMainWindow):
                            template=self.settings.prism_template,
                            prefix=getattr(self, "prefix", "") or Path(self.exp.nd2_path).stem[:40],
                            graph_look=GS.style_summary(self.settings.graph_style),
-                           graph_style=dict(self.settings.graph_style or {}))
+                           graph_style=dict(self.settings.graph_style or {}),
+                           folder=self._export_folder(), usual=str(self.exp.out_dir))
         if dlg.exec() != QDialog.Accepted:
             return
         keys = dlg.keys()
+        # 1.2: the folder chosen there ('Save in'), kept for this movie's next export;
+        # the run's own autosaves / SAVE stay in the results folder
+        self._export_root = dlg.folder() if dlg.folder() != str(self.exp.out_dir) else None
         self.settings.prism_template = dlg.template
         if dlg.prefix() != getattr(self, "prefix", ""):
             self._mark_dirty()                  # the file name is part of the session
@@ -3888,10 +3892,27 @@ class ClickWindow(QMainWindow):
             save_settings(self.settings, self.exp)
         self._run_export(comps, keys)
 
+    def _export_folder(self) -> str:
+        """1.2: where the next export goes: the folder chosen in the export list
+        ('Save in'), else this movie's results folder."""
+        return str(getattr(self, "_export_root", None) or self.exp.out_dir)
+
     def _run_export(self, comps: Dict[str, dict], keys: List[str]) -> None:
         stem = clean_prefix(getattr(self, "prefix", "")) or Path(self.exp.nd2_path).stem[:40]
+        # 1.2: the long-path check knows the list and the folder; it may answer with
+        # shorter names or another folder (self._path_fix)
+        self._pending_export = dict(keys=list(keys), root=self._export_folder())
+        self._path_fix = None
+        self._path_note = ""
         if not self._paths_ok(stem, comps):
             return
+        fix = self._path_fix or {}
+        if fix.get("root") and fix["root"] != self._export_folder():
+            self._export_root = fix["root"]         # another folder chosen in the warning
+        root = fix.get("root") or self._export_folder()
+        title = stem if fix.get("stem") else None   # graph titles keep the whole name
+        stem = fix.get("stem") or stem
+        tag, fname = fix.get("tag"), fix.get("folder_name")
         state, anchors, rois, bg, shape, t0 = self._roi_state("export")
         track = self.track                          # the tracking is saved with the ROIs
         prov = self._provenance(comps)              # rules, tracker parameters, fingerprint
@@ -3902,33 +3923,144 @@ class ClickWindow(QMainWindow):
                                  t0 + 1, state=state, comps=rois, track=track)
             record_run(nd2, used)                   # remembered as a run of this .nd2
             return used
-        self._start(FuncJob(run_export, self.exp.out_dir, self.exp, self.settings, comps, keys,
+        self._start(FuncJob(run_export, root, self.exp, self.settings, comps, keys,
                             src=self.src, background=self.background, t0=int(self.t0 or 0),
-                            roi_file_fn=roi_file, prefix=stem, provenance=prov),
+                            roi_file_fn=roi_file, prefix=stem, provenance=prov,
+                            folder_name=fname, tag=tag, title=title),
                     self._on_exported, f"Exporting {len(keys)} item(s)...")
 
     def _paths_ok(self, stem: str, comps: Dict[str, dict]) -> bool:
-        """V3.0: with Windows' long paths off, warn before an export whose paths may
-        be too long for Explorer / Excel (over ~250 characters)."""
-        from ..export import longest_path
+        """V3.0: with Windows' long paths off, warn before an export whose paths are
+        too long for Explorer (over 259 characters) or Excel (a workbook over 218).
+        1.2: the warning offers 'Shorten names for me' (default), 'Choose another
+        folder...', 'Turn on Windows long paths', 'Export anyway' and Cancel; a
+        batch run (self._auto_shorten) shortens by itself and says so
+        (self._path_note). The answer: True = export, with self._path_fix =
+        dict(root, stem, tag, folder_name) when something changed."""
+        from ..export import export_names
         from ..syscheck import long_paths_enabled
-        if long_paths_enabled() is not False:
+        if long_paths_enabled() is not False:       # on, a Mac, or not readable: as before
             return True
-        n = longest_path(self.exp.out_dir, self.exp.nd2_path, stem,
-                         [(d["label"], d["name"]) for d in comps.values()])
-        if n <= 250:
-            return True
-        box = QMessageBox(QMessageBox.Warning, "Long file paths",
-                          f"Some files of this export would have paths of about {n} characters. "
-                          f"Windows' long paths are off on this computer (Help > Computer "
-                          f"check...), so Explorer and Excel may not open them. Shorter: a "
-                          f"shorter 'Name for the files' in the export list, a results folder "
-                          f"higher up (start window), or shorter folder / movie names.",
-                          parent=self)
-        go = box.addButton("Export anyway", QMessageBox.AcceptRole)
-        box.addButton(QMessageBox.Cancel)
+        pend = getattr(self, "_pending_export", None) or {}
+        keys = pend.get("keys") or [it["key"] for it in catalog(comps, self.settings)]
+        root = str(pend.get("root") or self._export_folder())
+        t0 = int(self.t0 or 0)
+        while True:
+            plan = export_names(root, self.exp, self.settings, comps, keys, stem, t0)
+            if not plan["bad"]:
+                if root != str(pend.get("root") or self._export_folder()):
+                    self._path_fix = dict(root=root)
+                return True
+            fit = plan["fit"]
+            fix = dict(root=root, stem=fit.stem, tag=fit.tag, folder_name=fit.folder_name)
+            if getattr(self, "_auto_shorten", False):        # batch: no questions
+                self._path_fix = fix
+                self._path_note = self._shorten_words(plan, fit)
+                return True
+            answer = self._ask_long_paths(plan, fit, root)
+            if answer == "shorten":
+                self._path_fix = fix
+                self._path_note = self._shorten_words(plan, fit)
+                return True
+            if answer == "anyway":
+                if root != str(pend.get("root") or self._export_folder()):
+                    self._path_fix = dict(root=root)
+                return True
+            if answer == "folder":
+                new = self._pick_export_folder(root)
+                if new:
+                    root = new
+                continue
+            if answer == "turn_on":
+                from .syscheckdlg import turn_on_long_paths
+                turn_on_long_paths(self)            # says what happened, in words
+                if long_paths_enabled() is not False and not any(
+                        p.lower().endswith((".xlsx", ".csv")) for p in plan["bad"]):
+                    return True                     # on now, and Excel can open everything
+                continue                            # ask again (Excel's limit stays)
+            return False                            # Cancel
+
+    @staticmethod
+    def _shorten_words(plan: dict, fit) -> str:
+        """'Shorten names for me' in one line (the warning, the batch log)."""
+        parts = []
+        if fit.stem != plan["stem"]:
+            parts.append(f"name for the files '{plan['stem']}' -> '{fit.stem}'")
+        from ..exportpaths import is_short_folder
+        if is_short_folder(fit.folder_name):
+            parts.append(f"export folder -> {fit.folder_name}")
+        txt = (f"Long paths: names shortened ({'; '.join(parts) or 'no change'}), longest "
+               f"path {plan['longest']} -> {fit.longest} characters")
+        if not fit.ok:
+            txt += " - still too long for Explorer: choose a folder higher up"
+        return txt + "."
+
+    def _long_path_box(self, plan: dict, fit, root: str):
+        """The long-path warning (tests click its buttons) -> (box, {answer: button})."""
+        from ..exportpaths import EXCEL_MAX, WINDOWS_MAX, is_short_folder, tail
+        from ..syscheck import long_paths_enabled
+        on = long_paths_enabled() is True
+        n_bad = len(plan["bad"])
+        if fit.ok:
+            how = (f"<b>Shorten names for me</b>: name for the files <b>{fit.stem}</b>"
+                   + ("" if not is_short_folder(fit.folder_name) else
+                      f", export folder <b>{fit.folder_name}</b>")
+                   + f" - the longest path is then {fit.longest} characters"
+                   + (" (Excel opens every workbook)." if fit.excel_ok else
+                      f" (within Windows' {WINDOWS_MAX}; Excel may not open the deepest "
+                      f"workbooks - a folder higher up fixes that)."))
+        else:
+            how = (f"Even the shortest names leave paths of {fit.longest} characters: "
+                   f"<b>Choose another folder...</b> higher up (e.g. C:\\Results) is the real fix.")
+        state = (f"Windows' long paths are on now, but Excel never opens a workbook whose path "
+                 f"is over {EXCEL_MAX} characters (and Explorer may still have trouble over "
+                 f"{WINDOWS_MAX})." if on else
+                 f"Windows' long paths are off on this computer, so Explorer may not open paths "
+                 f"over {WINDOWS_MAX} characters, and Excel never opens a workbook whose path "
+                 f"is over {EXCEL_MAX}.")
+        text = (f"{n_bad} file{'s' if n_bad != 1 else ''} of this export would have paths of up "
+                f"to <b>{plan['longest']} characters</b>. {state}<br><br>{how}")
+        box = QMessageBox(QMessageBox.Warning, "Long file paths", text, parent=self)
+        box.setTextFormat(Qt.RichText)
+        box.setDetailedText(
+            f"Folder: {root}\n\nLongest path now ({plan['longest']}):\n"
+            f"{max(plan['paths'], key=len)}\n\nLongest path with the shorter names "
+            f"({fit.longest}):\n{fit.longest_path}\n\nName for the files: {fit.stem}\n"
+            f"Export folder: {fit.folder_name}")
+        b = {"shorten": box.addButton("Shorten names for me", QMessageBox.AcceptRole),
+             "folder": box.addButton("Choose another folder...", QMessageBox.ActionRole),
+             "turn_on": box.addButton("Turn on Windows long paths", QMessageBox.ActionRole),
+             "anyway": box.addButton("Export anyway", QMessageBox.ActionRole),
+             "cancel": box.addButton(QMessageBox.Cancel)}
+        b["shorten"].setToolTip(f"New longest path: {tail(fit.longest_path)}")
+        b["shorten"].setProperty("primary", True)       # the theme's main-action colour
+        b["turn_on"].setToolTip("Windows asks for administrator approval. Explorer and Excel "
+                                "may still not open very long paths even then.")
+        b["turn_on"].setVisible(not on)
+        box.setDefaultButton(b["shorten"])
+        return box, b
+
+    def _ask_long_paths(self, plan: dict, fit, root: str) -> str:
+        """'shorten', 'folder', 'turn_on', 'anyway' or '' (Cancel)."""
+        box, b = self._long_path_box(plan, fit, root)
         box.exec()
-        return box.clickedButton() is go
+        hit = box.clickedButton()
+        return next((k for k, v in b.items() if v is hit and k != "cancel"), "")
+
+    def _pick_export_folder(self, start: str) -> str:
+        """Another folder for this export (refused plainly if it cannot be written);
+        '' = none chosen."""
+        from ..safety import folder_problem, plain_path
+        d = QFileDialog.getExistingDirectory(self, "Save the export in", start)
+        if not d:
+            return ""
+        why = folder_problem(d)
+        if why is not None:
+            QMessageBox.warning(self, "Cannot save there",
+                                f"PeterPiper cannot write in {plain_path(d)}: {why}. "
+                                f"Choose another folder.")
+            return ""
+        return str(Path(d))
 
     def _on_exported(self, out: dict) -> None:
         self._busy(False)
@@ -3939,8 +4071,9 @@ class ClickWindow(QMainWindow):
         outlog.record("export", Path(self.exp.nd2_path).name, out["files"],
                       f"Export of {Path(self.exp.nd2_path).name}")
         self._notify("Exported", f"{n} file(s) written to {out['folder']}", out["folder"])
-        self.set_status(f"Exported {n} file(s) to {out['folder']}")
-        self._autosave()                        # a milestone (if anything changed)
+        self.set_status(f"Exported {n} file(s) to {out['folder']}"
+                        + (f" ({self._path_note})" if getattr(self, "_path_note", "") else ""))
+        self._autosave()                       # a milestone (if anything changed)
         self._since_save = False                # the export has the ROI file with the tracking
         self.lbl_save_info.setText(f"Exported {datetime.now():%H:%M} (with its ROI file).")
         self._queue_mark("exported")

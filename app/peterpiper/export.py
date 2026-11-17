@@ -38,6 +38,7 @@ import numpy as np
 
 from .config import Experiment, Settings
 from .excel import build_roi_info, write_workbook
+from .exportpaths import export_folder_name, file_tag
 from .graphstyle import describe
 from .measure import Measurements
 from .plots import _panels, export_prism, export_roi_images, preferred_sheets
@@ -199,8 +200,16 @@ def run_export(out_root: str, exp: Experiment, s: Settings, comps: Dict[str, dic
                keys: Sequence[str], src=None, background=None, t0: int = 0,
                roi_file_fn: Optional[Callable[[Path], Path]] = None,
                prefix: str = "", progress: ProgressFn = None,
-               provenance: Optional[dict] = None) -> dict:
+               provenance: Optional[dict] = None, folder_name: Optional[str] = None,
+               tag: Optional[str] = None, title: Optional[str] = None) -> dict:
     """
+    out_root: the folder the export goes into (1.2: the one chosen in the export
+    list - the movie's results folder unless you changed it); a new folder
+    Export_<date>_<time> (or `folder_name`, 1.2: a shorter one for long paths) is
+    made in it. tag (1.2): the name on the inner files (graphs, CSV, Prism graphs,
+    ROI pictures) - None = as always (none when the name is the movie's). title
+    (1.2): the name in the graphs' titles ({file}) when the file names were
+    shortened for long paths - None = the name for the files.
     comps[c] = dict(label, name (for file names), M (every channel), cells,
                include {k: 0/1}, why {k: str}, qc, seeds, channel, rois [t][k]).
     provenance (v2.3): how the numbers were made - rules, track_params,
@@ -216,9 +225,15 @@ def run_export(out_root: str, exp: Experiment, s: Settings, comps: Dict[str, dic
     # pictures do not repeat the movie's name (the workbook, .pzfx and methods text
     # keep it, so a file copied elsewhere still says which movie); a name you typed
     # yourself is kept on every file
-    short = "" if stem in (movie[:40], clean_prefix(movie), clean_prefix(movie)[:40]) else stem
+    short = file_tag(stem, movie) if tag is None else clean_prefix(tag)
     fpre = f"{short}_" if short else ""
-    folder = Path(out_root) / f"Export_{dt.datetime.now():%Y-%m-%d_%H-%M-%S}"
+    shown = clean_prefix(title) if title else stem      # 1.2: {file} in graph titles
+    folder = Path(out_root) / (folder_name or export_folder_name())
+    if folder_name and exists(folder):          # 1.2: a short name (no seconds) used twice
+        n = 2
+        while exists(Path(out_root) / f"{folder_name}_{n}"):
+            n += 1
+        folder = Path(out_root) / f"{folder_name}_{n}"
     make_dirs(folder)
     files: List[str] = []
     T = exp.n_timepoints
@@ -286,7 +301,7 @@ def run_export(out_root: str, exp: Experiment, s: Settings, comps: Dict[str, dic
             files += export_prism_graphs(str(cdir / "Prism graphs"),
                                          f"{fpre}{d['name']}", exp, s2, M, on,
                                          d["label"], quantities=qs, drift=drift, template=style,
-                                         style=getattr(s, "graph_style", None) or {}, file=stem)
+                                         style=getattr(s, "graph_style", None) or {}, file=shown)
             tick(f"{d['label']}: Prism graphs written")
         if drift:
             files.append(_drift_workbook(cdir / f"{base}_baseline_drift_T{a}-T{z}.xlsx",
@@ -326,7 +341,7 @@ def run_export(out_root: str, exp: Experiment, s: Settings, comps: Dict[str, dic
                 y = data[:, on] if on else np.zeros((T, 0))
                 p = sub / f"{fpre}{_safe(nice(name).replace('/', '-'))}.png"
                 files.append(_graph(p, x, xlabel, y, nice(name),
-                                    getattr(s, "graph_style", None) or {}, stem, d["label"],
+                                    getattr(s, "graph_style", None) or {}, shown, d["label"],
                                     [f"Cell_{k + 1}" for k in on]))
                 tick(f"{d['label']}: graph {nice(name)}")
         pics = [k for k in ("roi_drawn", "roi_last", "roi_every") if k in mine]
@@ -396,6 +411,58 @@ def longest_path(out_root, nd2_path, prefix: str, comps: Sequence[tuple]) -> int
         pics = len(f"/ROI pictures/{pre}{name}_ROIs_t100_check.png")
         worst = max(worst, cdir + max(workbook, graph, pics))
     return worst
+
+
+def path_plan(exp: Experiment, s: Settings, comps: Dict[str, dict], keys: Sequence[str],
+              t0: int = 0) -> Callable[[str, str], List[str]]:
+    """1.2: rel(stem, tag) -> the files an export of `keys` writes (relative to its
+    Export_ folder, exportpaths.relative_paths), named as run_export names them -
+    for the long-path check before writing. comps as for run_export (only label,
+    name and M are used)."""
+    from .exportpaths import relative_paths
+    keys = list(keys)
+    T = exp.n_timepoints
+    a, z = int(getattr(s, "drift_from", 2)), int(getattr(s, "drift_to", 9))
+    a, z = max(1, min(a, T)), max(1, min(z, T))
+    drift = (a, z) if z - a >= 2 else None
+    tpl = getattr(s, "prism_template", "") or ""
+    pzfx_graphs = bool(tpl) and tpl.lower().endswith(".pzfx") and exists(tpl)
+    info = {}
+    for c, d in comps.items():
+        mine = [k.split("|", 1)[1] for k in keys if k.split("|", 1)[0] == c]
+        if not mine:
+            continue
+        s2 = copy.copy(s)
+        s2.roi_mode = d["name"]
+        sheets = [p[0] for p in _panels(d["M"], s2)]
+        chosen = [k.split("|", 1)[1] for k in mine if k.startswith("graph|")]
+        qs = [q for q in (chosen or preferred_sheets(d["M"], s2)) if q in sheets] or \
+            [q for q in sheets if q.startswith("dRR_")][:1] or sheets[:1]
+        info[c] = dict(label=d["label"], name=d["name"], sheets=sheets, prism=qs)
+    movie = Path(exp.nd2_path).stem
+    chans = list(exp.channels)
+
+    def rel(stem: str, tag: str) -> List[str]:
+        return relative_paths(keys, info, stem, tag, movie, chans, T, t0, drift, pzfx_graphs)
+    return rel
+
+
+def export_names(out_root, exp: Experiment, s: Settings, comps: Dict[str, dict],
+                 keys: Sequence[str], prefix: str = "", t0: int = 0, when=None) -> dict:
+    """1.2: the long-path check of an export into out_root, before writing:
+    dict(stem, tag, paths (full, with the usual names), bad (paths Explorer / Excel
+    may not open), longest, fit (exportpaths.Fit: shorter names that fit), rel)."""
+    from .exportpaths import full_paths, longest, shorter_names, too_long
+    movie = Path(exp.nd2_path).stem
+    stem = clean_prefix(prefix) or movie[:40]
+    tag = file_tag(stem, movie)
+    when = when or dt.datetime.now()
+    rel = path_plan(exp, s, comps, keys, t0)
+    paths = full_paths(out_root, export_folder_name(when), rel(stem, tag))
+    bad = too_long(paths)
+    fit = shorter_names(out_root, rel, stem, tag, when) if bad else None
+    return dict(stem=stem, tag=tag, paths=paths, bad=bad, longest=longest(paths)[0],
+                fit=fit, rel=rel)
 
 
 def graph_file_name(stem: str, comp_name: str, quantity: str) -> str:

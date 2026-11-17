@@ -73,10 +73,11 @@ class Watch:
         self.now = now
         self.t0 = now()
         self.total = total
-        self.collected: List[str] = []
-        self.current = ""                 # the package being collected / downloaded
+        self.collected: List[str] = []   # packages pip looked up ("Collecting")
+        self.wheels: List[str] = []      # package files downloaded
+        self.current = ""                 # the package being looked up / downloaded
         self.size = ""                    # its download size, as pip said it
-        self.phase = "start"              # start | download | install | done
+        self.phase = "start"              # start | collect | download | install | done
         self.installing: List[str] = []
         self.t_install = 0.0
         self.mb = 0.0                     # download sizes pip announced so far
@@ -94,13 +95,19 @@ class Watch:
                 if name.lower() not in (c.lower() for c in self.collected):
                     self.collected.append(name)
                 self.current, self.size = name, ""
-            self.phase = "download"
+            self.phase = "collect"
         elif low.startswith("downloading "):
+            fname = line.split()[1] if len(line.split()) > 1 else ""
+            if fname.endswith(".metadata"):
+                return                    # only the package's description (a few kB)
             m = re.search(r"\(([\d.]+)\s*([kMG]?B)\)", line)
             self.size = f"{m.group(1)} {m.group(2)}" if m else ""
             if m:
                 unit = {"kB": 1e-3, "MB": 1.0, "GB": 1e3}.get(m.group(2), 1e-6)
                 self.mb += float(m.group(1)) * unit
+            base = fname.rsplit("/", 1)[-1]
+            self.current = base.split("-", 1)[0] if "-" in base else (base or self.current)
+            self.wheels.append(self.current)
             self.phase = "download"
         elif low.startswith("installing collected packages:"):
             names = [n.strip() for n in line.split(":", 1)[1].split(",") if n.strip()]
@@ -113,19 +120,17 @@ class Watch:
     def _left(self) -> Optional[float]:
         """Rough seconds left (None when there is nothing to go on)."""
         t = self.now()
+        n = self.total or len(self.collected) or 45
         if self.phase == "install":
-            n = len(self.installing) or (self.total or 20)
-            return (30.0 + 2.5 * n) - (t - self.t_install)
+            return (30.0 + 2.5 * (len(self.installing) or n)) - (t - self.t_install)
         if self.phase == "download":
-            # how far: by packages (exact list) or by megabytes (about TYPICAL_MB
-            # in all; the big packages come first, so whichever is further)
-            frac = min(0.95, self.mb / TYPICAL_MB)
-            if self.total:
-                frac = max(frac, min(len(self.collected), self.total) / self.total)
+            # how far: by megabytes (about TYPICAL_MB in all; the big packages come
+            # first) or by package files, whichever is further
+            frac = max(min(0.95, self.mb / TYPICAL_MB), min(1.0, len(self.wheels) / n))
             spent = t - self.t0
             if frac < 0.05 or spent < 15:
                 return None
-            return spent * (1.0 - frac) / frac + 30.0 + 2.5 * (self.total or 45)
+            return spent * (1.0 - frac) / frac + 30.0 + 2.5 * n
         return None
 
     def line(self) -> str:
@@ -133,6 +138,7 @@ class Watch:
         left = self._left()
         tail = f"{spent} so far" + (f", {_left_text(left)}" if left is not None and left > -60
                                     else (", taking longer than usual" if left is not None else ""))
+        of = f" of {self.total}" if self.total else ""
         if self.phase == "install":
             names = self.installing
             shown = ", ".join(names[:4]) + (", ..." if len(names) > 4 else "")
@@ -140,9 +146,10 @@ class Watch:
                     f"({len(names)} packages; {tail})")
         if self.phase == "download":
             what = f"downloading {self.current}" + (f" ({self.size})" if self.size else "")
-            count = len(self.collected)
-            of = f" - {count} of {self.total} packages" if self.total else f" - {count} packages"
-            return f"  still working - {what}{of} ({tail})"
+            return f"  still working - {what} - {len(self.wheels)}{of} packages ({tail})"
+        if self.phase == "collect":
+            return (f"  still working - looking up {self.current} - {len(self.collected)}{of} "
+                    f"packages ({tail})")
         if self.phase == "done":
             return f"  still working - finishing ({tail})"
         return f"  still working - asking pypi.org for the packages ({tail})"

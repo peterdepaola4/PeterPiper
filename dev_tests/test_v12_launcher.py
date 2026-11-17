@@ -129,21 +129,27 @@ def part_a():
        and IP.count_packages(str(REPO / "app" / "requirements-compatible.txt")) is None)
     clock = [100.0]
     w = IP.Watch(45, now=lambda: clock[0])
-    w.feed("Collecting numpy==2.4.6")
-    w.feed("  Downloading numpy-2.4.6-cp311-win_amd64.whl (12.6 MB)")
-    clock[0] += 40
+    # pip 24+: every package is looked up first (its description only), then the files
+    for n in ("numpy==2.4.6", "scipy==1.17.1", "pillow==13.0.0"):
+        w.feed(f"Collecting {n} (from -r C:/x/requirements.txt (line 13))")
+        w.feed(f"  Downloading {n.split('==')[0]}-1.0-cp311-win_amd64.whl.metadata (6.6 kB)")
+    clock[0] += 10
+    l0 = w.line()
+    w.feed("Downloading numpy-2.4.6-cp311-cp311-win_amd64.whl (12.6 MB)")
+    w.feed("   ---------------------------------------- 12.6/12.6 MB 29.7 MB/s eta 0:00:00")
+    w.feed("Downloading scipy-1.17.1-cp311-cp311-win_amd64.whl (36.6 MB)")
+    w.feed("Downloading pyside6_essentials-6.12.0-cp310-abi3-win_amd64.whl (82.2 MB)")
+    clock[0] += 90
     l1 = w.line()
-    for n in ("scipy==1", "pillow==13", "six==1"):
-        w.feed("Collecting " + n)
-    clock[0] += 60
-    l2 = w.line()
     w.feed("Installing collected packages: numpy, scipy, pillow, six, zipp, tzdata")
     clock[0] += 40
     l3 = w.line()
-    ok("A heartbeat words: downloading <package> (<size>), n of 45, time so far",
-       "downloading numpy (12.6 MB) - 1 of 45 packages" in l1 and "40 s so far" in l1, l1)
-    ok("A ... with time left once a few packages are in", "1 min 40 s so far" in l2
-       and "left" in l2, l2)
+    ok("A heartbeat words while looking up: the package, n of 45, time so far (no guess yet)",
+       l0 == "  still working - looking up pillow - 3 of 45 packages (10 s so far)", l0)
+    ok("A ... while downloading: the package file being fetched (its size), n of 45, time "
+       "so far and left (by megabytes)",
+       "still working - downloading pyside6_essentials (82.2 MB) - 3 of 45 packages" in l1
+       and "1 min 40 s so far" in l1 and "min left" in l1, l1)
     ok("A ... installing the listed packages (first ones, then ...)",
        "still working - installing numpy, scipy, pillow, six, ..." in l3
        and "6 packages" in l3 and "2 min 20 s so far" in l3, l3)

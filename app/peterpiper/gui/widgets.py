@@ -834,8 +834,206 @@ class MultiPick(QToolButton):
         self.setToolTip(v.replace("; ", "\n"))
 
 
+# ---------------------------------------------------------------- 1.2 progress helpers
+# Every loading bar (the 'working' window, the strip under the image) shows: the
+# percent when a fraction is known, the time left (estimated from the time so far
+# and the fraction, smoothed), or the time so far when no fraction is known, and a
+# detail line naming what is being looked at (a file, a folder, "file 12 of 80").
+#
+# Progress callbacks keep their two-argument form progress(fraction, text). The
+# richer forms, understood everywhere (BusyPanel.update_progress, the progress
+# function run_with_progress hands to fn, busy.step, ProgressStrip.update,
+# workers.Job.progress):
+#   progress(fraction, "Reading your runs", detail="run 3 of 12 - D:/x/a.npz")
+#   progress(fraction, "Reading your runs\nrun 3 of 12 - D:/x/a.npz")   (core code:
+#       the part after the first line break is the detail - no Qt import needed)
+# fraction None (or below 0) = not known: a moving bar and "12 s so far".
+from PySide6.QtWidgets import QSizePolicy                       # noqa: E402
+
+DETAIL_SEP = "\n"
+
+
+def place_name(path) -> str:
+    """A file's or folder's name for a title - never empty: a drive root (D:\\)
+    or a share root has no name, so the whole path is used then."""
+    from pathlib import Path
+    s = str(path or "").strip()
+    if not s:
+        return "(no folder)"
+    name = Path(s).name
+    return name if name.strip() else s
+
+
+def split_progress(text, detail=None):
+    """(headline, detail) from a progress text: the detail is `detail` if given,
+    else the part after the first line break of `text` (None when neither)."""
+    text = "" if text is None else str(text)
+    if detail is None and DETAIL_SEP in text:
+        text, detail = text.split(DETAIL_SEP, 1)
+    return text.strip(), (None if detail is None else " ".join(str(detail).split()))
+
+
+def count_detail(i, n, what: str = "file", name="") -> str:
+    """'file 3 of 12 - name' (i 1-based); 'file 3 - name' when n is not known."""
+    head = f"{what} {int(i)} of {int(n)}" if n else f"{what} {int(i)}"
+    return f"{head} - {name}" if str(name or "") else head
+
+
+def fmt_duration(s: float) -> str:
+    """12 s, 1 min 20 s, 1 h 5 min."""
+    s = max(0, int(round(float(s))))
+    if s < 60:
+        return f"{s} s"
+    if s < 3600:
+        m, r = divmod(s, 60)
+        return f"{m} min {r} s" if r else f"{m} min"
+    h, r = divmod(s, 3600)
+    m = r // 60
+    return f"{h} h {m} min" if m else f"{h} h"
+
+
+def _round_left(s: float) -> float:
+    """Rounded so the shown time left does not flicker: whole seconds under 10 s,
+    5 s under a minute, 10 s under 10 min, whole minutes above."""
+    import math
+    if s < 10:
+        return math.ceil(s)
+    for limit, step in ((60, 5), (600, 10), (3600, 60)):
+        if s < limit:
+            return step * round(s / step)
+    return 300 * round(s / 300)
+
+
+class TimeLeft:
+    """Time-left estimate from the elapsed time and the fraction done (no Qt).
+    feed(fraction or None) at every progress report; text() says "about 1 min 20 s
+    left", "estimating time left..." (too little progress yet), "almost done", or
+    "12 s so far" when no fraction is known. The estimate is smoothed (its error
+    is reduced with a ~3 s time constant) and counts down between reports, so it
+    does not jump. A fraction going back (a new part of the work) restarts the
+    estimate; the time so far keeps counting."""
+
+    WARMUP_S = 1.5        # seconds of progress before the first estimate
+    WARMUP_F = 0.02       # ... and at least this much of the work
+    TAU_S = 3.0           # smoothing time constant
+
+    def __init__(self, clock: Optional[Callable[[], float]] = None) -> None:
+        import time
+        self._clock = clock or time.monotonic
+        self.restart()
+
+    def restart(self) -> None:
+        self.t_start = self._clock()
+        self._base = None                 # (time, fraction) the rate is measured from
+        self._est = None                  # smoothed seconds left at self._t_est
+        self._t_est = 0.0
+        self._f: Optional[float] = None
+        self.known = False
+
+    def feed(self, fraction) -> None:
+        import math
+        now = self._clock()
+        if fraction is None or float(fraction) < 0:
+            self.known = False
+            return
+        f = max(0.0, min(1.0, float(fraction)))
+        self.known = True
+        if self._base is None or (self._f is not None and f < self._f - 0.01):
+            first = self._base is None
+            self._base = (self.t_start, 0.0) if first and f <= 0.05 else (now, f)
+            self._est = None
+        self._f = f
+        t0, f0 = self._base
+        dt, df = now - t0, f - f0
+        if dt < self.WARMUP_S or df < self.WARMUP_F:
+            return
+        raw = dt * (1.0 - f) / df
+        if self._est is None:
+            self._est, self._t_est = raw, now
+            return
+        pred = max(0.0, self._est - (now - self._t_est))
+        a = 1.0 - math.exp(-max(0.0, now - self._t_est) / self.TAU_S)
+        self._est, self._t_est = pred + a * (raw - pred), now
+
+    def elapsed(self) -> float:
+        return max(0.0, self._clock() - self.t_start)
+
+    def seconds_left(self) -> Optional[float]:
+        if not self.known or self._est is None:
+            return None
+        return max(0.0, self._est - (self._clock() - self._t_est))
+
+    def text(self) -> str:
+        if not self.known:
+            e = self.elapsed()
+            return f"{fmt_duration(e)} so far" if e >= 1.0 else ""
+        if self._f is not None and self._f >= 0.999:
+            return "almost done"
+        left = self.seconds_left()
+        if left is None:
+            return "estimating time left..."
+        if left < 2:
+            return "almost done"
+        return f"about {fmt_duration(_round_left(left))} left"
+
+
+class ElidedLabel(QLabel):
+    """A one-line label that never widens its window: text too long for the space
+    is shortened with '...' (in the middle by default, so a path keeps its drive
+    and its file name); the whole text is then in the tooltip. text() is the whole
+    text; shown_text() what is drawn."""
+
+    def __init__(self, text: str = "", mode=Qt.ElideMiddle,
+                 parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._mode = mode
+        self.setTextFormat(Qt.PlainText)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.setText(text)
+
+    def setText(self, text) -> None:                                # noqa: N802
+        super().setText(" ".join(str(text or "").split()))
+        self._tip()
+
+    def shown_text(self) -> str:
+        w = max(0, self.contentsRect().width())
+        return self.fontMetrics().elidedText(self.text(), self._mode, w)
+
+    def is_elided(self) -> bool:
+        return bool(self.text()) and self.shown_text() != self.text()
+
+    def _tip(self) -> None:
+        self.setToolTip(self.text() if self.is_elided() else "")
+
+    def sizeHint(self) -> QSize:                                    # noqa: N802
+        h = super().sizeHint().height()
+        return QSize(min(1200, self.fontMetrics().horizontalAdvance(self.text()) + 4), h)
+
+    def minimumSizeHint(self) -> QSize:                             # noqa: N802
+        return QSize(16, super().minimumSizeHint().height())
+
+    def resizeEvent(self, ev) -> None:                              # noqa: N802
+        super().resizeEvent(ev)
+        self._tip()
+
+    def paintEvent(self, ev) -> None:                               # noqa: N802
+        from PySide6.QtGui import QPainter
+        p = QPainter(self)
+        self.style().drawItemText(p, self.contentsRect(), int(self.alignment()),
+                                  self.palette(), self.isEnabled(), self.shown_text(),
+                                  self.foregroundRole())
+        p.end()
+
+
 class ProgressStrip(QWidget):
-    """A progress bar plus a message line, used at the bottom of the window."""
+    """A progress bar plus a message line, used at the bottom of the window.
+    1.2: the line also shows a detail (what is being worked on, shortened in the
+    middle when long) and the time left / time so far; the bar shows the percent
+    when a fraction is known and moves when it is not.
+      update(fraction, message, detail=None)  fraction None or < 0 = not known;
+          message may carry the detail after a line break ("Tracking\\nframe 3 of 9")
+      busy(message, detail=None)  a moving bar;  unbusy()  back to a percent bar
+      reset(message)  ready for the next job (time and detail cleared)."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -848,27 +1046,73 @@ class ProgressStrip(QWidget):
         self.bar.setTextVisible(True)
         self.bar.setFormat("%p%")
         self.bar.setMinimumHeight(22)
-        self.msg = QLabel("Ready.")
+        self.msg = ElidedLabel("Ready.", Qt.ElideRight)
         self.msg.setProperty("muted", True)
+        self.detail = ElidedLabel("", Qt.ElideMiddle)
+        self.detail.setProperty("muted", True)
+        self.lbl_time = QLabel("")
+        self.lbl_time.setProperty("muted", True)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(14)
+        row.addWidget(self.msg, 1)
+        row.addWidget(self.lbl_time)
         lay.addWidget(self.bar)
-        lay.addWidget(self.msg)
+        lay.addLayout(row)
+        lay.addWidget(self.detail)             # its own line: long paths keep their ends
+        self.eta = TimeLeft()
+        self._tick = QTimer(self)
+        self._tick.setInterval(500)
+        self._tick.timeout.connect(self._show_time)
         self.reset()
 
     def reset(self, message: str = "Ready.") -> None:
+        self._tick.stop()
+        if self.bar.maximum() != 1000:
+            self.bar.setRange(0, 1000)
         self.bar.setValue(0)
         self.bar.setFormat("%p%")
         self.msg.setText(message)
+        self.detail.setText("")
+        self.lbl_time.setText("")
+        self.eta.restart()
 
-    def update(self, fraction: float, message: str) -> None:
-        self.bar.setValue(int(max(0.0, min(1.0, fraction)) * 1000))
-        self.msg.setText(message)
+    def update(self, fraction: Optional[float], message: str = "",
+               detail: Optional[str] = None) -> None:
+        if fraction is None or float(fraction) < 0:
+            if self.bar.maximum() != 0:
+                self.bar.setRange(0, 0)
+        else:
+            if self.bar.maximum() != 1000:
+                self.bar.setRange(0, 1000)
+            self.bar.setValue(int(max(0.0, min(1.0, float(fraction))) * 1000))
+        head, det = split_progress(message, detail)
+        if head:
+            self.msg.setText(head)
+            self.detail.setText(det or "")
+        elif det is not None:
+            self.detail.setText(det)
+        self.eta.feed(fraction)
+        self._show_time()
+        if not self._tick.isActive():
+            self._tick.start()
 
-    def busy(self, message: str) -> None:
-        self.bar.setRange(0, 0)
-        self.msg.setText(message)
+    def busy(self, message: str, detail: Optional[str] = None) -> None:
+        self.update(None, message, detail)
 
     def unbusy(self) -> None:
         self.bar.setRange(0, 1000)
+
+    def finish(self, message: str) -> None:
+        """A full bar, `message` and how long it took (the clock stops)."""
+        self._tick.stop()
+        took = self.eta.elapsed()
+        self.update(1.0, message, "")
+        self._tick.stop()
+        self.lbl_time.setText(f"took {fmt_duration(took)}" if took >= 1 else "")
+
+    def _show_time(self) -> None:
+        self.lbl_time.setText(self.eta.text())
 
 
 class Toast(QFrame):
@@ -991,7 +1235,15 @@ class BusyPanel(QWidget):
     """A small window with what is happening and a progress bar, shown while
     something slow runs, so the program never looks frozen. Moving (busy) bar
     until a fraction is known. Use run_with_progress (work in the background) or
-    busy() (work that must stay in this thread, done in steps)."""
+    busy() (work that must stay in this thread, done in steps).
+    1.2: the bar shows the percent when a fraction is known; under it the time
+    left (or the time so far), what is happening, and a detail line naming the
+    file / folder being looked at (shortened in the middle, never widening the
+    window). The title is never empty and is shortened in the middle too.
+    update_progress(fraction or None, text="", detail=None): the detail may also
+    come after a line break in text; a new text without a detail clears it."""
+
+    WIDTH = 560
 
     def __init__(self, parent: Optional[QWidget], title: str) -> None:
         super().__init__(parent, Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
@@ -1000,34 +1252,68 @@ class BusyPanel(QWidget):
         self.setObjectName("busy")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(8)
-        self.lbl_title = QLabel(title)
+        lay.setSpacing(6)
+        title = " ".join(str(title or "").split()) or "Working..."
+        self.lbl_title = ElidedLabel(title, Qt.ElideMiddle)
         f = self.lbl_title.font()
         f.setBold(True)
         self.lbl_title.setFont(f)
-        self.lbl = QLabel("")
-        self.lbl.setProperty("muted", True)
-        self.lbl.setWordWrap(True)
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)                          # moving until a fraction is known
         self.bar.setTextVisible(False)
-        self.bar.setMinimumWidth(380)
+        self.bar.setFormat("%p%")
+        self.bar.setMinimumWidth(300)
+        self.lbl_time = QLabel("")
+        self.lbl_time.setProperty("muted", True)
+        self.lbl = ElidedLabel("", Qt.ElideRight)        # what is happening
+        self.lbl_detail = ElidedLabel("", Qt.ElideMiddle)  # the file / folder / count
+        self.lbl_detail.setProperty("muted", True)
         lay.addWidget(self.lbl_title)
         lay.addWidget(self.bar)
+        lay.addWidget(self.lbl_time)
         lay.addWidget(self.lbl)
-        self.setMinimumWidth(440)
+        lay.addWidget(self.lbl_detail)
+        self.setFixedWidth(self._width(parent))
+        self.eta = TimeLeft()
+        self._tick = QTimer(self)
+        self._tick.setInterval(500)
+        self._tick.timeout.connect(self._show_time)
         self._shown = False
 
-    def update_progress(self, fraction: Optional[float], text: str = "") -> None:
-        if fraction is None:
+    def _width(self, parent) -> int:
+        """WIDTH, but never wider than the screen."""
+        from PySide6.QtGui import QGuiApplication
+        scr = None
+        try:
+            scr = parent.screen() if parent is not None else None
+        except Exception:                                          # noqa: BLE001
+            scr = None
+        scr = scr or QGuiApplication.primaryScreen()
+        avail = scr.availableGeometry().width() if scr is not None else self.WIDTH + 40
+        return int(max(260, min(self.WIDTH, avail - 40)))
+
+    def update_progress(self, fraction: Optional[float], text: str = "",
+                        detail: Optional[str] = None) -> None:
+        if fraction is None or float(fraction) < 0:
             if self.bar.maximum() != 0:
                 self.bar.setRange(0, 0)
+                self.bar.setTextVisible(False)
         else:
             if self.bar.maximum() != 1000:
                 self.bar.setRange(0, 1000)
+                self.bar.setTextVisible(True)
             self.bar.setValue(int(1000 * max(0.0, min(1.0, float(fraction)))))
-        if text:
-            self.lbl.setText(text)
+        head, det = split_progress(text, detail)
+        if head:
+            self.lbl.setText(head)
+            self.lbl_detail.setText(det or "")
+        elif det is not None:
+            self.lbl_detail.setText(det)
+        self.eta.feed(fraction)
+        self._show_time()
+
+    def _show_time(self) -> None:
+        self.lbl_time.setText(self.eta.text())
 
     def appear(self) -> None:
         if self._shown:
@@ -1038,8 +1324,14 @@ class BusyPanel(QWidget):
         if p is not None and p.isVisible():
             g = p.frameGeometry()
             self.move(g.center().x() - self.width() // 2, g.center().y() - self.height() // 2)
+        self._show_time()
+        self._tick.start()
         self.show()
         self.raise_()
+
+    def closeEvent(self, ev) -> None:                               # noqa: N802
+        self._tick.stop()
+        super().closeEvent(ev)
 
 
 def run_with_progress(parent: Optional[QWidget], title: str, fn: Callable, delay_ms: int = 350):
@@ -1047,7 +1339,11 @@ def run_with_progress(parent: Optional[QWidget], title: str, fn: Callable, delay
     says `title` (shown only if it takes longer than delay_ms). progress(fraction
     or None, text) may be called from fn. The windows keep painting but take no
     clicks. Returns fn's result; re-raises its exception. fn must not touch
-    widgets."""
+    widgets.
+    1.2: progress(fraction, text, detail=None) - the detail (the file / folder
+    being looked at, 'file 3 of 12 - name') shows on its own line; it may also
+    follow a line break in text. A call with only a fraction keeps the text.
+    Name folders in titles with place_name(folder) (never empty for D:\\)."""
     import threading
     from PySide6.QtCore import QEventLoop
     from PySide6.QtWidgets import QApplication
@@ -1055,8 +1351,11 @@ def run_with_progress(parent: Optional[QWidget], title: str, fn: Callable, delay
         return fn(lambda *a, **k: True)
     state = {"done": False, "result": None, "error": None, "prog": None}
 
-    def progress(fraction=None, text=""):
-        state["prog"] = (fraction, text)
+    def progress(fraction=None, text="", detail=None):
+        old = state["prog"]                 # not shown yet: keep its text
+        if old is not None and not text and detail is None:
+            text, detail = old[1], old[2]
+        state["prog"] = (fraction, text, detail)
         return True
 
     def work():
@@ -1102,7 +1401,10 @@ def run_with_progress(parent: Optional[QWidget], title: str, fn: Callable, delay
 class busy:
     """V2.9: `with busy(parent, title) as b: ... b.step(i, n, text) ...` - for
     slow work that must run in the window's own thread: a BusyPanel shows at
-    once and is repainted at every step (the work itself is not interrupted)."""
+    once and is repainted at every step (the work itself is not interrupted).
+    1.2: b.step(i, n, text, detail=None) - i of n done (a fraction when n is
+    known), the detail names what is being worked on (or follows a line break
+    in text)."""
 
     def __init__(self, parent: Optional[QWidget], title: str) -> None:
         self.parent, self.title = parent, title
@@ -1120,8 +1422,9 @@ class busy:
         from PySide6.QtWidgets import QApplication
         QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
-    def step(self, i: Optional[float] = None, n: Optional[float] = None, text: str = "") -> None:
-        self.panel.update_progress(None if i is None or not n else i / n, text)
+    def step(self, i: Optional[float] = None, n: Optional[float] = None, text: str = "",
+             detail: Optional[str] = None) -> None:
+        self.panel.update_progress(None if i is None or not n else i / n, text, detail)
         self._pump()
 
     def __exit__(self, *exc) -> bool:

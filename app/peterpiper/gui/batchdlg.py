@@ -228,6 +228,9 @@ class BatchDialog(QDialog):
         lay.addWidget(self.btn)
         self.lbl = W.wrapped_label("", muted=True)
         lay.addWidget(self.lbl)
+        self.strip = W.ProgressStrip()             # 1.2: file k of n, time left, the file
+        self.strip.setVisible(False)
+        lay.addWidget(self.strip)
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["File", "Status", "Cells included",
                                               "Background note", "Export folder"])
@@ -247,7 +250,14 @@ class BatchDialog(QDialog):
     def _add_folder(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Folder with .nd2 files")
         if d:
-            self._add_paths(sorted(str(p) for p in Path(d).rglob("*.nd2")))
+            def find(progress):                    # 1.2: a bar on a big folder
+                found = []
+                for p in Path(d).rglob("*.nd2"):
+                    found.append(str(p))
+                    progress(None, f"{len(found)} .nd2 file(s) found", detail=str(p))
+                return sorted(found)
+            self._add_paths(W.run_with_progress(self, f"Looking for .nd2 files in "
+                                                      f"{W.place_name(d)}", find))
 
     def _other(self) -> None:
         p, _f = QFileDialog.getOpenFileName(self, "Saved settings", str(PR.folder()),
@@ -279,9 +289,17 @@ class BatchDialog(QDialog):
         self.rows = []
         self.table.setRowCount(0)
         try:
+            self.strip.reset("Starting...")
+            self.strip.setVisible(True)
             for k, p in enumerate(paths):
                 self.lbl.setText(f"{k + 1} / {len(paths)}: {Path(p).name}")
-                r = analyse_one(p, s, progress=self.lbl.setText)
+
+                def say(text, k=k, p=p):              # 1.2: the bar, the time left, the file
+                    self.lbl.setText(text)
+                    self.strip.update(k / len(paths), text.split(": ", 1)[-1],
+                                      W.count_detail(k + 1, len(paths), "file", p))
+                say(f"{Path(p).name}: opening ...")
+                r = analyse_one(p, s, progress=say)
                 self.rows.append(r)
                 i = self.table.rowCount()
                 self.table.insertRow(i)
@@ -295,5 +313,6 @@ class BatchDialog(QDialog):
             outlog.record("batch", f"Batch of {len(paths)} file(s) - {name}", [log],
                           "The batch log; each file's export is listed on its own.")
             self.lbl.setText(f"Done: {len(paths)} file(s). Log: {plain_path(log)}")
+            self.strip.finish(f"Done: {len(paths)} file(s)")
         finally:
             self.btn.setEnabled(True)

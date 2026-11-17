@@ -390,23 +390,30 @@ def relocate_runs(folder, progress=None) -> dict:
         want.setdefault(Path(r["path"]).name.lower(), []).append(r)
     found, moves = 0, []
     stack = [Path(plain_path(str(folder)))]
+    spans = [(0.0, 1.0)]                       # 1.2: the share of the tree, for the bar
     seen = 0
     while stack and want:
         d = stack.pop()
+        lo, hi = spans.pop()
+        _say(progress, lo, f"Looking for your missing runs - {found} found\nfolder {d}")
         try:
             entries = list(os.scandir(long_path(d)))
         except OSError:
             continue
+        n0 = len(stack)
         for e in entries:
             if e.is_dir(follow_symlinks=False):
                 if not (e.name.startswith("$") or e.name.startswith(".")):
                     stack.append(d / e.name)
+                    spans.append((lo, hi))
                 continue
             cands = want.get(e.name.lower())
             if not cands:
                 continue
             seen += 1
-            if progress is not None and progress(None, f"{found} found - {d.name}") is False:
+            if progress is not None and progress(
+                    lo, f"Looking for your missing runs - {found} found"
+                        f"\nfile {seen} - {d / e.name}") is False:
                 break
             sm = read_summary(d / e.name) or {}
             fpq = str((sm.get("fingerprint") or {}).get("quick") or "")
@@ -420,7 +427,17 @@ def relocate_runs(folder, progress=None) -> dict:
                     found += 1
             if not cands:
                 want.pop(e.name.lower(), None)
+        _share(spans, n0, lo, hi)
     return dict(found=found, still_missing=len(missing_runs()), moves=moves)
+
+
+def _share(spans: list, n0: int, lo: float, hi: float) -> None:
+    """1.2: split a folder's share of the bar among the subfolders just put on the
+    stack (from n0 on; the last one pushed is looked in first)."""
+    k = len(spans) - n0
+    w = (hi - lo) / max(1, k)
+    for i in range(k):
+        spans[n0 + i] = (lo + w * (k - 1 - i), lo + w * (k - i))
 
 
 def find_runs_in_folder(folder, progress=None) -> dict:
@@ -431,23 +448,33 @@ def find_runs_in_folder(folder, progress=None) -> dict:
     mine: List[str] = []
     others = untracked = 0
     stack = [Path(plain_path(str(folder)))]
+    spans = [(0.0, 1.0)]                       # 1.2: the share of the tree, for the bar
     seen = 0
     while stack:
         d = stack.pop()
+        lo, hi = spans.pop()
+        if progress is not None and progress(
+                lo, f"{len(mine)} of your runs found, {seen} file(s) checked"
+                    f"\nfolder {d}") is False:
+            return dict(mine=mine, others=others, untracked=untracked)
         try:
             entries = list(os.scandir(long_path(d)))
         except OSError:
             continue
+        n0 = len(stack)
         for e in entries:
             name = e.name
             if e.is_dir(follow_symlinks=False):
                 if not (name.startswith("$") or name.startswith(".")):
                     stack.append(d / name)
+                    spans.append((lo, hi))
                 continue
             if not name.lower().endswith(".npz"):
                 continue
             seen += 1
-            if progress is not None and progress(None, f"{seen} file(s) checked - {d.name}")                     is False:
+            if progress is not None and progress(
+                    lo, f"{len(mine)} of your runs found, {seen} file(s) checked"
+                        f"\nfile {seen} - {d / name}") is False:
                 return dict(mine=mine, others=others, untracked=untracked)
             p = d / name
             s = read_summary(p)
@@ -460,6 +487,7 @@ def find_runs_in_folder(folder, progress=None) -> dict:
                 others += 1
                 continue
             mine.append(str(p))
+        _share(spans, n0, lo, hi)
     return dict(mine=sorted(mine), others=others, untracked=untracked)
 
 
@@ -516,15 +544,31 @@ def _wanted(name: str) -> bool:
     return low.endswith(".npz") and ("_rois" in low or "_session" in low)
 
 
-def _scan(roots, budget: dict) -> List[str]:
-    """ROI / session files under each (folder, depth), without following links."""
+def _say(progress, fraction, text) -> bool:
+    """1.2: a progress report that can never break the work (False = stop)."""
+    if progress is None:
+        return True
+    try:
+        return progress(fraction, text) is not False
+    except Exception:                                          # noqa: BLE001
+        return True
+
+
+def _scan(roots, budget: dict, progress=None, span=(0.0, 1.0)) -> List[str]:
+    """ROI / session files under each (folder, depth), without following links.
+    1.2: progress (optional) hears of each folder looked in (a fraction within
+    `span` by the roots done)."""
     out: List[str] = []
-    for root, depth in roots:
+    lo, hi = span
+    for i_root, (root, depth) in enumerate(roots):
         stack = [(str(root), depth)]
         while stack:
             if budget["entries"] <= 0 or time.perf_counter() > budget["until"]:
                 return out
             folder, d = stack.pop()
+            _say(progress, lo + (hi - lo) * i_root / max(1, len(roots)),
+                 f"Looking in the result folders\nplace {i_root + 1} of {len(roots)}"
+                 f" - {folder}")
             try:
                 with os.scandir(long_path(folder)) as it:
                     for e in it:
@@ -572,8 +616,8 @@ def _roots(nd2: Path, out_dir) -> list:
     return [fd for fd in best.values() if is_dir(fd[0])]
 
 
-def find_previous_runs(nd2_path, out_dir, image_shape, n_timepoints: Optional[int] = None
-                       ) -> List[RunInfo]:
+def find_previous_runs(nd2_path, out_dir, image_shape, n_timepoints: Optional[int] = None,
+                       progress=None) -> List[RunInfo]:
     """
     V2.9: only the current user's analyses (users.is_mine).
     Earlier ROI / session files for this .nd2, newest first (tracked before
@@ -582,11 +626,13 @@ def find_previous_runs(nd2_path, out_dir, image_shape, n_timepoints: Optional[in
     the same name or the same fingerprint. n_timepoints (the movie's) only adds
     a note to runs whose tracking has another length. Reads only file
     summaries (fast); never raises.
+    1.2: progress(fraction, text) (optional) hears what is being looked at.
     """
     found: Dict[str, RunInfo] = {}
     try:
         nd2 = Path(nd2_path)
         name, stem = nd2.name, nd2.stem
+        _say(progress, 0.0, f"Checking which movie this is\n{nd2}")
         fp = nd2_fingerprint(nd2)
         shape = tuple(int(v) for v in image_shape)[:2] if image_shape is not None else None
         budget = {"entries": SCAN_MAX_ENTRIES, "until": time.perf_counter() + SCAN_SECONDS}
@@ -595,7 +641,7 @@ def find_previous_runs(nd2_path, out_dir, image_shape, n_timepoints: Optional[in
         for r in (ent or {}).get("runs", []):
             rp = resolve(r["path"])                     # V3.0: moved data found again
             cands.setdefault(_norm(rp), (rp, True))
-        scanned = _scan(_roots(nd2, out_dir), budget)
+        scanned = _scan(_roots(nd2, out_dir), budget, progress, (0.05, 0.5))
         for p in scanned:
             cands.setdefault(_norm(p), (p, False))
 
@@ -605,9 +651,12 @@ def find_previous_runs(nd2_path, out_dir, image_shape, n_timepoints: Optional[in
             except OSError:
                 return -1.0
         items = sorted(cands.values(), key=lambda it: (it[1], mtime(it)), reverse=True)
-        for path, from_index in items[:SCAN_MAX_FILES]:
+        n_items = len(items[:SCAN_MAX_FILES])
+        for k, (path, from_index) in enumerate(items[:SCAN_MAX_FILES]):
             if time.perf_counter() > budget["until"] + SCAN_SECONDS:
                 break
+            _say(progress, 0.5 + 0.5 * k / max(1, n_items),
+                 f"Reading earlier analyses\nfile {k + 1} of {n_items} - {path}")
             info = _run_info(path, from_index, name, stem, fp, shape, n_timepoints)
             if info is not None and not users.is_mine(info.path, info.summary.get("user")):
                 continue                          # V2.9: another user's analysis

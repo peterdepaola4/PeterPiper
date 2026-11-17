@@ -417,6 +417,7 @@ class BackupDialog(QDialog):
         self.btn_open.setVisible(False)
         self.bar.setValue(0)
         self.bar.setVisible(True)
+        self._eta = W.TimeLeft()                    # 1.2: the time left under the bar
         self.lbl_status.setVisible(True)
         self.lbl_status.setText("Looking at what is already backed up...")
         self.btn_cancel.setText("Stop")
@@ -426,10 +427,17 @@ class BackupDialog(QDialog):
 
     def _poll(self) -> None:
         s = self._state
+        eta = getattr(self, "_eta", None)
         if s.get("total"):
             self.bar.setValue(int(1000 * s["done"] / max(1, s["total"])))
+            if eta is not None:
+                eta.feed(s["done"] / max(1, s["total"]))
+            left = eta.text() if eta is not None else ""
             self.lbl_status.setText(f"Copying {s['name']} - {C.human_size(s['done'])} of "
-                                    f"{C.human_size(s['total'])}")
+                                    f"{C.human_size(s['total'])}"
+                                    + (f" - {left}" if left else ""))
+        elif eta is not None and self.running() and eta.text():
+            self.lbl_status.setText(f"Looking at what is already backed up... ({eta.text()})")
         if self.running():
             return
         self._timer.stop()

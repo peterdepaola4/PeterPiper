@@ -752,7 +752,7 @@ def _write_xlsx(path: Path, sheets: Sequence[Tuple[str, List[list]]]) -> str:
 def save(folder, name: str, formats: Sequence[str], lines: Sequence,
          colours: Sequence[str], style, comp: str, quantity: str, title: str,
          notes: str = "", kinetics: Sequence[str] = (),
-         kinetics_same_window: bool = True, right=None) -> List[str]:
+         kinetics_same_window: bool = True, right=None, progress=None) -> List[str]:
     """Write the comparison: .prism, .png / .jpg / .svg / .tif / .pdf, .csv and
     .xlsx (formats: 'prism', 'png', 'jpeg', 'svg', 'tiff', 'pdf', 'csv', 'xlsx')
     into folder as name.<ext>. Never overwrites (adds _2, _3 ...).
@@ -767,6 +767,7 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
     right (V2.7): (lines, compartment, quantity) of a second measure on a right Y
     axis - drawn dashed in the pictures, its 'mean, SEM, n' tables (and a graph of
     its own) in the .prism, a 'Right axis data' table.
+    progress(fraction, text) (1.2, optional) hears of each file being written.
     Returns the paths."""
     from .export import clean_prefix
     folder = Path(folder)
@@ -775,6 +776,9 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
     st = GS.coerce(style)
     out: List[str] = []
     groups = [g for g in lines if isinstance(g, GroupLine)]
+    n_pic = ("prism" in formats) + sum(1 for f in IMAGE_FORMATS if _wants(f, formats))
+    say = _steps(progress, n_pic * (1 + (len(kinetics) if kinetics and lines else 0))
+                 + ("csv" in formats) + ("xlsx" in formats))
     xt, yt = GS.axis_titles(st, lines[0].x_label if lines else "", quantity)
     if "prism" in formats:
         from .prismfile import write_compare_prism
@@ -798,6 +802,7 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
                 extra.append((f"{s.label} - {right[2]} ({COMP_LABELS.get(right[1], right[1])}, "
                               f"right axis) mean, SEM, n", s.x, "sen",
                               (sm.mean, sm.sem, sm.n.astype(float)), None, right[2]))
+        say(folder / f"{name}.prism")
         out.append(write_compare_prism(
             str(folder / f"{name}.prism"), [(legend_label(s), s.x, s.y) for s in lines],
             xt, quantity, yt, title or " ", list(colours), style=st.to_dict(), notes=notes,
@@ -805,6 +810,7 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
             extra=extra))
     for f in IMAGE_FORMATS:
         if f in formats or (f == "jpeg" and "jpg" in formats) or (f == "tiff" and "tif" in formats):
+            say(folder / f"{name}.{IMAGE_EXT[f]}")
             out.append(save_figure(folder / f"{name}.{IMAGE_EXT[f]}", lines, colours, st,
                                    quantity, title, fmt=f, right=right))
     main = table_rows(lines, quantity, comp)
@@ -827,11 +833,13 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
             tag = K.FILE_TAGS[key]
             kt = f"{K.PARAM_NAMES[key]} - {quantity} - {COMP_LABELS.get(comp, comp)}"
             if "prism" in formats:
+                say(folder / f"{name}_{tag}.prism")
                 out.append(K.write_prism(folder / f"{name}_{tag}.prism", items, key, colours, st,
                                          xl, quantity, kt, knotes))
             for f in IMAGE_FORMATS:
                 if f in formats or (f == "jpeg" and "jpg" in formats) or \
                         (f == "tiff" and "tif" in formats):
+                    say(folder / f"{name}_{tag}.{IMAGE_EXT[f]}")
                     out.append(K.save_figure(folder / f"{name}_{tag}.{IMAGE_EXT[f]}", items, key,
                                              colours, st, xl, quantity, kt, fmt=f))
         kin_rows = (K.dish_table(items, xl, quantity, comp),
@@ -840,6 +848,7 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
         notes = knotes
     sheets.append(("Methods", [["Methods"]] + [[t] for t in notes.split("\n") if t.strip()]))
     if "csv" in formats:
+        say(folder / f"{name}*.csv")
         out.append(_write_csv(folder / f"{name}.csv", main))
         if right and right[0]:
             out.append(_write_csv(folder / f"{name}_right_axis.csv",
@@ -855,8 +864,32 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence,
             out.append(_write_csv(folder / f"{name}_kinetics_per_dish.csv", kin_rows[0]))
             out.append(_write_csv(folder / f"{name}_kinetics_groups.csv", kin_rows[1]))
     if "xlsx" in formats:
+        say(folder / f"{name}.xlsx")
         out.append(_write_xlsx(folder / f"{name}.xlsx", sheets))
     return out
+
+
+def _wants(f: str, formats) -> bool:
+    """1.2: picture format f asked for (jpg / tif spellings too) - as save() checks."""
+    return f in formats or (f == "jpeg" and "jpg" in formats) or (f == "tiff" and "tif" in formats)
+
+
+def _steps(progress, total: int):
+    """1.2: say(path) before each file written: progress(fraction, 'Saving the
+    comparison' + the file and 'file i of n'). Never breaks the saving."""
+    done = [0]
+
+    def say(path) -> None:
+        if progress is None:
+            return
+        done[0] += 1
+        n = max(total, done[0])
+        try:
+            progress(min(0.99, (done[0] - 1) / max(1, n)),
+                     f"Saving the comparison\nfile {done[0]} of {n} - {path}")
+        except Exception:                                      # noqa: BLE001
+            pass
+    return say
 
 
 def notes_text(lines: Sequence, comp: str, quantity: str, style) -> str:

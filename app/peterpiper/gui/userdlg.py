@@ -720,11 +720,15 @@ class MergeDialog(QDialog):
         try:
             if local:
                 notes = W.run_with_progress(self, "Merging the profiles",
-                                            lambda _p: users.merge_users(keep, other))
+                                            lambda _p: _p(None, "Copying settings and runs",
+                                                          detail=f"'{other}' into '{keep}'")
+                                            and users.merge_users(keep, other))
             else:
                 src = self.src
                 _n, notes = W.run_with_progress(self, "Merging the profile",
-                                                lambda _p: users.import_profile(src, into=keep))
+                                                lambda _p: _p(None, "Copying settings and runs",
+                                                              detail=f"{src} into '{keep}'")
+                                                and users.import_profile(src, into=keep))
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self, "Merge profiles", f"Not merged: {exc}")
             return
@@ -851,7 +855,9 @@ class SyncDialog(QDialog):
         u, folder = self.user, self.folder
         try:
             note = W.run_with_progress(self, "Keeping the profile in step",
-                                       lambda _p: ps.set_folder(u, folder, target))
+                                       lambda _p: _p(None, "Copying the profile",
+                                                     detail=str(folder))
+                                       and ps.set_folder(u, folder, target))
         except OSError as exc:
             note = f"Not kept in step: {exc}"
         self.lbl_status.setText((note or "Done.") + "  -  " + ps.status(self.user))
@@ -914,7 +920,9 @@ def create_lab_dialog(parent, admin: Optional[str]) -> bool:
         return False
     try:
         notes = W.run_with_progress(parent, "Making the lab folder",
-                                    lambda _p: lab.create_lab(folder, include, admin))
+                                    lambda _p: _p(None, "Writing the lab folder",
+                                                  detail=str(folder))
+                                    and lab.create_lab(folder, include, admin))
     except (OSError, ValueError) as exc:
         QMessageBox.warning(parent, "Create a lab folder", f"Not made: {exc}")
         return False
@@ -1218,7 +1226,9 @@ def import_profile_dialog(parent) -> Optional[str]:
         return None
     try:
         name, notes = W.run_with_progress(parent, "Importing the profile",
-                                          lambda _p: users.import_profile(path))
+                                          lambda _p: _p(None, "Unpacking the profile",
+                                                        detail=str(path))
+                                          and users.import_profile(path))
     except (OSError, ValueError) as exc:
         QMessageBox.warning(parent, "Import a profile", f"Not imported: {exc}")
         return None
@@ -1243,7 +1253,9 @@ def export_profile_dialog(parent, user: Optional[str] = None) -> None:
         return
     try:
         out = W.run_with_progress(parent, "Exporting your profile",
-                                  lambda _p: users.export_profile(u, path))
+                                  lambda _p: _p(None, "Packing the profile into one zip",
+                                                detail=str(path))
+                                  and users.export_profile(u, path))
     except OSError as exc:
         QMessageBox.warning(parent, "Export my profile", f"Not exported: {exc}")
         return

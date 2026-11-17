@@ -3358,7 +3358,8 @@ class ClickWindow(QMainWindow):
         if self.background is not None:
             self._bg_tried = True
             return
-        self.progress.busy("Finding an empty background area...")
+        self.progress.busy("Finding an empty background area...",
+                           detail=f"{self.exp.n_timepoints} timepoints of {self.exp.nd2_path}")
         QApplication.processEvents()
         try:
             T = self.exp.n_timepoints
@@ -4137,10 +4138,16 @@ class ClickWindow(QMainWindow):
             self._load_roi_file(path)
 
     def _load_roi_file(self, path) -> None:
+        chans = list(self.exp.channels)
+
+        def read(progress):                          # 1.2: in the background, with a bar
+            progress(None, "Reading the ROIs", detail=str(path))
+            parts = load_roi_file(path), load_roi_state(path)
+            progress(None, "Reading the tracking and measurements", detail=str(path))
+            return parts + (load_roi_track(path, channels=chans),)
         try:
-            anchors, bg, (h, w), seg = load_roi_file(path)
-            state, comps = load_roi_state(path)
-            track = load_roi_track(path, channels=list(self.exp.channels))
+            (anchors, bg, (h, w), seg), (state, comps), track = W.run_with_progress(
+                self, f"Opening {W.place_name(path)}", read)
         except Exception as exc:                                   # noqa: BLE001
             QMessageBox.critical(self, "Could not read that ROI file", error_text(exc))
             return
@@ -4501,7 +4508,7 @@ class ClickWindow(QMainWindow):
                 self, "Looking for earlier analyses of this file",
                 lambda _p: history.find_previous_runs(self.exp.nd2_path, self.exp.out_dir,
                                                       (self.exp.height, self.exp.width),
-                                                      self.exp.n_timepoints))
+                                                      self.exp.n_timepoints, progress=_p))
             self._fp()                                # cached by now: costs nothing
         finally:
             self.progress.unbusy()

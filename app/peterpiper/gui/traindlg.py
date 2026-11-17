@@ -287,8 +287,10 @@ class TrainDialog(QDialog):
             for i, r in enumerate(runs):
                 movies.append(DT.load_movie(
                     r["path"], r["nd2"], main, hs,
-                    lambda f, m, i=i: progress(0.5 * (i + f) / n,
-                                               f"Reading movie {i + 1} of {n}: {m}")))
+                    lambda f, m, i=i, r=r: progress(0.5 * (i + f) / n,
+                                                    f"Reading movie {i + 1} of {n}: "
+                                                    f"{str(m).partition(chr(10))[0]}",
+                                                    detail=str(r["nd2"]))))
             DT.apply_quiz(movies, self.answers)
             held = DT.held_out(movies, chans, lambda f, m: progress(0.5 + 0.4 * f, m))
             limits = DT.fit(movies, chans, lambda f, m: progress(0.9 + 0.1 * f, m))

@@ -507,12 +507,12 @@ def notes_text(lines: Sequence[PairLine], spec: Spec, style) -> str:
 
 def save(folder, name: str, formats: Sequence[str], lines: Sequence[PairLine],
          colours: Sequence[str], style, spec: Spec, title: str, notes: str = "",
-         right=None) -> List[str]:
+         right=None, progress=None) -> List[str]:
     """.prism (graph made: trajectory = X mean, Y replicates so Prism draws the
     Y error; cells = one point each), pictures, CSV / Excel. right (V2.8):
     (lines, spec) of a second Y measure against the same X - a right axis in
     the pictures, its own tables (and graphs) in the .prism, its own CSV / sheet.
-    Never overwrites."""
+    Never overwrites. progress(fraction, text) (1.2, optional): each file written."""
     from pathlib import Path
     from .export import clean_prefix
     from .safety import make_dirs
@@ -523,6 +523,8 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence[PairLine],
     out: List[str] = []
     xt = st.x_title.strip() or spec.x.short()
     yt = st.y_title.strip() or spec.y.short()
+    say = C._steps(progress, bool("prism" in formats and lines) + ("csv" in formats)
+                   + ("xlsx" in formats) + sum(1 for f in C.IMAGE_FORMATS if C._wants(f, formats)))
     if "prism" in formats and lines:
         from .prismfile import write_compare_prism
         data = []
@@ -543,6 +545,7 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence[PairLine],
             lo, hi = float(allx.min()), float(allx.max())
             pad = 0.05 * (hi - lo or abs(hi) or 1.0)
             pst.update(x_min=lo - pad, x_max=hi + pad)
+        say(folder / f"{name}.prism")
         out.append(write_compare_prism(
             str(folder / f"{name}.prism"), data, xt, spec.y.short(), yt, title or " ",
             list(colours), style=pst, notes=notes, sheet_title=f"{spec.y.short()} vs "
@@ -557,15 +560,18 @@ def save(folder, name: str, formats: Sequence[str], lines: Sequence[PairLine],
              for p in (right[0] if right else []) if p.points == "trajectory"]))
     for f in C.IMAGE_FORMATS:
         if f in formats or (f == "jpeg" and "jpg" in formats) or (f == "tiff" and "tif" in formats):
+            say(folder / f"{name}.{C.IMAGE_EXT[f]}")
             out.append(save_figure(folder / f"{name}.{C.IMAGE_EXT[f]}", lines, colours, st, spec,
                                    title, fmt=f, right=right))
     rows = table_rows(lines, spec)
     rows2 = table_rows(right[0], right[1]) if right and right[0] else None
     if "csv" in formats:
+        say(folder / f"{name}*.csv")
         out.append(C._write_csv(folder / f"{name}.csv", rows))
         if rows2:
             out.append(C._write_csv(folder / f"{name}_right_axis.csv", rows2))
     if "xlsx" in formats:
+        say(folder / f"{name}.xlsx")
         out.append(C._write_xlsx(folder / f"{name}.xlsx", [
             ("Graph data", rows)] + ([("Right axis data", rows2)] if rows2 else []) + [
             ("Methods", [["Methods"]] + [[t] for t in notes.split("\n")

@@ -79,9 +79,9 @@ def open_movie(path: str, parent: Optional[QWidget] = None):
     size_gb = os.stat(long_path(path)).st_size / 1e9
 
     def opening(progress):                         # V2.9: in the background, with a bar
-        progress(None, f"{name} ({size_gb:.1f} GB): reading the file header...")
+        progress(None, "Reading the file header...", detail=f"{path} ({size_gb:.1f} GB)")
         s_ = open_source(path)
-        progress(None, "Reading the first frame...")
+        progress(None, "Reading the first frame...", detail=f"{path} ({size_gb:.1f} GB)")
         try:                                       # the analysis window shows it at once
             s_._pd4_first = (0, np.asarray(s_.frame(0)))
         except Exception:                                          # noqa: BLE001
@@ -238,7 +238,7 @@ def prepare(nd2_path: str, parent: Optional[QWidget] = None,
 
 
 # ========================================================== recent analyses
-def recent_analyses(limit: int = RECENT_N, scan: int = 300) -> List[dict]:
+def recent_analyses(limit: int = RECENT_N, scan: int = 300, progress=None) -> List[dict]:
     """The newest analyses of this user, one per movie, newest first, from the run
     list (history's index; only read): [{nd2, nd2_name, run, saved, kind, n_cells,
     tracked, note, folder, movie_here}]. At most `scan` run files are looked at.
@@ -255,9 +255,13 @@ def recent_analyses(limit: int = RECENT_N, scan: int = 300) -> List[dict]:
             cands.append((str(r.get("saved") or r.get("recorded") or ""), key, r))
     cands.sort(key=lambda c: c[0], reverse=True)
     out, seen = [], set()
-    for saved, key, r in cands[:max(scan, limit)]:
+    look = cands[:max(scan, limit)]
+    for i, (saved, key, r) in enumerate(look):
         if key in seen:
             continue
+        if progress is not None:                   # 1.2: what is being looked at
+            progress(i / max(1, len(look)), "Finding your recent analyses",
+                     detail=f"run {i + 1} of {len(look)} - {r.get('path', '')}")
         try:
             rp = H.resolve(r["path"])
             if not os.path.exists(long_path(rp)):
@@ -976,7 +980,9 @@ class SetupDialog(QDialog):
     # ---------------------------------------------------- recent analyses
     def _fill_recent(self) -> None:
         from .historydlg import when_text
-        self._recent = recent_analyses(RECENT_N)
+        self._recent = W.run_with_progress(       # 1.2: a bar when the drives are slow
+            self, "Finding your recent analyses",
+            lambda _p: recent_analyses(RECENT_N, progress=_p))
         self.tree_recent.clear()
         for i, r in enumerate(self._recent):
             kind = KIND_WORDS.get(r["kind"], r["kind"] or "Saved")
@@ -1147,7 +1153,7 @@ class SetupDialog(QDialog):
             runs = W.run_with_progress(            # V2.9: a bar, not a frozen window
                 self, "Looking for earlier analyses of this file",
                 lambda _p: find_previous_runs(e.nd2_path, e.out_dir, (e.height, e.width),
-                                              e.n_timepoints))
+                                              e.n_timepoints, progress=_p))
         except Exception:                                          # noqa: BLE001
             runs = []
         if runs:

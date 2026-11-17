@@ -294,7 +294,8 @@ def export_tiffs(src: ImageSource, exp: Experiment, progress: ProgressFn = None)
                 tifffile.imwrite(stream, np.ascontiguousarray(stack[c]), imagej=True,
                                  metadata=meta, **kw)
         if progress and not progress((t + 1) / total,
-                                    f"Writing TIFFs - timepoint {t + 1} of {total}"):
+                                    f"Writing raw TIFFs\ntimepoint {t + 1} of {total} - "
+                                    f"{folder}"):
             return str(folder)
     return str(folder)
 
@@ -327,6 +328,7 @@ def export_view_copies(src: ImageSource, exp: Experiment, subdir: str = "Viewing
             with new_output_file(fn) as (_, stream):
                 img.save(stream, format="PNG")
         if progress and not progress((t + 1) / total,
-                                    f"Writing viewing copies - timepoint {t + 1} of {total}"):
+                                    f"Writing viewing copies\ntimepoint {t + 1} of {total} - "
+                                    f"{folder}"):
             return str(folder)
     return str(folder)

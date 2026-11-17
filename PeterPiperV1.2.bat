@@ -55,11 +55,12 @@ if not exist "%HOME_DIR%" mkdir "%HOME_DIR%"
 
 rem ---- 2. Installed and up to date? Then just open ------------------
 rem reuse an earlier version's identical install instead of installing again
-rem (only if its Python still starts: its base Python may have been uninstalled)
+rem (only if its Python still starts: its base Python may have been uninstalled);
+rem earlier PeterPiper versions first, newest first, then PD4nav's
 if defined PETERPIPER_HOME goto checkenv
 if exist "%ENV%\Scripts\pythonw.exe" goto checkenv
 set "PREV="
-for %%P in (.PD4navV3.0 .PD4navV2.9 .PD4navV2.8 .PD4navV2.7 .PD4navV2.6 .PD4navV2.5 .PD4navV2.4 .PD4navV2.3 .PD4navV2.2 .PD4navV2.1) do (
+for %%P in (.PeterPiperV1.1 .PeterPiperV1.0 .PD4navV3.0 .PD4navV2.9 .PD4navV2.8 .PD4navV2.7 .PD4navV2.6 .PD4navV2.5 .PD4navV2.4 .PD4navV2.3 .PD4navV2.2 .PD4navV2.1) do (
     if not defined PREV if exist "%USERPROFILE%\%%P\venv\installed_requirements.txt" (
         fc /b "%USERPROFILE%\%%P\venv\installed_requirements.txt" "%APP%\requirements.txt" >nul 2>&1 && "%USERPROFILE%\%%P\venv\Scripts\python.exe" -c "" <nul >nul 2>&1 && set "PREV=%USERPROFILE%\%%P\venv"
     )
@@ -131,6 +132,7 @@ echo   The private Python from an earlier attempt does not work any more
 echo   - setting it up again.
 :makevenv
 echo   [1/3] Setting up a private Python ...
+echo         (about 10-30 seconds; nothing is downloaded yet)
 call %PY% -m venv --clear "%ENV%"
 if errorlevel 1 goto venvfail
 :havevenv
@@ -153,8 +155,9 @@ echo         tested with - about 250 MB, progress bars below ...
 echo.
 echo   PLEASE WAIT: when the text stops at "Installing collected packages"
 echo   it is still working (2-5 minutes). Do not close this window.
+echo   Every few seconds a "still working" line says what it is doing.
 echo.
-"%VPY%" -m pip install %PIPOPT% -r "%APP%\requirements.txt"
+call :pipinstall "%APP%\requirements.txt"
 if not errorlevel 1 goto check
 echo.
 echo   The exact tested versions could not be installed on this computer
@@ -174,14 +177,15 @@ echo         progress bars below ...
 echo.
 echo   PLEASE WAIT: when the text stops at "Installing collected packages"
 echo   it is still working (2-5 minutes). Do not close this window.
+echo   Every few seconds a "still working" line says what it is doing.
 echo.
-"%VPY%" -m pip install %PIPOPT% -r "%APP%\requirements-compatible.txt"
+call :pipinstall "%APP%\requirements-compatible.txt"
 if errorlevel 1 goto pipfail
 
 :check
 echo.
-echo   [3/3] Checking ...
-"%VPY%" -c "import numpy,scipy,skimage,PIL,skimage.registration,skimage.segmentation,tifffile,imagecodecs,nd2,dask,openpyxl,PySide6.QtWidgets,pyqtgraph,matplotlib;print('   all packages OK')"
+echo   [3/3] Checking that every package loads (about 10-30 seconds) ...
+call :checkpkgs
 if errorlevel 1 goto checkfail
 
 rem record what was really installed (for methods sections and bug reports)
@@ -219,7 +223,9 @@ if defined ONLY goto installonly
 title PeterPiper 1.2
 cls
 call :logo
-echo   PeterPiper 1.2 is open in its own window.
+rem the first start after an install is the slowest (Python prepares the packages)
+if defined FRESH (echo   Starting PeterPiper - the window opens in about 10-20 seconds.) else echo   Starting PeterPiper - the window opens in a few seconds.
+echo   PeterPiper 1.2 runs in its own window.
 echo   Keep this window open while you work - it closes by itself when you
 echo   quit PeterPiper.
 echo.
@@ -347,6 +353,30 @@ call %* --version <nul >nul 2>&1 || exit /b 0
 if not defined ANYPY set "ANYPY=%*"
 call %* -c "import sys;sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,14) and sys.maxsize>2**32 else 1)" <nul >nul 2>&1 && set "PY=%*"
 exit /b 0
+
+rem ---- helper: pip install of the list "%~1" into the private Python. With
+rem      app\install_progress.py (Python's own library only, so it runs before
+rem      any package is there) pip's output is shown as it comes, plus a "still
+rem      working" line whenever pip is quiet for a few seconds. pip's exit code
+rem      is passed on unchanged. Without the helper: plain pip, as before.
+:pipinstall
+if not exist "%APP%\install_progress.py" goto pipplain
+"%VPY%" "%APP%\install_progress.py" install "%~1" %PIPOPT%
+exit /b %errorlevel%
+:pipplain
+"%VPY%" -m pip install %PIPOPT% -r "%~1"
+exit /b %errorlevel%
+
+rem ---- helper: does every package load? One by one, with a count
+rem      ("checking numpy ... OK  (1 of 14)"); exit code 1 if one fails.
+:checkpkgs
+set "MODS=numpy scipy skimage PIL skimage.registration skimage.segmentation tifffile imagecodecs nd2 dask openpyxl PySide6.QtWidgets pyqtgraph matplotlib"
+if not exist "%APP%\install_progress.py" goto checkplain
+"%VPY%" "%APP%\install_progress.py" check %MODS%
+exit /b %errorlevel%
+:checkplain
+"%VPY%" -c "import numpy,scipy,skimage,PIL,skimage.registration,skimage.segmentation,tifffile,imagecodecs,nd2,dask,openpyxl,PySide6.QtWidgets,pyqtgraph,matplotlib;print('   all packages OK')"
+exit /b %errorlevel%
 
 rem ---- helper: the PeterPiper logo in block characters, the widest that
 rem      fits this window (116, 100 or 72 characters; none if narrower).

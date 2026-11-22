@@ -42,6 +42,11 @@ LEVEL_COLOURS = ("#A7ADB4",                     # < 1.5x   muted grey
 LEVEL_WORDS = ("hardly above background", "above background", "clearly above background",
                "far above background")
 BADGE_BG = "#12161C"                            # the badge pill (drawn at BADGE_ALPHA)
+# hover text + picture for a 'N x background' switch (the window's own control)
+BADGE_TIP = ("Each cell shows how many times brighter it is than the background region, "
+             "per channel, at the timepoint shown: cell mean / background mean. 1.0x = no "
+             "brighter than the background. Hover over a cell for the exact numbers.")
+BADGE_PIC = "view_nxbg"
 BADGE_ALPHA = 0.88
 
 

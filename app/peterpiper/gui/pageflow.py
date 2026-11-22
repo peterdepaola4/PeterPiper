@@ -1,8 +1,8 @@
 """
 PeterPiper 4.0: the page header of the analysis window's 4-page flow.
 
-    ◀ Back    1 Start  ›  2 Draw  ›  ✓ 3 Track & check  ›  4 Graphs & export     [Track 18 cells ▶]
-              Pick the background first: browse the green squares, then press +.
+    ◀ Back   ✓ 1 Start › 2 Draw › 3 Track & check › 4 Graphs & export   [Track 18 cells ▶]
+             Pick the background first: browse the green squares, then press +.
 
 - the current page is highlighted, finished pages carry a tick, pages that
   cannot be reached yet are greyed out (set_enabled);

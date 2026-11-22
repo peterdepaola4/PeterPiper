@@ -13,6 +13,18 @@ Interaction
     Polyline mode (V2.5) clicks add points of a line, double-click / right-click /
                          Enter finishes it (tracker boundary lines)
 
+4.0
+    Background candidates  set_bg_candidates(cands, current): translucent green
+                         squares 'BG 1'..'BG n' (the current one brighter) with a
+                         round '+' beside each: bg_plus_clicked(i); a click inside
+                         one: bg_region_clicked(i). The chosen background is a
+                         dashed green outline named 'Background'.
+    N x background       set_roi_badges({(comp, k): [(channel, multiple)]}, show):
+                         a small badge beside every ROI, laid out on each paint
+                         (never overlapping each other or another ROI, hidden when
+                         zoomed far out). set_roi_info(callback): hover over an ROI
+                         shows its exact numbers (bgmultiple.tooltip_html).
+
 Brightness
     One horizontal scale bar with a single handle: the handle is the white
     point. Everything right of it displays as white, and the bar itself shows

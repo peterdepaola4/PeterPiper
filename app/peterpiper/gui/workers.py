@@ -6,6 +6,15 @@ writing TIFFs or the workbook) runs in a QThread so the window stays responsive
 and the progress bar keeps moving. Each worker reports progress as
 (fraction 0-1, message) and can be cancelled.
 
+4.0: several jobs may run at once. A JobRunner is EXCLUSIVE by default (the
+analysis window's own tracking / loading: the window greys its buttons while it
+runs - unchanged); JobRunner(..., exclusive=False) or JobPool.start(...) runs a
+BACKGROUND job beside it (a viewing copy, an export, an upload) that never
+blocks the window. Every running runner is listed (running(),
+exclusive_running()) and kept alive until it has finished, so nothing assumes a
+single runner. Long FILE jobs with a visible list (uploads, copies) belong in
+tasks.py's TaskCenter; this module only runs the threads.
+
 BLOCK: new long jobs subclass Job and implement run_job().
 """
 from __future__ import annotations
@@ -13,9 +22,14 @@ from __future__ import annotations
 import threading
 import time
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, List, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal
+
+# 4.0: every runner whose thread was started and has not wrapped up yet (strong
+# references: a running QThread must never be garbage-collected)
+_ACTIVE: List["JobRunner"] = []
+_LOCK = threading.Lock()
 
 
 class Job(QObject):
@@ -94,9 +108,13 @@ class JobRunner(QObject):
     """
 
     def __init__(self, job: Job, on_done=None, on_fail=None, on_progress=None,
-                 on_cancel=None, parent: QObject | None = None) -> None:
+                 on_cancel=None, parent: QObject | None = None, exclusive: bool = True,
+                 name: str = "") -> None:
         super().__init__(parent)
         self.job = job
+        self.exclusive = bool(exclusive)       # 4.0: False = a background job beside others
+        self.name = str(name or type(job).__name__)
+        self._done = False
         self.thread = QThread()
         job.moveToThread(self.thread)
         self.thread.started.connect(job.run)
@@ -128,6 +146,9 @@ class JobRunner(QObject):
             self._cb["cancel"]()
 
     def start(self) -> None:
+        with _LOCK:
+            if self not in _ACTIVE:
+                _ACTIVE.append(self)
         self.thread.start()
 
     def cancel(self) -> None:
@@ -135,6 +156,10 @@ class JobRunner(QObject):
 
     def is_running(self) -> bool:
         return self.thread.isRunning()
+
+    def is_finished(self) -> bool:
+        """True once the job's result / failure / cancel has been handled."""
+        return self._done
 
     def stop_and_wait(self, timeout: float = 120.0, pump=None) -> bool:
         """Cancel the job and wait until its work has really stopped (closing the
@@ -150,8 +175,86 @@ class JobRunner(QObject):
                 return False
         self.thread.quit()
         self.thread.wait(5000)
+        self._forget()
         return True
 
     def _wrap_up(self, *_: Any) -> None:
         self.thread.quit()
         self.thread.wait(5000)
+        self._done = True
+        self._forget()
+
+    def _forget(self) -> None:
+        with _LOCK:
+            if self in _ACTIVE:
+                _ACTIVE.remove(self)
+
+
+def running(exclusive: Optional[bool] = None) -> List[JobRunner]:
+    """4.0: the runners started and not yet wrapped up (exclusive=True / False:
+    only those kinds)."""
+    with _LOCK:
+        got = list(_ACTIVE)
+    return [r for r in got if exclusive is None or r.exclusive == exclusive]
+
+
+def exclusive_running() -> bool:
+    """True while an exclusive job (the window's own tracking / loading) runs."""
+    return any(r.is_running() for r in running(exclusive=True))
+
+
+class JobPool(QObject):
+    """
+    4.0: several background (non-exclusive) jobs at once, each kept alive until
+    it has finished. Usage:
+
+        self.pool = JobPool(self)
+        self.pool.start(FuncJob(fn, ...), on_done=..., name="viewing copy")
+        self.pool.running()      # the jobs still going
+        self.pool.stop_all(pump=QApplication.processEvents)   # closing the window
+    """
+
+    changed = Signal()                    # a job started or ended
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._runners: List[JobRunner] = []
+
+    def start(self, job: Job, on_done=None, on_fail=None, on_progress=None, on_cancel=None,
+              name: str = "") -> JobRunner:
+        def wrap(cb):
+            def call(*a):
+                self._drop(runner)
+                if cb:
+                    cb(*a)
+            return call
+        runner = JobRunner(job, on_done=wrap(on_done), on_fail=wrap(on_fail),
+                           on_progress=on_progress, on_cancel=wrap(on_cancel),
+                           parent=self, exclusive=False, name=name)
+        self._runners.append(runner)
+        runner.start()
+        self.changed.emit()
+        return runner
+
+    def _drop(self, runner: JobRunner) -> None:
+        if runner in self._runners:
+            self._runners.remove(runner)
+            self.changed.emit()
+
+    def running(self) -> List[JobRunner]:
+        return [r for r in self._runners if not r.is_finished()]
+
+    def count(self) -> int:
+        return len(self.running())
+
+    def cancel_all(self) -> None:
+        for r in list(self._runners):
+            r.cancel()
+
+    def stop_all(self, timeout: float = 120.0, pump=None) -> bool:
+        """Cancel every job and wait for each (closing the window). True when all stopped."""
+        ok = True
+        for r in list(self._runners):
+            ok = r.stop_and_wait(timeout, pump) and ok
+            self._drop(r)
+        return ok

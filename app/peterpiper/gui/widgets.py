@@ -1433,3 +1433,98 @@ class busy:
         self.panel.close()
         self.panel.deleteLater()
         return False
+
+
+# ---------------------------------------------------------------- 4.0: chips
+# A small rounded "chip": a coloured dot + short text (e.g. a channel and its
+# mean, "GFP 212"). The dot / border carry the colour; the text keeps the
+# theme's own text colour, so it is readable in every theme.
+_CHANNEL_HUES = (("dapi", "#4C7DFF"), ("hoechst", "#4C7DFF"), ("bfp", "#4C7DFF"),
+                 ("cfp", "#2FB8D8"), ("gfp", "#2EB84F"), ("fitc", "#2EB84F"),
+                 ("488", "#2EB84F"), ("yfp", "#C9B400"), ("venus", "#C9B400"),
+                 ("mcherry", "#E5483F"), ("rfp", "#E5483F"), ("tritc", "#E5483F"),
+                 ("cy3", "#E5683F"), ("561", "#E5483F"), ("tomato", "#E5483F"),
+                 ("cy5", "#C24CC2"), ("647", "#C24CC2"), ("far", "#C24CC2"),
+                 ("cy7", "#8A5CD6"))
+_CHANNEL_OTHER = ("#8C8C8C", "#2299CC", "#AA8844", "#EE3388")
+
+
+def channel_colour(name: str, index: int = 0) -> str:
+    """A recognisable colour for a channel name (DAPI blue, GFP green, mCherry
+    red, Cy5 magenta ...); unknown names get a neutral colour by position.
+    Display only (chips); the image itself is shown in grey / magenta-green."""
+    low = str(name or "").lower()
+    for key, col in _CHANNEL_HUES:
+        if key in low:
+            return col
+    return _CHANNEL_OTHER[int(index) % len(_CHANNEL_OTHER)]
+
+
+class Chip(QWidget):
+    """A rounded chip: coloured dot + text in the theme's text colour."""
+
+    def __init__(self, text: str = "", colour: str = "#888888", tip: str = "",
+                 parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._text, self._colour = str(text), str(colour)
+        if tip:
+            self.setToolTip(tip)
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+    def set(self, text: str, colour: Optional[str] = None, tip: Optional[str] = None) -> None:
+        self._text = str(text)
+        if colour:
+            self._colour = str(colour)
+        if tip is not None:
+            self.setToolTip(tip)
+        self.updateGeometry()
+        self.update()
+
+    def text(self) -> str:
+        return self._text
+
+    def colour(self) -> str:
+        return self._colour
+
+    def sizeHint(self) -> QSize:                                    # noqa: N802
+        fm = self.fontMetrics()
+        h = fm.height() + 6
+        return QSize(int(fm.horizontalAdvance(self._text) + h + 10), int(h))
+
+    def minimumSizeHint(self) -> QSize:                             # noqa: N802
+        return self.sizeHint()
+
+    def paintEvent(self, _ev) -> None:                              # noqa: N802
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QColor, QPainter, QPen
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        pal = self.palette()
+        col = QColor(self._colour)
+        r = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
+        fill = QColor(col)
+        fill.setAlpha(38)
+        p.setPen(QPen(col, 1.2))
+        p.setBrush(fill)
+        p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+        d = r.height() * 0.42
+        p.setPen(Qt.NoPen)
+        p.setBrush(col)
+        p.drawEllipse(QPointF(r.left() + r.height() / 2, r.center().y()), d / 2, d / 2)
+        p.setPen(pal.color(pal.ColorRole.WindowText))
+        p.drawText(QRectF(r.left() + r.height() - 1, r.top(), r.width() - r.height(), r.height()),
+                   Qt.AlignVCenter | Qt.AlignLeft, self._text)
+        p.end()
+
+
+def chip_row(items: Iterable[Tuple[str, str, str]]) -> QWidget:
+    """A row of chips from (text, colour, tooltip) items (wraps nothing: keep it short)."""
+    w = QWidget()
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(4)
+    for text, colour, tip in items:
+        lay.addWidget(Chip(text, colour, tip))
+    lay.addStretch(1)
+    return w

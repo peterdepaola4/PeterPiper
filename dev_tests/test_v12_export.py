@@ -712,9 +712,11 @@ def part_f():
         ok("F ... at the bottom right of the window",
            tl.x() + b.width() > cw.width() - 60 and tl.y() + b.height() > cw.height() - 60,
            f"{tl.x()},{tl.y()} in {cw.width()}x{cw.height()}")
-        ok("F ... next to Save... (same row)", abs(b.mapTo(cw, b.rect().topLeft()).y() -
-                                                   cw.btn_save.mapTo(cw, cw.btn_save.rect()
-                                                                     .topLeft()).y()) <= 4)
+        # 4.0 (on purpose): Close sits under both pages (graph builder / averages), not in
+        # the averages page's Save row
+        ok("F ... under both pages (not inside one page)",
+           not cw.tabs.isAncestorOf(b) and b.mapTo(cw, b.rect().topLeft()).y() >
+           cw.tabs.mapTo(cw, cw.tabs.rect().bottomLeft()).y() - 2)
     bad = []
     for s in cw.findChildren(QAbstractScrollArea):
         if not s.isVisible() or s.window() is not cw or s is cw.tree or \

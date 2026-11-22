@@ -76,6 +76,15 @@ PeterPiper 1.1:
     exports (Export_...), autosaves and comparisons, each opened with a click.
   * Lines with no cell-line colour get Okabe-Ito colours without the pale yellow;
     pale dots get a darker edge on the white graph (compare.edge_colour).
+PeterPiper 4.0:
+  * The main area is 'Graphs across runs': the graph builder (gui/graphbuilder.py) on
+    the ticked runs - any per-cell quantity vs another (vs a third), typed as a
+    sentence, pooled or coloured by run / condition (cell line) / group. The V2.4-1.2
+    averages (time course of run / group means, kinetics, Prism / Excel saving) are
+    the second page 'Averages & kinetics'; their settings box under the list shows
+    only on that page. The window remembers the page and the builder's graph.
+  * Kinetics graphs are an add-on: none is saved unless ticked (kinetics.DEFAULT_SAVE).
+  * Close sits under both pages; a click on a cell in the builder selects its run.
 """
 from __future__ import annotations
 
@@ -94,8 +103,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QColorDialog, QComb
                                QFileDialog, QGridLayout, QGroupBox, QHeaderView, QInputDialog,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu,
                                QMessageBox, QPushButton, QSpinBox, QSplitter, QScrollArea,
-                               QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
-                               QWidget)
+                               QStyledItemDelegate, QTabWidget, QTreeWidget, QTreeWidgetItem,
+                               QVBoxLayout, QWidget)
 
 from .. import celllines as CL
 from .. import compare as C
@@ -104,6 +113,7 @@ from .. import history
 from .. import xyplot as XP
 from ..safety import error_text, plain_path
 from . import widgets as W
+from .graphbuilder import GraphBuilder
 from .measurerow import MeasureRow
 
 PX = GS.PX_PER_PT
@@ -856,7 +866,10 @@ class CompareWindow(QDialog):
         kr = QWidget()
         kl = QGridLayout(kr)
         kl.setContentsMargins(0, 0, 0, 0)
-        kl.addWidget(QLabel("Kinetics graphs:"), 0, 0)
+        lab_k = QLabel("Kinetics add-on (optional):")
+        lab_k.setToolTip("Off unless you tick one: how fast each dish responds (t½ max, "
+                         "initial slope ...), each as its own graph and in the tables.")
+        kl.addWidget(lab_k, 0, 0)
         for i, (key, name, _u) in enumerate(K.PARAMS):
             cb = QCheckBox(name)
             cb.setChecked(key in K.DEFAULT_SAVE)
@@ -962,10 +975,37 @@ class CompareWindow(QDialog):
         srow.layout().addWidget(self.btn_close)
         rl.addWidget(srow)
         right.setMinimumWidth(360)
-        split.addWidget(right)
+        # 4.0: the graph builder is the main page; the averages are the second page
+        srow.layout().removeWidget(self.btn_close)
+        rl.removeWidget(self.lbl_dup)
+        self.page_avg = right
+        self.builder = GraphBuilder(multi_run=True)
+        self.builder.cell_clicked.connect(self._builder_cell)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.addTab(self.builder, "Graphs across runs")
+        self.tabs.addTab(right, "Averages && kinetics")
+        self.tabs.setTabToolTip(0, "Any per-cell quantity of the ticked runs against another (and a "
+                                   "third): type it as a sentence or pick it in the rows. Pool the "
+                                   "runs or colour them by run, condition or group (Options).")
+        self.tabs.setTabToolTip(1, "The time course of each run's or group's mean (replicate "
+                                   "dishes), kinetics, and saving as Prism / Excel / pictures.")
+        self.tabs.currentChanged.connect(self._page_changed)
+        rwrap = QWidget()
+        rwl = QVBoxLayout(rwrap)
+        rwl.setContentsMargins(0, 0, 0, 0)
+        rwl.setSpacing(4)
+        rwl.addWidget(self.lbl_dup)
+        rwl.addWidget(self.tabs, 1)
+        crow = W.row(self.btn_close)
+        crow.layout().insertStretch(0, 1)
+        rwl.addWidget(crow)
+        rwrap.setMinimumWidth(360)
+        split.addWidget(rwrap)
+        self._rd: Dict[str, object] = {}          # run path -> graphbuilder.RunData
         split.setStretchFactor(0, 11)
         split.setStretchFactor(1, 9)
-        split.setSizes([760, 620])
+        split.setSizes([560, 820])           # 4.0: the graph builder gets the room
         self.setMinimumSize(900, 560)
         self._cap_combos()
         self.vsplit.setSizes([2000, scroll.minimumHeight()])
@@ -994,6 +1034,7 @@ class CompareWindow(QDialog):
         hdr.sectionMoved.connect(lambda *_a: self._save_table_state())
         hdr.sortIndicatorChanged.connect(lambda *_a: self._save_table_state())
         hdr.sectionResized.connect(self._section_resized)
+        self._restore_builder()
         self.refresh()
 
     # ------------------------------------------------------ list layout
@@ -1157,7 +1198,7 @@ class CompareWindow(QDialog):
             quantity=self.cmb_q.currentText(), graph=self.graph(),
             spec=(self.spec().to_dict() if self.spec() else None),
             kinetics=[k for k, cb in self.chk_kin.items() if cb.isChecked()],
-            same_window=self.chk_window.isChecked(), error=self.style.error)
+            same_window=self.chk_window.isChecked(), error=self.style.error, kin_v40=True)
         update_prefs(view=self._view_prefs)
 
     def _restore_view(self) -> None:
@@ -1168,7 +1209,9 @@ class CompareWindow(QDialog):
         self._restoring = True
         try:
             kin = v.get("kinetics")
-            if isinstance(kin, list):
+            # 4.0: kinetics are an add-on - ticks remembered by 1.2 (which ticked two by
+            # default) are not carried over
+            if isinstance(kin, list) and v.get("kin_v40"):
                 for k, cb in self.chk_kin.items():
                     cb.setChecked(k in kin)
             if isinstance(v.get("same_window"), bool):
@@ -3158,6 +3201,8 @@ class CompareWindow(QDialog):
         self.plot.getViewBox().enableAutoRange()
 
     def refresh(self) -> None:
+        if getattr(self, "tabs", None) is not None and self.tabs.currentIndex() == 0:
+            self._update_builder()
         self.plot.clear()
         self.legend.clear()
         self._clear_right()
@@ -3252,6 +3297,94 @@ class CompareWindow(QDialog):
                                 st.x_max if st.x_max is not None else x1),
                         yRange=(st.y_min if st.y_min is not None else y0,
                                 st.y_max if st.y_max is not None else y1), padding=0)
+
+    # ------------------------------------------------------ 4.0 graph builder
+    def show_page(self, page: str) -> None:
+        """'graphs' (the builder) or 'average' (the averages and kinetics page)."""
+        self.tabs.setCurrentIndex(1 if page == "average" else 0)
+
+    def page(self) -> str:
+        return "average" if self.tabs.currentIndex() == 1 else "graphs"
+
+    def _page_changed(self, i: int) -> None:
+        self._settings_scroll.setVisible(i == 1)
+        if i == 0:
+            self._update_builder()
+        else:
+            self.refresh()
+        if not self._restoring:
+            update_prefs(page=self.page())
+
+    def builder_runs(self) -> list:
+        """The ticked runs as graphbuilder.RunData (cached by path; names, conditions
+        (cell line) and groups as the list shows them now)."""
+        from .. import graphbuilder as GB
+        out = []
+        for r in self.chosen():
+            rd = self._rd.get(r.path)
+            if rd is None or rd.meas is not r.meas:
+                rd = GB.RunData.from_run(r)
+                rd.meas = r.meas
+                self._rd[r.path] = rd
+            rd.name = self._labels.get(r.path) or r.label
+            line = self.cell_line_of(r.path)[0]
+            rd.condition = "" if line == UNKNOWN else line
+            rd.group = self._groups.get(r.path, "").strip() or rd.name
+            out.append(rd)
+        return out
+
+    def _builder_colours(self, rds) -> Dict[str, str]:
+        """Colours for 'colour by run / condition / group': the list's run colours,
+        the cell line's colour family, the group's colour."""
+        cols: Dict[str, str] = {}
+        try:
+            cmap = self._current_colour_map() if self.mode() == "runs" else {}
+        except Exception:                                      # noqa: BLE001
+            cmap = {}
+        for rd in rds:
+            if rd.path in cmap:
+                cols.setdefault(rd.name, cmap[rd.path])
+            if rd.condition and rd.condition not in cols:
+                cl = CL.by_name(rd.condition)
+                if cl is not None:
+                    cols[rd.condition] = CL.shades(cl.family, 1)[0]
+            if rd.group in self._group_colours:
+                cols.setdefault(rd.group, self._group_colours[rd.group])
+        return cols
+
+    def _update_builder(self) -> None:
+        if getattr(self, "builder", None) is None:
+            return
+        rds = self.builder_runs()
+        self.builder.set_run_colours(self._builder_colours(rds))
+        self.builder.set_runs(rds)
+
+    def _builder_cell(self, key: str, k: int) -> None:
+        """A cell clicked in the builder: select its run in the list."""
+        it = self._items.get(key)
+        if it is not None:
+            self.tree.setCurrentItem(it)
+            self.tree.scrollToItem(it)
+        self.builder.lbl_read.setText(f"Cell {k + 1} of {self._labels.get(key) or Path(key).stem}"
+                                      " - its run is selected in the list (double-click it there "
+                                      "to open it).")
+
+    def _restore_builder(self) -> None:
+        from .. import graphbuilder as GB
+        prefs = load_prefs()
+        sp = GB.GraphSpec.from_dict(prefs.get("builder_spec"))
+        if sp is not None:
+            self.builder.set_spec(sp, record=False)
+        self.builder.spec_changed.connect(
+            lambda s: update_prefs(builder_spec=s.to_dict()) if not self._restoring else None)
+        self._restoring = True
+        try:
+            self.tabs.setCurrentIndex(1 if prefs.get("page") == "average" else 0)
+        finally:
+            self._restoring = False
+        self._settings_scroll.setVisible(self.tabs.currentIndex() == 1)
+        if self.tabs.currentIndex() == 0:
+            self._update_builder()
 
     def kinetics_items(self, lines=None):
         from .. import kinetics as K

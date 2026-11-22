@@ -66,7 +66,9 @@ PARAMS = (("t_half", "t½ max", "time"),
 PARAM_NAMES = {k: n for k, n, _u in PARAMS}
 FILE_TAGS = {"t_half": "t-half-max", "slope": "initial-slope", "max_rate": "max-rate",
              "t_max": "time-to-max", "amp": "amplitude", "rise": "rise-10-90"}
-DEFAULT_SAVE = ("t_half", "slope")
+# 4.0: kinetics are an optional add-on - no kinetics graph is saved unless ticked
+# (1.2 saved t½ max and the initial rise slope with every comparison by default)
+DEFAULT_SAVE: tuple = ()
 NOISE_K = 3.0                    # 'no clear response': |amplitude| < 3 SD of the baseline
 BASE_SD_FRAMES = 5               # frames up to time 0 used for the baseline SD
 

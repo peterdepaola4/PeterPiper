@@ -151,7 +151,9 @@ def scroll_problems(cw):
 def make_window():
     from peterpiper.gui.comparewin import CompareWindow
     CompareWindow.ASK_UNKNOWN = False
-    return CompareWindow(GS.GraphStyle().to_dict())
+    cw = CompareWindow(GS.GraphStyle().to_dict())
+    cw.show_page("average")      # 4.0: these checks are of the averages page
+    return cw
 
 
 def fill_list(cw, n=14):

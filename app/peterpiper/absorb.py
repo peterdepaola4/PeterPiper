@@ -1,5 +1,6 @@
 """
-PeterPiper 1.2: take in ("absorb") older PeterPiper versions left on this computer.
+PeterPiper 1.2 / 4.0: take in ("absorb") older PeterPiper versions left on this
+computer (4.0 takes in 1.2, 1.1 and 1.0 - on Windows and on a Mac).
 
 Profiles, settings and run lists already live in the SHARED "PeterPiper data"
 folder (users.base_dir()), so every version sees them. What each version keeps
@@ -7,7 +8,10 @@ for itself:
   - its program folder (e.g. ...\\PeterPiperV1.1 with PeterPiperV1.1.bat and app\\),
   - %USERPROFILE%\\.PeterPiperV1.1: its private Python (venv, about 0.5 GB),
     shortcuts_for.txt (the .bat its shortcuts start) and error logs,
-  - the PeterPiper.lnk shortcuts (program folder, Desktop, Start menu).
+  - the PeterPiper.lnk shortcuts (program folder, Desktop, Start menu),
+  - on a Mac: an older PeterPiper.app (from a .dmg) in /Applications or
+    ~/Applications (4.0; the small PeterPiper.app the 4.0 launcher makes itself
+    is never taken in - the launcher keeps it up to date).
 
 find() looks for those (PeterPiper 1.0 and newer, older than the running one;
 PD4nav's installs are never part of this) quickly, without walking folders,
@@ -17,8 +21,9 @@ and never raises. absorb() then, for one version:
      the version folder to the current user) - nothing there is overwritten,
   2. makes the Desktop / Start-menu PeterPiper.lnk that started that version
      start the running version's .bat,
-  3. moves to the Recycle Bin (Mac: the Trash) ONLY what is recognised as that
-     version's program files and its private Python. Anything else in its
+  3. moves to the Recycle Bin (Mac: the Trash; platforms.move_to_trash) ONLY what
+     is recognised as that version's program files, its private Python and (Mac)
+     its PeterPiper.app. Anything else in its
      folder (results, notes, movies ...) stays where it is and is listed as kept.
      An emptied program folder is then removed.
 Never touched: the running program folder, the private Python the running
@@ -39,11 +44,12 @@ import os
 import re
 import shutil
 import struct
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
+
+from . import platforms
 
 STATE_FILE = "absorb.json"                # <data>/absorb.json: "don't ask" per folder
 FIRST = (1, 0)                            # the first PeterPiper version
@@ -68,6 +74,7 @@ class Places:
     program: Optional[Path]               # the running program folder
     data: Path                            # PeterPiper data
     shortcut_dirs: List[Path] = field(default_factory=list)   # Desktop, Start menu
+    app_dirs: List[Path] = field(default_factory=list)        # Mac: where .app bundles are
     in_use: List[Path] = field(default_factory=list)          # Python(s) running now
     running: Tuple[int, int] = (0, 0)
     running_bat: Optional[Path] = None    # what the shortcuts should start
@@ -80,16 +87,7 @@ def _version_tuple(text: str) -> Tuple[int, int]:
 
 
 def _special_folder(csidl: int) -> Optional[Path]:
-    if sys.platform != "win32":
-        return None
-    try:
-        import ctypes
-        buf = ctypes.create_unicode_buffer(1024)
-        if ctypes.windll.shell32.SHGetFolderPathW(None, csidl, None, 0, buf) == 0 and buf.value:
-            return Path(buf.value)
-    except Exception:                                              # noqa: BLE001
-        pass
-    return None
+    return platforms._special_folder(csidl)                       # 4.0: Windows only
 
 
 def default_places() -> Places:
@@ -103,14 +101,16 @@ def default_places() -> Places:
     if getattr(sys, "frozen", False):                             # the Mac .app: nothing to absorb
         prog = None
     dirs = [d for d in (_special_folder(0x10), _special_folder(0x02)) if d]  # Desktop, Programs
+    apps = ([Path("/Applications"), Path.home() / "Applications"] if platforms.IS_MAC else [])
     in_use = [Path(sys.prefix), Path(sys.executable).parent]
-    bat = (prog / f"{APP_NAME}.bat") if prog else None
+    # what the shortcuts should start: the .bat (Windows) / the .command (Mac)
+    bat = (prog / f"{APP_NAME}{'.command' if platforms.IS_MAC else '.bat'}") if prog else None
     try:
         user_home: Optional[Path] = users.home() if users.current() else None
     except Exception:                                              # noqa: BLE001
         user_home = None
     return Places(profile=Path.home(), program=prog, data=users.base_dir(), shortcut_dirs=dirs,
-                  in_use=in_use, running=_version_tuple(__version__),
+                  app_dirs=apps, in_use=in_use, running=_version_tuple(__version__),
                   running_bat=bat if bat and bat.exists() else None, user_home=user_home)
 
 
@@ -121,6 +121,7 @@ class Found:
     programs: List[Path] = field(default_factory=list)     # program folders it may take in
     home: Optional[Path] = None                            # %USERPROFILE%\.PeterPiperV<x.y>
     dev_copies: List[Path] = field(default_factory=list)   # developer copies: left alone
+    apps: List[Path] = field(default_factory=list)         # Mac: its PeterPiper.app bundle(s)
     keep_home: str = ""                                    # why its private Python stays
     running_label: str = ""
 
@@ -140,11 +141,13 @@ class Found:
 
     def keys(self) -> List[str]:
         """The folders of this version ('Don't ask again' remembers them)."""
-        return sorted({_key(p) for p in self.programs + ([self.home] if self.home else [])})
+        return sorted({_key(p) for p in self.programs + self.apps
+                       + ([self.home] if self.home else [])})
 
     @property
     def absorbable(self) -> bool:
-        return bool(self.programs) or (self.home is not None and not self.keep_home)
+        return bool(self.programs) or bool(self.apps) or \
+            (self.home is not None and not self.keep_home)
 
 
 def _key(p: Path) -> str:
@@ -202,7 +205,7 @@ def read_lnk_target(path: Path) -> str:
                     base = data[pos + off:pos + end].decode("utf-16-le", "replace")
                 else:
                     end = data.index(b"\0", pos + lbp)
-                    base = data[pos + lbp:end].decode("mbcs" if os.name == "nt" else "latin-1",
+                    base = data[pos + lbp:end].decode("mbcs" if platforms.IS_WIN else "latin-1",
                                                       "replace")
                 suffix = ""
                 if cps:
@@ -258,7 +261,7 @@ def _find(pl: Places) -> List[Found]:
             continue
         homes[(int(m.group(1)), int(m.group(2)))] = Path(e.path)
         try:
-            with open(Path(e.path) / "shortcuts_for.txt", encoding="mbcs" if os.name == "nt"
+            with open(Path(e.path) / "shortcuts_for.txt", encoding="mbcs" if platforms.IS_WIN
                       else "utf-8", errors="replace") as fh:
                 from_bat(fh.readline())
         except OSError:
@@ -277,7 +280,15 @@ def _find(pl: Places) -> List[Found]:
         except OSError:
             pass
 
-    versions = set(homes) | set(progs)
+    # 4. (Mac) an older PeterPiper.app from a .dmg in /Applications or ~/Applications
+    apps: Dict[Tuple[int, int], Dict[str, Path]] = {}
+    for d in pl.app_dirs:
+        app = Path(d) / "PeterPiper.app"
+        av = mac_app_version(app)
+        if av is not None:
+            apps.setdefault(av, {})[_key(app)] = app
+
+    versions = set(homes) | set(progs) | set(apps)
     if any(v > pl.running for v in versions):
         return []                                  # a newer PeterPiper is here: it absorbs
     out: List[Found] = []
@@ -290,6 +301,9 @@ def _find(pl: Places) -> List[Found]:
                 f.dev_copies.append(folder)
             elif _touchable(folder, pl):
                 f.programs.append(folder)
+        for app in apps.get(v, {}).values():
+            if _touchable(app, pl):
+                f.apps.append(app)
         if f.home is not None:
             if any(_inside(p, f.home) for p in pl.in_use):
                 f.keep_home = f"kept: {running_label} uses it"
@@ -297,9 +311,28 @@ def _find(pl: Places) -> List[Found]:
                 f.keep_home = f"kept: the developer copy {f.dev_copies[0]} uses it"
             elif not _touchable(f.home, pl):
                 f.keep_home = "kept"
-        if f.programs or f.home is not None or f.dev_copies:
+        if f.programs or f.apps or f.home is not None or f.dev_copies:
             out.append(f)
     return out
+
+
+def mac_app_version(app: Path) -> Optional[Tuple[int, int]]:
+    """The version of an older PeterPiper.app (the self-contained app from a
+    .dmg: its Info.plist names PeterPiper and its version), else None. The small
+    PeterPiper.app the 4.0 launcher makes (platforms.MAC_MARK) is not one."""
+    try:
+        import plistlib
+        with open(Path(app) / "Contents" / "Info.plist", "rb") as fh:
+            info = plistlib.load(fh)
+    except Exception:                                              # noqa: BLE001
+        return None
+    if not isinstance(info, dict) or platforms.MAC_MARK in info:
+        return None
+    if str(info.get("CFBundleName") or "") != "PeterPiper" and \
+            not str(info.get("CFBundleIdentifier") or "").endswith(".peterpiper"):
+        return None
+    v = str(info.get("CFBundleShortVersionString") or "")
+    return _version_tuple(v) if re.match(r"^\d+\.\d+", v) else None
 
 
 def _touchable(folder: Path, pl: Places) -> bool:
@@ -403,6 +436,8 @@ def plan(f: Found) -> Plan:
                 p.remove.append(item)
             else:
                 p.keep.append((item, USER_FILE))
+    for app in f.apps:                                    # the whole .app bundle
+        p.remove.append(app)
     for d in f.dev_copies:
         p.keep.append((d, "a developer copy - left as it is"))
     if f.home is not None:
@@ -514,22 +549,10 @@ def carry_over(f: Found, pl: Places) -> List[str]:
 
 
 def write_shortcut(lnk: Path, target: Path, icon: Optional[Path], description: str) -> bool:
-    """(Re)write a Windows shortcut through WScript.Shell, paths passed as
-    environment variables (never as code). False on any problem; 30 s at most."""
-    if sys.platform != "win32":
-        return False
-    env = dict(os.environ, PP_LNK=str(lnk), PP_BAT=str(target), PP_DIR=str(target.parent),
-               PP_ICO=(str(icon) + ",0") if icon and icon.exists() else "", PP_DESC=description)
-    cmd = ("$w=New-Object -ComObject WScript.Shell; $l=$w.CreateShortcut($env:PP_LNK); "
-           "$l.TargetPath=$env:PP_BAT; $l.WorkingDirectory=$env:PP_DIR; "
-           "if($env:PP_ICO){$l.IconLocation=$env:PP_ICO}; $l.Description=$env:PP_DESC; $l.Save()")
-    try:
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-                           env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=30,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    """(Re)write a Windows shortcut (platforms.write_windows_shortcut: WScript.Shell,
+    paths passed as environment variables, never as code). False on any problem
+    (and always on a Mac, where the 4.0 launcher keeps its own PeterPiper.app)."""
+    return platforms.write_windows_shortcut(lnk, target, icon, description)
 
 
 def repoint_shortcuts(f: Found, pl: Places,
@@ -566,88 +589,27 @@ def repoint_shortcuts(f: Found, pl: Places,
 
 
 def _trash_word() -> str:
-    return "Trash" if sys.platform != "win32" else "Recycle Bin"
+    return platforms.trash_name()
 
 
 def has_recycle_bin(path: Path) -> bool:
     """Windows: the drive of `path` has a Recycle Bin (network drives do not)."""
-    if sys.platform != "win32":
-        return True
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        class SHQUERYRBINFO(ctypes.Structure):
-            _fields_ = [("cbSize", wintypes.DWORD), ("i64Size", ctypes.c_int64),
-                        ("i64NumItems", ctypes.c_int64)]
-        info = SHQUERYRBINFO()
-        info.cbSize = ctypes.sizeof(info)
-        root = os.path.splitdrive(os.path.abspath(str(path)))[0] + "\\"
-        if root.startswith("\\\\"):
-            return False                                   # \\server\share: no Recycle Bin
-        return ctypes.windll.shell32.SHQueryRecycleBinW(root, ctypes.byref(info)) == 0
-    except Exception:                                              # noqa: BLE001
-        return False
+    return platforms.has_recycle_bin(path)
 
 
 def recycle(path: Path) -> str:
     """Move a file or folder to the Recycle Bin (Mac: the Trash) so it can be
     restored. '' when done, else the reason. Never deletes for good: a drive
     without a Recycle Bin is refused, and Windows asks before anything too large
-    for the Recycle Bin would be deleted (answer No to keep it)."""
-    path = Path(path)
-    if not path.exists():
-        return ""
-    if sys.platform == "win32":
-        if not has_recycle_bin(path):
-            return f"the drive of {path} has no {_trash_word()}"
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            class SHFILEOPSTRUCTW(ctypes.Structure):
-                _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT),
-                            ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
-                            ("fFlags", wintypes.WORD), ("fAnyOperationsAborted", wintypes.BOOL),
-                            ("hNameMappings", ctypes.c_void_p),
-                            ("lpszProgressTitle", wintypes.LPCWSTR)]
-            FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION = 3, 0x4, 0x10
-            FOF_ALLOWUNDO, FOF_NOERRORUI, FOF_WANTNUKEWARNING = 0x40, 0x400, 0x4000
-            op = SHFILEOPSTRUCTW()
-            op.wFunc = FO_DELETE
-            op.pFrom = os.path.abspath(str(path)) + "\0"    # list ends with two nulls
-            op.fFlags = (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
-                         | FOF_WANTNUKEWARNING)
-            try:
-                ctypes.windll.ole32.CoInitializeEx(None, 0x2)
-            except Exception:                                      # noqa: BLE001
-                pass
-            rc = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
-        except Exception as exc:                                   # noqa: BLE001
-            return f"Windows could not move it ({exc})"
-        if op.fAnyOperationsAborted:
-            return "it was stopped (nothing more was moved)"
-        if rc != 0:
-            return f"Windows could not move it (code {rc:#x}) - is a file in it open?"
-        return "" if not path.exists() else "part of it could not be moved (a file in use?)"
-    # Mac / Linux: into the user's Trash
-    trash = (Path.home() / ".Trash") if sys.platform == "darwin" else \
-        Path.home() / ".local" / "share" / "Trash" / "files"
-    try:
-        trash.mkdir(parents=True, exist_ok=True)
-        dst, i = trash / path.name, 2
-        while dst.exists():
-            dst, i = trash / f"{path.name} {i}", i + 1
-        shutil.move(str(path), str(dst))
-        return ""
-    except OSError as exc:
-        return f"it could not be moved to the {_trash_word()} ({exc})"
+    for the Recycle Bin would be deleted (answer No to keep it). 4.0: done by
+    platforms.move_to_trash (Mac: macOS' own Move to Trash, so Put Back works)."""
+    return platforms.move_to_trash(Path(path))
 
 
 def in_use(path: Path) -> str:
     """Windows: '' when nothing inside `path` is open (a rename test: a folder
     with a file in use cannot be renamed), else the reason."""
-    if sys.platform != "win32" or not path.exists():
+    if not platforms.IS_WIN or not path.exists():
         return ""
     probe = path.with_name(path.name + ".pp-check")
     if probe.exists():
@@ -721,6 +683,8 @@ def _removable(item: Path, f: Found, pl: Places) -> bool:
     """Last check before an item goes: directly inside one of this version's own
     folders and not holding anything that must stay."""
     owners = list(f.programs) + ([f.home] if f.home is not None and not f.keep_home else [])
+    if any(_same(item, a) for a in f.apps):                # (Mac) its own PeterPiper.app
+        return _touchable(item, pl)
     if not any(_same(item.parent, o) for o in owners):
         return False
     if any(_inside(item, d) or _inside(d, item) for d in f.dev_copies):

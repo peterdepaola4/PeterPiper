@@ -80,7 +80,7 @@ from peterpiper import absorb as A                                    # noqa: E4
 
 N = [0]
 FAILS = []
-BAT = REPO / "PeterPiperV1.2.bat"
+BAT = REPO / "PeterPiperV4.0.bat"   # 4.0: the launcher was renamed
 WIN = sys.platform == "win32"
 
 
@@ -207,8 +207,10 @@ def part_b():
     ok("B the launcher keeps CRLF line endings only", raw.count(b"\r\n") == raw.count(b"\n"))
     bat = raw.decode("ascii")
     loop = next(ln for ln in bat.splitlines() if ln.startswith("for %%P in ("))
-    ok("B reuse list: .PeterPiperV1.1, .PeterPiperV1.0, then PD4nav's (newest first)",
-       loop.startswith("for %%P in (.PeterPiperV1.1 .PeterPiperV1.0 .PD4navV3.0 "), loop)
+    ok("B reuse list (4.0): .PeterPiperV1.2, .PeterPiperV1.1, .PeterPiperV1.0, then PD4nav's "
+       "(newest first)",
+       loop.startswith("for %%P in (.PeterPiperV1.2 .PeterPiperV1.1 .PeterPiperV1.0 .PD4navV3.0 "),
+       loop)
     ok("B step 2 (both lists) goes through :pipinstall; no direct pip call left there",
        bat.count('call :pipinstall "%APP%\\requirements.txt"') == 1
        and bat.count('call :pipinstall "%APP%\\requirements-compatible.txt"') == 1

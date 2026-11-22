@@ -13,7 +13,6 @@ what was kept, and where.
 from __future__ import annotations
 
 import os
-import sys
 import threading
 from typing import Dict, List, Optional
 
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, 
                                QWidget)
 
 from .. import absorb as A
+from .. import platforms
 from . import widgets as W
 
 _offered = False                         # once per program start
@@ -49,7 +49,15 @@ def offer_on_start(parent: Optional[QWidget] = None,
 
 
 def _bin() -> str:
-    return "Trash" if sys.platform == "darwin" else "Recycle Bin"
+    return platforms.trash_name()
+
+
+def _shortcut_line(running: str) -> str:
+    """4.0: what happens to the shortcuts, in this system's words."""
+    if platforms.IS_MAC:
+        return (f"•  its PeterPiper app goes too - the PeterPiper app in your Applications "
+                f"folder starts {running}\n")
+    return f"•  the PeterPiper shortcuts (Desktop, Start menu) start {running}\n"
 
 
 class AbsorbDialog(QDialog):
@@ -78,7 +86,7 @@ class AbsorbDialog(QDialog):
             f"version tidies up what is left of it:"), W.wrapped_label(
             f"•  anything it kept for itself is copied to PeterPiper data (nothing there is "
             f"overwritten)\n"
-            f"•  the PeterPiper shortcuts (Desktop, Start menu) start {running}\n"
+            + _shortcut_line(running) +
             f"•  its program files and its private Python go to the {_bin()} - you can "
             f"restore them from there\n"
             f"•  your own files in its folder (results, notes, movies ...) stay where they are",

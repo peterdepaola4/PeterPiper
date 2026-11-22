@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -17,32 +16,10 @@ from typing import Optional
 #  back goes through long_path() (the \\?\ form); what the user is SHOWN uses
 #  plain_path() / error_text() (the normal form).
 # --------------------------------------------------------------------------
-_LONG = "\\\\?\\"                 # \\?\C:\...
-_LONG_UNC = "\\\\?\\UNC\\"        # \\?\UNC\server\share\...
-
-
-def long_path(path) -> str:
-    """The path in Windows' extended-length form (\\\\?\\C:\\... or
-    \\\\?\\UNC\\server\\share\\...), absolute and normalised ('/', '.', '..'),
-    so it works past 260 characters. Unchanged on other systems, for '' and
-    for paths already in that form."""
-    s = os.fspath(path) if not isinstance(path, str) else path
-    if os.name != "nt" or not s or s.startswith(_LONG) or s.startswith("\\\\.\\"):
-        return s
-    s = os.path.abspath(s)
-    if s.startswith("\\\\"):                           # network share
-        return _LONG_UNC + s[2:]
-    return _LONG + s
-
-
-def plain_path(path) -> str:
-    """The normal form of a path (for messages, lists and the run index)."""
-    s = os.fspath(path) if not isinstance(path, str) else path
-    if s.startswith(_LONG_UNC):
-        return "\\\\" + s[len(_LONG_UNC):]
-    if s.startswith(_LONG):
-        return s[len(_LONG):]
-    return s
+#  4.0: long_path() / plain_path() live in platforms.py, the one place for what
+#  differs between Windows and macOS (the \\?\ form is Windows only; elsewhere
+#  a path is returned unchanged). Their names stay here for every caller.
+from .platforms import IS_MAC, IS_WIN, _LONG, _LONG_UNC, long_path, plain_path  # noqa: E402,F401
 
 
 def error_text(exc: BaseException) -> str:
@@ -79,7 +56,7 @@ def write_problem(exc: BaseException, path="") -> str:
     err = getattr(exc, "errno", None)
     if err == _EROFS or getattr(exc, "winerror", None) == _WRITE_PROTECT:
         text = "the drive is read-only"
-        if sys.platform == "darwin" and str(path).startswith("/Volumes/"):
+        if IS_MAC and str(path).startswith("/Volumes/"):
             text += (" on this Mac. Drives formatted for Windows (NTFS) can be read "
                      "by macOS but not written to")
         return text
@@ -108,7 +85,7 @@ def looks_read_only(path) -> bool:
     """A quick check that writes nothing: the nearest existing folder above
     `path` is on a drive mounted read-only (macOS, Linux). Always False on
     Windows, where folder_problem() is the real test."""
-    if os.name == "nt" or not path:
+    if IS_WIN or not path:
         return False
     p = Path(os.path.abspath(os.fspath(path)))
     while not p.exists() and p != p.parent:

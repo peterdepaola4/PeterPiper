@@ -11,6 +11,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QMessageBox
 
 from .. import __version__
+from .. import platforms
 from .. import updater as U
 from ..safety import error_text
 from . import widgets as W
@@ -64,7 +65,7 @@ def check_for_updates(parent=None) -> str:
     try:
         if kind == "mac_app":
             return _mac(parent, asset)
-        return _windows(parent, asset)
+        return _zip(parent, asset)
     except Exception as exc:                                       # noqa: BLE001
         QMessageBox.warning(parent, "Check for updates",
                             f"The update did not finish; nothing of yours was changed.\n\n"
@@ -81,6 +82,14 @@ def _mac(parent, asset) -> str:
         W.run_with_progress(parent, "Downloading the new PeterPiper...",
                             lambda progress: U.download(asset["url"], Path(used), asset["size"],
                                                         progress), delay_ms=0)
+    if str(used).endswith(".zip"):          # 4.0: a release without a .dmg - the one zip
+        platforms.reveal_in_file_manager(str(used))
+        QMessageBox.information(
+            parent, "Check for updates",
+            f"The new PeterPiper is in your Downloads folder ({Path(used).name}). Double-click "
+            f"it to unpack it, then double-click {U.launcher_name()} in the new folder (the "
+            "first start installs what it needs, about 5 minutes). Your data stays.")
+        return "downloaded"
     W.open_path(str(used))
     QMessageBox.information(parent, "Check for updates",
                             "The new PeterPiper is open in Finder: drag it onto Applications "
@@ -88,7 +97,8 @@ def _mac(parent, asset) -> str:
     return "downloaded"
 
 
-def _windows(parent, asset) -> str:
+def _zip(parent, asset) -> str:
+    """4.0: a zip install, Windows or Mac (the same zip)."""
     folder = U.program_folder()
     tmpdir = Path(tempfile.mkdtemp(prefix="pp-update-"))
     z = tmpdir / asset["name"]
@@ -112,8 +122,11 @@ def _windows(parent, asset) -> str:
     QMessageBox.information(
         parent, "Check for updates",
         f"The new version is a separate install ({p['why']}), so it was unpacked next to "
-        f"this one:\n{dest}\n\nStart it with the .bat in that folder (the first start installs "
-        "its packages, about 5 minutes). Your users and runs are shared; this version stays "
-        "as it is.")
+        f"this one:\n{dest}\n\nStart it with {U.launcher_name()} in that folder (the first "
+        "start installs its packages, about 5 minutes). Your users and runs are shared; this "
+        "version stays as it is.")
     W.open_path(str(dest))
     return "unpacked"
+
+
+_windows = _zip                             # the 1.x name

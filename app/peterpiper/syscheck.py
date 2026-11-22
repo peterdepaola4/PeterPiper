@@ -22,8 +22,10 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from typing import List, Optional
 
+from . import platforms
+
 STATE_FILE = "computer_check.json"
-LONG_PATH_KEY = r"SYSTEM\CurrentControlSet\Control\FileSystem"
+LONG_PATH_KEY = platforms.LONG_PATH_KEY
 # for the user to run in an administrator PowerShell; 1.2: also run (elevated, after
 # Windows' own approval) by 'Turn on Windows long paths' - only on that button
 LONG_PATH_COMMAND = ('New-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" '
@@ -43,19 +45,8 @@ class Item:
 
 def long_paths_enabled() -> Optional[bool]:
     """Windows' long-path setting: True / False, None when it cannot be read
-    (not Windows, or no permission)."""
-    try:
-        import winreg
-    except ImportError:
-        return None
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, LONG_PATH_KEY) as k:
-            v, _t = winreg.QueryValueEx(k, "LongPathsEnabled")
-        return int(v) == 1
-    except FileNotFoundError:
-        return False                  # value never set = off (the Windows default)
-    except OSError:
-        return None
+    (not Windows, or no permission). 4.0: read in platforms.py."""
+    return platforms.long_paths_enabled()
 
 
 def check_long_paths() -> Item:
@@ -96,7 +87,7 @@ def run_elevated(command: str, poll=None, timeout_s: float = 300.0) -> int:
     (poll() is called while waiting, e.g. to keep a window drawn). Returns the exit
     code; raises OSError (winerror 1223 = approval not given)."""
     import os
-    if sys.platform != "win32":
+    if not platforms.IS_WIN:
         raise OSError("Only on Windows.")
     if os.environ.get(NO_ELEVATE_ENV):
         raise OSError("Asking for administrator rights is switched off here.")
@@ -156,7 +147,7 @@ def turn_on_long_paths(elevate=None, read=None, poll=None):
     happened in plain words)."""
     elevate = elevate or run_elevated
     read = read or long_paths_enabled
-    if sys.platform != "win32" and elevate is run_elevated:
+    if not platforms.IS_WIN and elevate is run_elevated:
         return None, "Only Windows has this setting - there is nothing to turn on here."
     if read() is True:
         return True, "Windows' long paths are already on."
@@ -210,7 +201,7 @@ def check_bundled() -> Item:
 
 def run_checks() -> List[Item]:
     items = []
-    if sys.platform == "win32":                    # a Windows setting (macOS has no such limit)
+    if platforms.IS_WIN:                           # a Windows setting (macOS has no such limit)
         items.append(check_long_paths())
     items.append(check_bundled() if getattr(sys, "frozen", False) else check_python())
     return items

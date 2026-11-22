@@ -1,7 +1,8 @@
 """
 PeterPiper 1.2 - what the launcher shows while it installs (standard library only).
 
-The launcher (PeterPiperV4.0.bat) runs this with the freshly made private Python,
+The launcher (PeterPiperV4.0.bat on Windows, 4.0: PeterPiperV4.0.command on a
+Mac - the same steps) runs this with the freshly made private Python,
 BEFORE any package is installed, so it uses nothing but Python's own library.
 
     python install_progress.py install <requirements.txt> [pip options ...]

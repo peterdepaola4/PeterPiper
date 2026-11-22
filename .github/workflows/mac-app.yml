@@ -7,7 +7,13 @@
 #
 # Run it by hand: GitHub > Actions > "Mac app" > Run workflow. It also runs by
 # itself when a release is published.
-name: Mac app
+#
+# 4.0: OPTIONAL. The main download is the ONE zip for Windows and Mac
+# (PeterPiperV4.0.zip, started with PeterPiperV4.0.command on a Mac - checked end to
+# end by launchers.yml). This self-contained app is an extra for Macs where
+# installing Python is not wanted; the updater uses its .dmg when a release has
+# one, else the zip.
+name: Mac app (optional .dmg)
 
 on:
   workflow_dispatch:
@@ -60,13 +66,23 @@ jobs:
           set -o pipefail
           fail=0
           for t in test_peterpiper test_v29 test_v30 test_rules_unit test_graph test_v26_kinetics \
-                   test_compare_groups test_v28 test_v27; do
+                   test_compare_groups test_v28 test_v27 test_v40_launch; do
             echo "::group::$t"
             if ! PETERPIPER_HOME="$RUNNER_TEMP/home_$t" python "dev_tests/$t.py" 2>&1 | tee "$RUNNER_TEMP/$t.txt"; then
               echo "::error::$t failed"; fail=1
             fi
             echo "::endgroup::"
             tail -n 3 "$RUNNER_TEMP/$t.txt"
+          done
+          # 4.0: the other parts' portable suites (reported; a lab-data suite may skip)
+          for f in dev_tests/test_v40_*.py; do
+            t=$(basename "$f" .py)
+            [ "$t" = "test_v40_launch" ] && continue
+            echo "::group::$t"
+            if ! PETERPIPER_HOME="$RUNNER_TEMP/home_$t" python "$f" 2>&1 | tee "$RUNNER_TEMP/$t.txt"; then
+              echo "::warning::$t failed on macOS"
+            fi
+            echo "::endgroup::"
           done
           exit $fail
 

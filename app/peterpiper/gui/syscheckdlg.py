@@ -7,13 +7,13 @@ Windows' own administrator approval.
 """
 from __future__ import annotations
 
-import sys
 from typing import List, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel,
                                QVBoxLayout, QWidget)
 
+from .. import platforms
 from .. import syscheck as SC
 from . import widgets as W
 
@@ -90,13 +90,13 @@ class ComputerCheckDialog(QDialog):
             cmd = QLabel(it.command)
             cmd.setWordWrap(True)
             cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            cmd.setStyleSheet("font-family: Consolas, monospace;")
+            cmd.setStyleSheet("font-family: Consolas, Menlo, monospace;")   # Windows, Mac
             btn = W.button("Copy command", lambda _c=False, c=it.command:
                            QApplication.clipboard().setText(c),
                            "Copy it, open PowerShell with 'Run as administrator', paste, "
                            "press Enter, restart Windows.")
             col.addWidget(cmd)
-            if it.key == "long_paths" and sys.platform == "win32":     # 1.2
+            if it.key == "long_paths" and platforms.IS_WIN:            # 1.2
                 self.btn_turn_on = W.button(
                     "Turn on Windows long paths", self._turn_on,
                     "Runs the command for you: Windows asks for administrator approval. "

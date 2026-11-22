@@ -3,7 +3,7 @@ setlocal DisableDelayedExpansion
 rem other software's Python settings must not reach PeterPiper's private Python
 set "PYTHONHOME="
 set "PYTHONPATH="
-title PeterPiper 1.2
+title PeterPiper 4.0
 rem ===================================================================
 rem  PeterPiperV4.0 - the only file you need to double-click.
 rem
@@ -16,6 +16,18 @@ rem  (delete that folder to start fresh). IT / testing: set PETERPIPER_HOME
 rem  to put the install somewhere else; set PETERPIPER_INSTALL_ONLY=1 to
 rem  install / check only, without opening the app; set
 rem  PETERPIPER_NO_SHORTCUTS=1 to make no shortcuts.
+rem  "PeterPiperV4.0.bat --selftest [folder]" installs if needed, then runs
+rem  PeterPiper's self-test in this window instead of opening it.
+rem
+rem  4.0: the SAME folder runs on a Mac with PeterPiperV4.0.command. If no
+rem  suitable Python (64-bit 3.10 - 3.14) is on this computer, this file
+rem  offers to download one with the small "uv" tool (a pinned uv release,
+rem  checked against its SHA-256 before it runs; Python from the official
+rem  python-build-standalone builds), all inside %USERPROFILE%\.PeterPiperV4.0.
+rem  PETERPIPER_UV=yes / no answers that question without asking;
+rem  PETERPIPER_USE_UV=1 skips the search and always uses uv (testing);
+rem  PETERPIPER_UV_FILE=<file> uses a copy of the uv zip already on this
+rem  computer (no download; still checked against the SHA-256).
 rem
 rem  Each start shows the PeterPiper logo in this window (drawn with
 rem  block characters, app\peterpiper\assets\logo_*.txt) and, the first
@@ -40,9 +52,24 @@ set "LOG=%HOME_DIR%\error_%RANDOM%%RANDOM%.txt"
 set "STAMP=%ENV%\installed_requirements.txt"
 set "ONLY="
 if "%PETERPIPER_INSTALL_ONLY%"=="1" set "ONLY=1"
-rem the messages below wait for a key press, except in install-only mode
+set "SELFTEST="
+if /i "%~1"=="--selftest" set "SELFTEST=1"
+rem the messages below wait for a key press, except in install-only / self-test mode
 set "WAIT=pause"
 if defined ONLY set "WAIT=rem"
+if defined SELFTEST set "WAIT=rem"
+rem nobody to answer a question (install-only / self-test): never download unasked
+set "NOASK="
+if defined ONLY set "NOASK=1"
+if defined SELFTEST set "NOASK=1"
+rem the uv tool, used only when no suitable Python is found (pinned release
+rem and the SHA-256 of its Windows x86_64 zip, as published with that release;
+rem these names must not start with UV_: :uvenv clears every UV_ setting)
+set "PPUV_VERSION=0.12.24"
+set "PPUV_ASSET=uv-x86_64-pc-windows-msvc.zip"
+set "PPUV_SHA256=7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019"
+set "PPUV_PY=3.11"
+set "UVEXE=%HOME_DIR%\uv\uv.exe"
 set "FRESH="
 set "COMPAT="
 set "ASSETS=%APP%\peterpiper\assets"
@@ -60,7 +87,7 @@ rem earlier PeterPiper versions first, newest first, then PD4nav's
 if defined PETERPIPER_HOME goto checkenv
 if exist "%ENV%\Scripts\pythonw.exe" goto checkenv
 set "PREV="
-for %%P in (.PeterPiperV1.1 .PeterPiperV1.0 .PD4navV3.0 .PD4navV2.9 .PD4navV2.8 .PD4navV2.7 .PD4navV2.6 .PD4navV2.5 .PD4navV2.4 .PD4navV2.3 .PD4navV2.2 .PD4navV2.1) do (
+for %%P in (.PeterPiperV1.2 .PeterPiperV1.1 .PeterPiperV1.0 .PD4navV3.0 .PD4navV2.9 .PD4navV2.8 .PD4navV2.7 .PD4navV2.6 .PD4navV2.5 .PD4navV2.4 .PD4navV2.3 .PD4navV2.2 .PD4navV2.1) do (
     if not defined PREV if exist "%USERPROFILE%\%%P\venv\installed_requirements.txt" (
         fc /b "%USERPROFILE%\%%P\venv\installed_requirements.txt" "%APP%\requirements.txt" >nul 2>&1 && "%USERPROFILE%\%%P\venv\Scripts\python.exe" -c "" <nul >nul 2>&1 && set "PREV=%USERPROFILE%\%%P\venv"
     )
@@ -82,7 +109,7 @@ rem ===================================================================
 set "FRESH=1"
 if not defined ONLY cls
 call :logo
-echo   PeterPiper 1.2 - first-time setup
+echo   PeterPiper 4.0 - first-time setup
 echo   ---------------------------------
 echo.
 echo   Installing what PeterPiperV4.0 needs. This happens only once
@@ -107,10 +134,17 @@ rem      compatible versions. Each probe reads from nul, so a launcher that
 rem      offers to install a missing version cannot wait for an answer.
 set "PY="
 set "ANYPY="
+if "%PETERPIPER_USE_UV%"=="1" goto finduv
 for %%V in (3.11 3.12 3.13 3.14 3.10) do if not defined PY call :trypy py -%%V
 if not defined PY call :trypy py -3
 if not defined PY call :trypy python
 if not defined PY call :trypy python3
+:finduv
+rem 4.0: none found - a Python uv downloaded earlier, else offer to download one
+set "UVFAIL="
+if not defined PY call :uvfind
+if not defined PY call :uvoffer
+if defined UVFAIL goto uvfail
 if not defined PY if defined ANYPY goto badpython
 if not defined PY goto nopython
 echo   Using:
@@ -196,7 +230,7 @@ rem record what was really installed (for methods sections and bug reports)
 copy /y "%APP%\requirements.txt" "%STAMP%" >nul
 
 echo.
-title PeterPiper 1.2
+title PeterPiper 4.0
 echo   Setup finished.
 if not defined COMPAT goto setupdone
 echo.
@@ -219,13 +253,14 @@ ping -n 3 127.0.0.1 >nul
 
 rem ===================================================================
 :launch
+if defined SELFTEST goto selftest
 if defined ONLY goto installonly
-title PeterPiper 1.2
+title PeterPiper 4.0
 cls
 call :logo
 rem the first start after an install is the slowest (Python prepares the packages)
 if defined FRESH (echo   Starting PeterPiper - the window opens in about 10-20 seconds.) else echo   Starting PeterPiper - the window opens in a few seconds.
-echo   PeterPiper 1.2 runs in its own window.
+echo   PeterPiper 4.0 runs in its own window.
 echo   Keep this window open while you work - it closes by itself when you
 echo   quit PeterPiper.
 echo.
@@ -246,6 +281,15 @@ if not defined FRESH echo   Already installed and up to date - nothing was downl
 echo   PETERPIPER_INSTALL_ONLY=1: install checked in "%ENV%"
 echo   The app was not opened.
 exit /b 0
+
+rem 4.0: "PeterPiperV4.0.bat --selftest [folder]" - the self-test in this window
+:selftest
+echo.
+if not defined FRESH echo   Already installed and up to date - nothing was downloaded.
+echo   Running the PeterPiper self-test with "%ENV%" ...
+echo.
+"%ENV%\Scripts\python.exe" -X faulthandler "%APP%\PeterPiper.py" --selftest %2 %3
+exit /b %errorlevel%
 
 rem ===================================================================
 :notextracted
@@ -271,6 +315,24 @@ echo   2. Download Python 3.13 (or 3.12 / 3.11), "Windows installer (64-bit)",
 echo      and run it.
 echo   3. IMPORTANT: on the first screen tick  "Add python.exe to PATH".
 echo   4. Then double-click  PeterPiperV4.0.bat  again.
+echo.
+if defined UVARCH echo   (Or double-click PeterPiperV4.0.bat again and answer Y when it offers
+if defined UVARCH echo   to download Python by itself.)
+if defined UVARCH echo.
+%WAIT%
+exit /b 1
+
+:uvfail
+echo.
+echo   Python could not be downloaded automatically (the message above says
+echo   why). Nothing was installed and nothing of yours was changed.
+echo   Usually: no internet, or a firewall blocking github.com.
+echo.
+echo   Instead, install Python yourself:
+echo   1. Go to  https://www.python.org/downloads/windows/
+echo   2. Download Python 3.13 (or 3.12 / 3.11), "Windows installer (64-bit)",
+echo      and run it. On the first screen tick  "Add python.exe to PATH".
+echo   3. Then double-click  PeterPiperV4.0.bat  again.
 echo.
 %WAIT%
 exit /b 1
@@ -346,6 +408,86 @@ start "" notepad "%LOG%"
 pause
 exit /b 1
 
+rem ---- 4.0 helper: uv's settings - everything stays in HOME_DIR (its Python,
+rem      its cache); uv settings of other software are ignored; uv only uses
+rem      the Pythons it downloaded itself
+:uvenv
+for /f "tokens=1 delims==" %%V in ('set UV_ 2^>nul') do set "%%V="
+set "UV_PYTHON_INSTALL_DIR=%HOME_DIR%\python"
+set "UV_PYTHON_BIN_DIR=%HOME_DIR%\python\bin"
+set "UV_CACHE_DIR=%HOME_DIR%\uv\cache"
+set "UV_NO_CONFIG=1"
+set "UV_PYTHON_PREFERENCE=only-managed"
+exit /b 0
+
+rem ---- 4.0 helper: the Python that uv downloaded at an earlier install (no
+rem      question, nothing downloaded); sets PY when it is there and works
+:uvfind
+if not exist "%UVEXE%" exit /b 0
+call :uvenv
+set "UVPY="
+for /f "delims=" %%P in ('call "%UVEXE%" python find %PPUV_PY% 2^>nul ^<nul') do if not defined UVPY set "UVPY=%%P"
+if not defined UVPY exit /b 0
+if not exist "%UVPY%" exit /b 0
+"%UVPY%" -c "import sys;sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,14) and sys.maxsize>2**32 else 1)" <nul >nul 2>&1 || exit /b 0
+rem PY holds the path WITH its quotes; set through a FOR variable, so a folder
+rem name with & or brackets cannot break the line
+for %%A in ("%UVPY%") do set PY=%%A
+exit /b 0
+
+rem ---- 4.0 helper: no suitable Python - offer to download one with uv.
+rem      Yes: a PINNED uv release is downloaded (PowerShell), its SHA-256 must
+rem      equal PPUV_SHA256 (else it is deleted and nothing runs), then uv
+rem      downloads Python %PPUV_PY% into HOME_DIR\python (no registry entry, no
+rem      PATH change) and PY is set to it. A problem sets UVFAIL.
+:uvoffer
+set "UVARCH="
+if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" set "UVARCH=1"
+if /i "%PROCESSOR_ARCHITEW6432%"=="AMD64" set "UVARCH=1"
+rem Windows on Arm runs the x64 build (Windows 11 emulates it)
+if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "UVARCH=1"
+if not defined UVARCH exit /b 0
+set "ANS=%PETERPIPER_UV%"
+if "%PETERPIPER_USE_UV%"=="1" if not defined ANS set "ANS=yes"
+if defined ANS goto uvanswer
+if defined NOASK exit /b 0
+echo.
+echo   No suitable Python was found on this computer.
+echo.
+echo   PeterPiper needs Python 3.11+. Download it automatically now
+echo   (about 40 MB, from the official uv / python-build-standalone releases)?
+echo   It goes into PeterPiper's own folder only:
+echo   "%HOME_DIR%"
+echo.
+set /p "ANS=  Type Y and press Enter for yes, or N for no [Y/n]: "
+:uvanswer
+if defined ANS set "ANS=%ANS:"=%"
+if not defined ANS set "ANS=y"
+if /i not "%ANS:~0,1%"=="y" exit /b 0
+echo.
+echo   Getting Python with uv %PPUV_VERSION% ...
+if not exist "%HOME_DIR%\uv" mkdir "%HOME_DIR%\uv"
+set "PP_UV_URL=https://github.com/astral-sh/uv/releases/download/%PPUV_VERSION%/%PPUV_ASSET%"
+set "PP_UV_FILE=%HOME_DIR%\uv\%PPUV_ASSET%"
+set "PP_UV_DIR=%HOME_DIR%\uv"
+set "PP_UV_SHA=%PPUV_SHA256%"
+set "PP_UV_LOCAL=%PETERPIPER_UV_FILE%"
+if defined PP_UV_LOCAL echo         using the copy in "%PP_UV_LOCAL%"
+if not defined PP_UV_LOCAL echo         downloading uv, about 15 MB, from %PP_UV_URL%
+set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS%" set "PS=powershell"
+"%PS%" -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try { if ($env:PP_UV_LOCAL) { Copy-Item -LiteralPath $env:PP_UV_LOCAL -Destination $env:PP_UV_FILE -Force } else { try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch {}; Invoke-WebRequest -UseBasicParsing -Uri $env:PP_UV_URL -OutFile $env:PP_UV_FILE } } catch { Write-Host ('  ' + $_.Exception.Message); exit 2 }; $h = (Get-FileHash -Algorithm SHA256 -LiteralPath $env:PP_UV_FILE).Hash; if ($h -ne $env:PP_UV_SHA) { Remove-Item -LiteralPath $env:PP_UV_FILE -Force; Write-Host '  The downloaded file is NOT the published uv release (its SHA-256 differs):'; Write-Host ('  expected ' + $env:PP_UV_SHA.ToLower()); Write-Host ('  got      ' + $h.ToLower()); Write-Host '  It was deleted and nothing was run.'; exit 3 }; Write-Host '        SHA-256 checked: it is the published uv release.'; try { Expand-Archive -LiteralPath $env:PP_UV_FILE -DestinationPath $env:PP_UV_DIR -Force } catch { Write-Host ('  ' + $_.Exception.Message); exit 4 }; Remove-Item -LiteralPath $env:PP_UV_FILE -Force; exit 0" <nul
+if errorlevel 1 (set "UVFAIL=1" & exit /b 0)
+if not exist "%UVEXE%" (set "UVFAIL=1" & exit /b 0)
+call :uvenv
+echo         downloading Python %PPUV_PY% (about 25 MB) ...
+"%UVEXE%" python install %PPUV_PY% --no-bin --no-registry <nul
+if errorlevel 1 (set "UVFAIL=1" & exit /b 0)
+call :uvfind
+if not defined PY set "UVFAIL=1"
+echo.
+exit /b 0
+
 rem ---- helper: use the Python started by "%*" if it is 64-bit 3.10 - 3.14
 rem      ("call" so that a python.bat shim, e.g. pyenv-win, returns here)
 :trypy
@@ -398,7 +540,7 @@ type "%ART%"
 echo.
 exit /b 0
 :logotext
-echo   PeterPiper 1.2
+echo   PeterPiper 4.0
 echo.
 exit /b 0
 
@@ -426,7 +568,7 @@ if not exist "%PP_ICO%" exit /b 0
 set "MADE="
 if exist "%HOME_DIR%\shortcuts_for.txt" set /p MADE=<"%HOME_DIR%\shortcuts_for.txt"
 if /i "%MADE%"=="%PP_BAT%" exit /b 0
-powershell -NoProfile -NonInteractive -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @($env:PP_DIR,[Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){ if($d){ $l=$w.CreateShortcut((Join-Path $d 'PeterPiper.lnk')); $l.TargetPath=$env:PP_BAT; $l.WorkingDirectory=$env:PP_DIR; $l.IconLocation=$env:PP_ICO+',0'; $l.Description='PeterPiper 1.2 - single-cell fluorescence time courses'; $l.Save() } }" >nul 2>&1
+powershell -NoProfile -NonInteractive -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @($env:PP_DIR,[Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){ if($d){ $l=$w.CreateShortcut((Join-Path $d 'PeterPiper.lnk')); $l.TargetPath=$env:PP_BAT; $l.WorkingDirectory=$env:PP_DIR; $l.IconLocation=$env:PP_ICO+',0'; $l.Description='PeterPiper 4.0 - single-cell fluorescence time courses'; $l.Save() } }" >nul 2>&1
 if errorlevel 1 exit /b 0
 > "%HOME_DIR%\shortcuts_for.txt" echo %PP_BAT%
 echo   A PeterPiper shortcut with the logo is on your Desktop, in the Start

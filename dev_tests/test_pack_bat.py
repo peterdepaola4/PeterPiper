@@ -1,5 +1,5 @@
 """
-Developer check (not shipped): runs PeterPiperV1.2.bat for real, non-interactively.
+Developer check (not shipped): runs PeterPiperV4.0.bat for real, non-interactively.
 
     python dev_tests/test_pack_bat.py            # quick message tests only
     python dev_tests/test_pack_bat.py --install  # + a REAL install (internet, ~600 MB)
@@ -42,7 +42,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-BAT = REPO / "PeterPiperV1.2.bat"
+BAT = REPO / "PeterPiperV4.0.bat"
 HOME = REPO / "_home"
 LOGS = REPO / "dev_tests" / "logs"
 SYS32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
@@ -132,7 +132,7 @@ def quick_tests():
     rc, out, _ = run_bat(bat, {"PETERPIPER_HOME": str(base / "h3"), "PATH": f"{fake};{SYS32}"},
                          "bat_badpython.log")
     check("Python 3.9 shim -> 'cannot run' message naming 3.9, exit 1",
-          rc == 1 and "cannot run PeterPiperV1.2" in out and "3.9.13" in out, f"rc={rc}")
+          rc == 1 and "cannot run PeterPiperV4.0" in out and "3.9.13" in out, f"rc={rc}")
     check("... and says 3.15+ and 32-bit Python are not supported (V2.4, L3)",
           "3.15 and newer are not supported" in out and "32-bit Python does not work" in out)
     txt = BAT.read_text(encoding="utf-8")
@@ -180,15 +180,20 @@ def quick_tests():
     rc, out, _ = run_bat(bat, env, "bat_reuse_none.log", drop=("PETERPIPER_HOME",))
     check("no identical earlier install -> not reused, goes to setup",
           rc == 1 and "first-time setup" in out and "Python is not installed" in out, f"rc={rc}")
-    check("fake user folder: .PeterPiperV1.2 created there, not in the real profile",
-          (prof / ".PeterPiperV1.2").is_dir())
+    check("fake user folder: .PeterPiperV4.0 created there, not in the real profile",
+          (prof / ".PeterPiperV4.0").is_dir())
     # 1.2: an identical earlier PeterPiper install comes before PD4nav's (newest first)
     prof2 = base / "profile2"
-    for ver in (".PD4navV3.0", ".PeterPiperV1.0", ".PeterPiperV1.1"):
+    for ver in (".PD4navV3.0", ".PeterPiperV1.0", ".PeterPiperV1.1", ".PeterPiperV1.2"):
         v = prof2 / ver / "venv"
         subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(v)], check=True)
         (v / "installed_requirements.txt").write_bytes(req)
     env2 = {"USERPROFILE": str(prof2), "PATH": SYS32}
+    # 4.0: PeterPiper 1.2's identical install first (the newest)
+    rc2, out2, _ = run_bat(bat, env2, "bat_reuse_pp12.log", drop=("PETERPIPER_HOME",))
+    check("4.0: identical PeterPiper 1.2 install is reused first (before 1.1, 1.0, PD4nav's)",
+          rc2 == 0 and ".PeterPiperV1.2\\venv" in out2, f"rc={rc2}")
+    shutil.rmtree(prof2 / ".PeterPiperV1.2", ignore_errors=True)
     rc2, out2, _ = run_bat(bat, env2, "bat_reuse_pp11.log", drop=("PETERPIPER_HOME",))
     check("1.2: identical PeterPiper 1.1 install is reused first (before 1.0 and PD4nav's)",
           rc2 == 0 and ".PeterPiperV1.1\\venv" in out2, f"rc={rc2}")
@@ -199,7 +204,7 @@ def quick_tests():
     head = out[:out.index("first-time setup")].splitlines()
     check("first-time setup starts with the PeterPiper logo (its block-character lines, not "
           "the plain heading)", sum(1 for s in head if len(s.strip()) > 30) >= 8
-          and "  PeterPiper 1.2" not in head, f"{len(head)} lines before the setup text")
+          and "  PeterPiper 4.0" not in head, f"{len(head)} lines before the setup text")
     shutil.rmtree(base, ignore_errors=True)
 
 
@@ -302,7 +307,7 @@ def main() -> int:
         print("Windows only")
         return 1
     crlf = BAT.read_bytes()
-    check("PeterPiperV1.2.bat has CRLF line endings only",
+    check("PeterPiperV4.0.bat has CRLF line endings only",
           crlf.count(b"\r\n") == crlf.count(b"\n") > 0)
     quick_tests()
     if a.install:

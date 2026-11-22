@@ -1,0 +1,195 @@
+# PeterPiper 4.0: ONE zip for Windows AND macOS. This checks that the very zip a
+# user downloads works on both, start to finish, on fresh machines:
+#   1. build the zip once (build/build_zip.py) - both launchers inside, the Mac
+#      launcher with its executable bit;
+#   2. on Windows and on Macs (Apple chip and Intel), unpack it the way a user
+#      does (Windows: Expand-Archive; Mac: ditto, like double-clicking it in
+#      Finder) into a folder with a space in its name, and with an EMPTY home /
+#      install folder:
+#        - "python": a Python 3.11 is on the computer -> the launcher installs the
+#          exact tested packages (app/requirements.txt);
+#        - "uv": the launcher is told to use uv (PETERPIPER_USE_UV=1) -> it
+#          downloads the pinned uv, checks its SHA-256, gets Python with it, then
+#          the same packages;
+#      then "<launcher> --selftest" runs PeterPiper's self-test (a whole analysis
+#      on a synthetic movie, in the real main window, off screen);
+#   3. the launcher / platform tests (dev_tests/test_v40_launch.py) on each system.
+#
+# Run it by hand (GitHub > Actions > "Launchers (one zip)" > Run workflow); it
+# also runs when a release is published and on pushes that change a launcher.
+name: Launchers (one zip)
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    paths:
+      - "PeterPiperV*.bat"
+      - "PeterPiperV*.command"
+      - "app/install_progress.py"
+      - "app/requirements*.txt"
+      - "app/peterpiper/platforms.py"
+      - "build/build_zip.py"
+      - ".github/workflows/launchers.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launchers-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  MPLBACKEND: Agg
+  PYTHONIOENCODING: utf-8
+  PETERPIPER_NO_SHORTCUTS: "1"     # never touch the runner's Desktop / Start menu
+  PETERPIPER_NO_ABSORB: "1"
+
+jobs:
+  zip:
+    name: Build the one zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Build and verify
+        run: |
+          python build/build_zip.py --out out --unzip "$RUNNER_TEMP/unz"
+          python - <<'EOF'
+          import zipfile, re
+          name = re.search(r'^APP_NAME\s*=\s*"([^"]+)"', open("app/peterpiper/__init__.py").read(), re.M).group(1)
+          z = zipfile.ZipFile(f"out/{name}.zip")
+          cmd = z.getinfo(f"{name}/{name}.command")
+          assert (cmd.external_attr >> 16) & 0o111, "the .command is not executable in the zip"
+          assert b"\r" not in z.read(cmd), "the .command has CR characters"
+          bat = z.read(f"{name}/{name}.bat")
+          assert bat.count(b"\r\n") == bat.count(b"\n"), "the .bat is not CRLF"
+          print("both launchers OK in", z.filename)
+          EOF
+      - uses: actions/upload-artifact@v5
+        with:
+          name: one-zip
+          path: out/*.zip
+          retention-days: 7
+
+  mac:
+    name: macOS ${{ matrix.label }} (${{ matrix.mode }})
+    needs: zip
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: Apple chip, runner: macos-15, mode: python }
+          - { label: Apple chip, runner: macos-15, mode: uv }
+          - { label: Intel, runner: macos-15-intel, mode: python }
+          - { label: Intel, runner: macos-15-intel, mode: uv }
+    steps:
+      - uses: actions/checkout@v5          # only for the developer tests (step 5)
+      - uses: actions/download-artifact@v5
+        with:
+          name: one-zip
+          path: dl
+      - uses: actions/setup-python@v6
+        if: matrix.mode == 'python'
+        with:
+          python-version: "3.11"
+      - name: 1. Unpack like Finder does (permissions kept)
+        run: |
+          mkdir -p "$RUNNER_TEMP/Peter Piper test"
+          ditto -x -k dl/*.zip "$RUNNER_TEMP/Peter Piper test"
+          L=$(ls "$RUNNER_TEMP/Peter Piper test"/*/*.command)
+          echo "LAUNCHER=$L" >> "$GITHUB_ENV"
+          ls -l "$L"
+          test -x "$L" || { echo "::error::the .command lost its executable bit"; exit 1; }
+          bash -n "$L"
+      - name: 2. Install from the pins in a fresh home (${{ matrix.mode }})
+        run: |
+          export HOME="$RUNNER_TEMP/fresh home"
+          mkdir -p "$HOME"
+          if [ "${{ matrix.mode }}" = "uv" ]; then export PETERPIPER_USE_UV=1; fi
+          PETERPIPER_INSTALL_ONLY=1 "$LAUNCHER" </dev/null | tee "$RUNNER_TEMP/install.txt"
+          grep -q "Setup finished" "$RUNNER_TEMP/install.txt"
+          if [ "${{ matrix.mode }}" = "uv" ]; then
+            grep -q "SHA-256 checked" "$RUNNER_TEMP/install.txt"
+          fi
+          cat "$HOME/.PeterPiperV4.0/venv/installed_versions.txt"
+      - name: 3. Second start takes the fast path
+        run: |
+          export HOME="$RUNNER_TEMP/fresh home"
+          PETERPIPER_INSTALL_ONLY=1 "$LAUNCHER" </dev/null | tee "$RUNNER_TEMP/again.txt"
+          grep -q "Already installed" "$RUNNER_TEMP/again.txt"
+      - name: 4. Self-test through the launcher
+        run: |
+          export HOME="$RUNNER_TEMP/fresh home"
+          "$LAUNCHER" --selftest "$RUNNER_TEMP/selftest" </dev/null
+      - name: 5. The Applications app and the launcher / platform tests
+        run: |
+          export HOME="$RUNNER_TEMP/fresh home"
+          mkdir -p "$HOME/Desktop"
+          VPY="$HOME/.PeterPiperV4.0/venv/bin/python"
+          unset PETERPIPER_NO_SHORTCUTS
+          "$VPY" "$(dirname "$LAUNCHER")/app/peterpiper/platforms.py" shortcuts "$LAUNCHER"
+          plutil -lint "$HOME/Applications/PeterPiper.app/Contents/Info.plist"
+          test -x "$HOME/Applications/PeterPiper.app/Contents/MacOS/PeterPiper"
+          test -L "$HOME/Desktop/PeterPiper"
+          PETERPIPER_HOME="$RUNNER_TEMP/home_v40" "$VPY" dev_tests/test_v40_launch.py
+
+  windows:
+    name: Windows (${{ matrix.mode }})
+    needs: zip
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [python, uv]
+    steps:
+      - uses: actions/checkout@v5          # only for the developer tests (step 4)
+      - uses: actions/download-artifact@v5
+        with:
+          name: one-zip
+          path: dl
+      - uses: actions/setup-python@v6
+        if: matrix.mode == 'python'
+        with:
+          python-version: "3.11"
+      - name: 1. Unpack like Explorer's "Extract All"
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP "Peter Piper test"
+          Expand-Archive -Path (Get-ChildItem dl\*.zip).FullName -DestinationPath $dest
+          $bat = (Get-ChildItem -Path $dest -Filter *.bat -Recurse | Select-Object -First 1).FullName
+          "LAUNCHER=$bat" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PETERPIPER_HOME=$(Join-Path $env:RUNNER_TEMP 'fresh home')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: 2. Install from the pins in a fresh install folder (${{ matrix.mode }})
+        shell: cmd
+        run: |
+          if "${{ matrix.mode }}"=="uv" set "PETERPIPER_USE_UV=1"
+          set "PETERPIPER_INSTALL_ONLY=1"
+          call "%LAUNCHER%" < nul > "%RUNNER_TEMP%\install.txt" 2>&1
+          set RC=%errorlevel%
+          type "%RUNNER_TEMP%\install.txt"
+          if not "%RC%"=="0" exit /b 1
+          findstr /c:"Setup finished" "%RUNNER_TEMP%\install.txt" || exit /b 1
+          if "${{ matrix.mode }}"=="uv" findstr /c:"SHA-256 checked" "%RUNNER_TEMP%\install.txt" || exit /b 1
+          type "%PETERPIPER_HOME%\venv\installed_versions.txt"
+      - name: 3. Second start takes the fast path, then the self-test
+        shell: cmd
+        run: |
+          set "PETERPIPER_INSTALL_ONLY=1"
+          call "%LAUNCHER%" < nul | findstr /c:"Already installed" || exit /b 1
+          set "PETERPIPER_INSTALL_ONLY="
+          call "%LAUNCHER%" --selftest "%RUNNER_TEMP%\selftest" < nul
+      - name: 4. The launcher / platform tests
+        shell: cmd
+        run: |
+          set "PETERPIPER_HOME=%RUNNER_TEMP%\home_v40"
+          "%RUNNER_TEMP%\fresh home\venv\Scripts\python.exe" dev_tests\test_v40_launch.py

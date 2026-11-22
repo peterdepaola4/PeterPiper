@@ -1,51 +1,66 @@
-PeterPiper 1.2  -  quick start
-==============================
-(PeterPiper was called PD4nav up to version 3.0; 1.0 continues PD4nav V3.0;
-1.1 keeps the same methods and numbers, with new windows and tools; 1.2 keeps
-them too and adds Merge, a choice of export folder, help with too-long paths,
-clearer loading bars and a tidy-up of older PeterPiper versions.)
+PeterPiper 4.0  -  quick start  (Windows and Mac: the same folder)
+===================================================================
 Full manual: README.html (double-click it - it opens in your web browser).
-It explains every step, how every number is made, every output file, and
-what to write in a paper.
 Project page: https://github.com/peterdepaola4/PeterPiper
 
-ON A MAC (macOS 14 or newer)
-  Drag PeterPiper onto Applications (from the .dmg) and double-click it -
-  nothing else to install. The FIRST time macOS blocks it (PeterPiper is not
-  registered with Apple): click Done, open System Settings > Privacy &
-  Security, scroll down and click 'Open Anyway', then Open. After that it
-  opens with a double-click. Everything below works the same on a Mac,
-  except the .bat, the terminal window and the long-path note (Windows only).
-  External drives formatted for Windows (NTFS) can be read by a Mac but not
-  written to: PeterPiper then saves the results in 'PeterPiper results' in
-  your home folder (it asks first); the movie can stay on the drive.
-  Manual: README.html (section 3.7 for the Mac).
+FIRST: UNPACK THE ZIP
+  Windows: right-click PeterPiperV4.0.zip > Extract All...
+  Mac: double-click PeterPiperV4.0.zip (it unpacks itself).
+  Put the folder somewhere simple on this computer (not inside a cloud folder).
 
-START IT (Windows)
-  Double-click  "PeterPiperV4.0.bat".  That is the only file you ever open.
-  Users and runs from PeterPiper 1.0 and 1.1 carry over (PeterPiper data).
-  Its window shows the PeterPiper logo; the first time, it also puts a
-  PeterPiper shortcut with the logo on your Desktop, in the Start menu and in
-  this folder - use that from then on (a .bat file cannot have its own icon).
-  If PeterPiper 1.1 (or 1.0) is installed with the same packages, 1.2 uses
-  that install and opens at once. Otherwise, the first time on a computer it
-  installs itself (about 2 - 5 minutes, internet once, about 250 MB) into its
-  own folder  %USERPROFILE%\.PeterPiperV4.0 ; while it installs, a
-  "still working - ..." line every few seconds says what it is doing and about
-  how long is left. After that it opens straight away and everything runs on
-  this computer - nothing is uploaded. It installs the exact package versions PeterPiperV4.0 was tested with
-  (app\requirements.txt); if this computer cannot use them it installs
-  compatible versions instead and says so. The versions really installed are
-  listed in  %USERPROFILE%\.PeterPiperV4.0\venv\installed_versions.txt .
-  "Cannot run from inside the zip"?  Right-click the zip > Extract All... first.
-  "Python is missing"?  Install 64-bit Python 3.13 (or 3.12 / 3.11) from
-  python.org and tick "Add python.exe to PATH" on the first screen.
-  The .bat is for 64-bit Windows 10 / 11 (Mac: see above).
-  OLDER VERSIONS (1.2): if older PeterPiper versions are on the computer, the
-  start screen offers once per start to take them in: their shortcuts then
-  start 1.2, and their program files and private Python go to the Recycle Bin
-  (you can restore them from there). Your own files in their folders stay.
-  "Not now" or "Don't ask again for these" leave them as they are.
+START IT
+  Windows: double-click  PeterPiperV4.0.bat
+  Mac:     double-click  PeterPiperV4.0.command
+  That is the only file you ever open. The first time it installs what it
+  needs (about 5 minutes, internet once, about 250 MB) - keep its window open;
+  a "still working" line every few seconds says what it is doing. After that
+  it opens straight away, and everything runs on this computer (nothing is
+  uploaded). It also makes a PeterPiper shortcut: Windows - on the Desktop, in
+  the Start menu and in this folder; Mac - a PeterPiper app in your
+  Applications folder (Spotlight, Launchpad, the Dock) and on the Desktop.
+  Use that from then on.
+
+MAC: THE FIRST TIME ONLY
+  macOS may say it cannot check PeterPiperV4.0.command (it is not registered
+  with Apple). Then: right-click (or Control-click) the file > Open > Open.
+  On newer macOS: click Done, open System Settings > Privacy & Security,
+  scroll down, click "Open Anyway", then Open. After the first start macOS
+  does not ask again.
+  (Another way: open Terminal, type  bash  and a space, drag the .command file
+  into the Terminal window, press Return.)
+
+NO PYTHON ON THIS COMPUTER?
+  The launcher looks for Python 3.11 - 3.14 itself. If there is none it asks:
+    "PeterPiper needs Python 3.11+. Download it automatically now ...? [Y/n]"
+  Press Return (yes): it downloads Python with the small, official "uv" tool
+  (about 40 MB; the file is checked before it is used) into PeterPiper's own
+  folder only - nothing else on the computer changes.
+  Or answer N and install Python yourself, then start PeterPiper again:
+    Windows: https://www.python.org/downloads/windows/  - 64-bit Python 3.13,
+             tick "Add python.exe to PATH" on the first screen.
+    Mac:     https://www.python.org/downloads/macos/  - Python 3.13,
+             "macOS 64-bit universal2 installer".
+
+GOOD TO KNOW
+  - The install lives in  .PeterPiperV4.0  in your home folder (Windows:
+    %USERPROFILE%\.PeterPiperV4.0). Delete that folder to start fresh.
+  - It installs the exact package versions PeterPiper was tested with
+    (app/requirements.txt); if this computer cannot use them it installs
+    compatible versions and says so. What was really installed is listed in
+    .PeterPiperV4.0/venv/installed_versions.txt (for methods sections).
+  - Users, settings and runs from PeterPiper 1.0 - 1.2 carry over (PeterPiper
+    data). If 1.2 / 1.1 / 1.0 is installed with the same packages, 4.0 uses
+    that install and opens at once. The start screen then offers once to take
+    the older versions in: their program files and private Python go to the
+    Recycle Bin (Mac: the Trash), where you can restore them; your own files
+    stay. "Not now" / "Don't ask again for these" leave them as they are.
+  - Windows: "Cannot run from inside the zip"? Extract it first (see above).
+    A very long folder path can stop the install: use a short one.
+  - Mac: drives formatted for Windows (NTFS) can be read but not written to:
+    PeterPiper then saves the results in 'PeterPiper results' in your home
+    folder (it asks first); the movie can stay on the drive.
+  - If PeterPiper closes unexpectedly, the window shows an error report:
+    send it to whoever maintains PeterPiper.
 
 WHO IS USING IT?  (V2.9; 1.1)
   Pick your name (Enter), or type a new one and press Add user. A password is

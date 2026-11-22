@@ -13,6 +13,12 @@ __pycache__ folders, *.pyc files and git's own files (.gitignore,
 timestamp (the time of the current git commit), unix permission bits 0644
 (0755 for *.command / *.sh launchers, 0755 for folders).
 
+4.0: ONE zip for Windows AND macOS. It must hold both launchers: <APP_NAME>.bat
+(Windows line endings, CRLF) and <APP_NAME>.command (Unix line endings, LF, and
+the executable bit 0755 in the zip entry, which macOS' Archive Utility restores
+when the zip is double-clicked) - the build stops if either is missing or has
+the wrong line endings. Never shipped either: lab_paths.json, logs folders.
+
 --unzip DIR extracts the zip into DIR/<APP_NAME>/ (refuses if that folder
 already exists) and checks that every extracted file is byte-identical to the
 repository file and that nothing is missing or extra.
@@ -32,8 +38,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {".git", "dev_tests", "build", "_home", "out", "_out", "_work", "release",
-             "__pycache__"}
-SKIP_FILES = {".gitignore", ".gitattributes"}
+             "__pycache__", "logs"}
+SKIP_FILES = {".gitignore", ".gitattributes", "lab_paths.json"}
 SKIP_SUFFIXES = {".pyc", ".pyo"}
 EXEC_SUFFIXES = {".command", ".sh"}
 
@@ -99,6 +105,21 @@ def _info(name: str, mode: int, when: tuple) -> zipfile.ZipInfo:
     return zi
 
 
+def check_command(files: list) -> None:
+    """4.0: the Mac launcher is there, starts with #!/bin/bash and has LF line
+    endings only (bash cannot run a file with CR characters)."""
+    name = app_name()
+    if f"{name}.command" not in files:
+        raise SystemExit(f"{name}.command (the Mac launcher) not found in the repository root "
+                         "(or not in git)")
+    data = (REPO / f"{name}.command").read_bytes()
+    if b"\r" in data:
+        raise SystemExit(f"{name}.command must have Unix (LF) line endings only - see "
+                         ".gitattributes (*.command text eol=lf)")
+    if not data.startswith(b"#!/bin/bash\n"):
+        raise SystemExit(f"{name}.command must start with #!/bin/bash")
+
+
 def build(out_dir: Path, force: bool) -> Path:
     name = app_name()
     files = files_to_ship(report=True)
@@ -108,6 +129,7 @@ def build(out_dir: Path, force: bool) -> Path:
     data = bat.read_bytes()
     if data.count(b"\r\n") != data.count(b"\n"):
         raise SystemExit(f"{name}.bat must have Windows (CRLF) line endings only")
+    check_command(files)
     if git_tracked() is None:
         print("WARNING  git not available: every file on disk ships (check for strays)")
     out_dir.mkdir(parents=True, exist_ok=True)

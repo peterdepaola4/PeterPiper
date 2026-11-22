@@ -131,6 +131,27 @@ def _real_movie(path: str) -> None:
     ok("a real .nd2 movie opens (metadata, first and last frame)", good, info)
 
 
+def _system_check() -> None:
+    """4.0: the system is recognised and the few parts that differ by system
+    (platforms.py) answer without an error: the cloud folders it finds, the
+    long-path form of a path (Windows only), the file manager's name. Nothing is
+    changed (no shortcut is made, nothing goes to the Trash)."""
+    try:
+        from . import platforms as P
+        name = {"windows": "Windows", "mac": "macOS", "linux": "Linux"}[P.SYSTEM]
+        roots = P.cloud_roots()
+        home = str(Path.home())
+        lp = P.long_path(home)
+        good = (int(P.IS_WIN) + int(P.IS_MAC) + int(P.IS_LINUX) == 1
+                and (lp.startswith("\\\\?\\") if P.IS_WIN else lp == home))
+        info = (f"{name}; cloud folders: "
+                + (", ".join(s for s, _p in roots) if roots else "none")
+                + f"; folders open in {P.file_manager_name()}")
+    except Exception as exc:                                       # noqa: BLE001
+        good, info = False, repr(exc)
+    ok("the system is recognised (Windows / macOS) and its own parts work", good, info)
+
+
 def run(folder: Path, movie: str = "") -> int:
     from PySide6.QtWidgets import QApplication, QMessageBox
     app = QApplication.instance() or QApplication(sys.argv[:1])
@@ -142,6 +163,7 @@ def run(folder: Path, movie: str = "") -> int:
           f"Python {sys.version.split()[0]} on {sys.platform}"
           f"{' (packaged app)' if getattr(sys, 'frozen', False) else ''}", flush=True)
     _import_everything()
+    _system_check()
     if movie:
         _real_movie(movie)
 

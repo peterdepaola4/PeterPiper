@@ -10,16 +10,21 @@ result of yours is sent; the request carries only a generic User-Agent.
 What it changes (never your data: profiles, settings, run lists, saved files,
 logs and results live in "PeterPiper data" and next to your movies - outside the
 program folder - and are never touched):
-- Windows, a release of the same program folder (e.g. 1.2.0 -> 1.2.1, same
+4.0: ONE release zip (PeterPiperV<x.y>.zip) for Windows AND macOS - the same
+files, started with the .bat (Windows) or the .command (Mac). So a zip install
+updates the same way on both systems:
+- a release of the same program folder (e.g. 4.0.0 -> 4.0.1, same
   PeterPiperV4.0 and the same package list): only the program files that differ
   from the release zip are replaced; each replaced file is first copied to
   <program folder>/_update_backup/<old version>_<time>/. Nothing outside the
-  zip's own file list is touched.
-- Windows, a release with a new program folder or new packages (e.g. 1.2): the
-  release is unpacked into its own new folder next to this one (never over an
-  existing folder) - start it with its own .bat; this version stays as it is.
-- Mac: the .dmg for this Mac (Apple chip or Intel) is saved in Downloads (never
-  over an existing file) and opened.
+  zip's own file list is touched. The file permissions stored in the zip are
+  kept (the Mac launcher stays double-clickable).
+- a release with a new program folder or new packages: the release is unpacked
+  into its own new folder next to this one (never over an existing folder) -
+  start it with its own .bat / .command; this version stays as it is.
+- the self-contained Mac app (an optional .dmg): the .dmg for this Mac (Apple
+  chip or Intel) is saved in Downloads (never over an existing file) and opened;
+  a release without one: the zip is saved in Downloads and shown in Finder.
 - A developer copy (a git checkout) is never changed.
 """
 from __future__ import annotations
@@ -37,7 +42,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from . import APP_NAME, PROJECT_URL, __version__
+from . import APP_NAME, PROJECT_URL, __version__, platforms
 
 API = "https://api.github.com/repos/{repo}/releases/latest"
 TIMEOUT_S = 20
@@ -76,7 +81,7 @@ def _ssl_context():
         return _CTX
     import ssl
     ctx = ssl.create_default_context()
-    if sys.platform == "darwin":
+    if platforms.IS_MAC:
         try:
             import subprocess
             pem = subprocess.run(
@@ -140,28 +145,44 @@ def download(url: str, dest: Path, size: int = 0,
 
 # ------------------------------------------------------------------ this installation
 def program_folder() -> Path:
-    """The folder holding PeterPiperVx.y.bat and app/ (Windows zip install)."""
+    """The folder holding PeterPiperVx.y.bat / .command and app/ (a zip install)."""
     return Path(__file__).resolve().parents[2]
 
 
+def launcher_name(sysn: Optional[str] = None) -> str:
+    """4.0: the file that starts PeterPiper on this system (the same zip holds both)."""
+    return f"{APP_NAME}.command" if platforms._mac(sysn) else f"{APP_NAME}.bat"
+
+
 def kind_of_install(folder: Optional[Path] = None) -> str:
-    """'mac_app' | 'developer' (git checkout) | 'zip' (Windows/zip install) | 'unknown'."""
+    """'mac_app' (the self-contained app) | 'developer' (git checkout) | 'zip' (the
+    release zip, Windows or Mac) | 'unknown'."""
     if getattr(sys, "frozen", False):
-        return "mac_app" if sys.platform == "darwin" else "unknown"
+        return "mac_app" if platforms.IS_MAC else "unknown"
     f = folder or program_folder()
     if (f / ".git").exists():
         return "developer"
-    if (f / "app" / "peterpiper").is_dir() and any(f.glob("PeterPiperV*.bat")):
+    if (f / "app" / "peterpiper").is_dir() and (any(f.glob("PeterPiperV*.bat"))
+                                                 or any(f.glob("PeterPiperV*.command"))):
         return "zip"
     return "unknown"
 
 
-def pick_asset(rel: dict, kind: str) -> Optional[dict]:
+def _the_zip(names: List[dict]) -> Optional[dict]:
+    return next((a for a in names if re.fullmatch(r"PeterPiperV[\d.]+\.zip", a["name"])), None)
+
+
+def pick_asset(rel: dict, kind: str, machine: Optional[str] = None) -> Optional[dict]:
+    """The release file for this install. 4.0: the ONE zip for Windows and Mac
+    zip installs; the self-contained Mac app takes its .dmg (Apple chip / Intel)
+    when the release has one, else the zip (saved for the user to unpack)."""
     names = rel.get("assets", [])
     if kind == "mac_app":
-        tag = "AppleChip" if platform.machine().lower() in ("arm64", "aarch64") else "Intel"
-        return next((a for a in names if a["name"].endswith(f"-macOS-{tag}.dmg")), None)
-    return next((a for a in names if re.fullmatch(r"PeterPiperV[\d.]+\.zip", a["name"])), None)
+        m = (machine or platform.machine()).lower()
+        tag = "AppleChip" if m in ("arm64", "aarch64") else "Intel"
+        dmg = next((a for a in names if a["name"].endswith(f"-macOS-{tag}.dmg")), None)
+        return dmg or _the_zip(names)
+    return _the_zip(names)
 
 
 # ------------------------------------------------------------------ applying a zip
@@ -230,23 +251,45 @@ def apply_in_place(zpath: Path, folder: Path, p: dict) -> dict:
         if PROTECTED.search(rel):
             continue
         dst = folder / rel
-        if not str(dst.resolve()).startswith(str(folder.resolve())):
+        root = str(folder.resolve())
+        if not (str(dst.resolve()) + os.sep).startswith(root.rstrip(os.sep) + os.sep):
             continue
+        old_mode = None
         if dst.exists():
+            old_mode = dst.stat().st_mode
             b = backup / rel
             b.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dst, b)
         dst.parent.mkdir(parents=True, exist_ok=True)
         tmp = dst.with_name(dst.name + ".update-tmp")
         tmp.write_bytes(z.read(files[rel]))
+        _set_mode(tmp, files[rel], old_mode)
         os.replace(tmp, dst)
         done.append(rel)
     return {"replaced": done, "backup": str(backup) if backup.exists() else ""}
 
 
+def zip_mode(zi: zipfile.ZipInfo) -> int:
+    """The unix permission bits stored in a zip entry (0 when it has none)."""
+    return (zi.external_attr >> 16) & 0o777 if zi.create_system == 3 else 0
+
+
+def _set_mode(path: Path, zi: zipfile.ZipInfo, old_mode: Optional[int] = None) -> None:
+    """4.0 (Mac): keep a file runnable - the zip's permission bits (0755 for the
+    .command launcher), else the replaced file's own. Nothing to do on Windows."""
+    if platforms.IS_WIN:
+        return
+    mode = zip_mode(zi) or (old_mode & 0o777 if old_mode else 0)
+    if mode:
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            pass
+
+
 def unpack_new_folder(zpath: Path, folder: Path) -> Path:
     """Unpack into <parent of this folder>/<zip's top folder>; never over an existing one."""
-    top, _files = read_zip(zpath)
+    top, files = read_zip(zpath)
     dest = folder.parent / top
     if dest.exists():
         raise RuntimeError(f"A folder named {top} is already next to this one: {dest}. "
@@ -254,6 +297,8 @@ def unpack_new_folder(zpath: Path, folder: Path) -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="pp-update-", dir=folder.parent))
     try:
         zipfile.ZipFile(zpath).extractall(tmp)
+        for rel, zi in files.items():                  # 4.0: Python's unzip drops them
+            _set_mode(tmp / top / rel, zi)
         os.replace(tmp / top, dest)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

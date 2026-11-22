@@ -601,6 +601,10 @@ def parameter_table(settings, exp, track_params: Optional[Mapping] = None,
     else:
         add(sec, "Tracking rule", "each ROI on the channel it was drawn on",
             "No rules were set (V2.2 behaviour, the same as ONLY).")
+    for i, txt in enumerate(override_texts(p.get("overrides"), ch)):     # 4.0
+        add(sec, f"Cell's own tracking {i + 1}", txt,
+            "This one cell's compartment was tracked its own way (chosen in the ROI "
+            "troubleshooter); every other cell follows the rules above.")
     add(sec, "Channels measured", "every channel in every ROI",
         "The tracking rule only decides where the ROI is; every channel is measured in it.")
 
@@ -624,8 +628,8 @@ def parameter_table(settings, exp, track_params: Optional[Mapping] = None,
             continue
         add(sec, _label_with_unit(key), _fmt_param(key, p[key], ch), PARAM_DOCS[key][2])
     for key, v in p.items():                       # anything else the tracker reported
-        if key in TRACK_KEYS or key == "background" or str(key).startswith("_") \
-                or str(key).endswith("_note"):
+        if key in TRACK_KEYS or key in ("background", "overrides") or \
+                str(key).startswith("_") or str(key).endswith("_note"):
             continue
         add(sec, str(key), _fmt_param(key, v, ch), extra.get(key, "Reported by the tracker."))
 
@@ -852,6 +856,31 @@ def _hard_size_text(p: Mapping) -> str:
             f"pixels around its middle or grown by the brightest neighbouring pixels (never "
             f"into another cell or across a boundary line). In every frame, a region that fell "
             f"back to its moved outline gave up any pixel held by another cell.")
+
+
+def override_texts(v, channels: Sequence[str] = ()) -> List[str]:
+    """4.0: the per-cell overrides recorded by the tracker (params["overrides"]) in
+    plain words, e.g. 'Cell 5 nucleus: followed on GFP ONLY (chosen in the ROI
+    troubleshooter)'."""
+    if not isinstance(v, (list, tuple)) or not v:
+        return []
+    from .rules import override_text
+    out = []
+    for d in v:
+        if isinstance(d, Mapping):
+            try:
+                out.append(override_text(dict(d), list(channels)))
+            except Exception:                                  # noqa: BLE001
+                out.append(str(d))
+    return out
+
+
+def _override_sentence(p: Mapping, channels: Sequence[str]) -> str:
+    t = override_texts(p.get("overrides"), channels)
+    if not t:
+        return ""
+    return (" Single cells were tracked their own way where the general rule did not follow "
+            "them well (chosen by eye in the ROI troubleshooter): " + "; ".join(t) + ".")
 
 
 def _boundary_text(p: Mapping) -> str:
@@ -1146,6 +1175,7 @@ def methods_text(settings, exp, track_params: Optional[Mapping] = None,
         f"so every timepoint was outlined by one method."
         + (_hard_size_text(p) if p.get("size_limits") is not None else "")
         + _boundary_text(p)
+        + _override_sentence(p, ch)
         + (" Cytoplasm ROIs were followed as whole cells, and the same timepoint's nucleus ROI "
            "(widened by 0.5 µm) was removed." if "cytoplasm" in comps else "")
         + (f" Mitochondria ROIs were followed as their outline, and the mitochondria inside "

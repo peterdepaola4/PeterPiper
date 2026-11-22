@@ -35,6 +35,11 @@ class ImageSource:
     def plane(self, t: int, c: int) -> np.ndarray:
         return self.frame(t)[c]
 
+    def crop(self, t: int, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        """V4.0: (C, y1 - y0, x1 - x0) part of timepoint t (sources that can read
+        only part of a frame do so; this default reads the whole frame)."""
+        return np.ascontiguousarray(np.asarray(self.frame(t))[:, y0:y1, x0:x1])
+
     def close(self) -> None:
         pass
 
@@ -192,6 +197,52 @@ class ND2Source(ImageSource):
         if arr.ndim == 2:
             arr = arr[np.newaxis]
         return np.ascontiguousarray(arr)
+
+    def crop(self, t: int, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        """V4.0: (C, y1 - y0, x1 - x0) uint16 of timepoint t - exactly
+        frame(t)[:, y0:y1, x0:x1], but for an uncompressed file without Z only
+        those rows / columns are read from disk (the file is memory-mapped), so a
+        re-track of one cell reads a small part of each frame."""
+        t = int(np.clip(t, 0, self.n_timepoints - 1))
+        y0, y1 = max(0, int(y0)), min(self.height, int(y1))
+        x0, x1 = max(0, int(x0)), min(self.width, int(x1))
+        view = self._frame_view(t)
+        if view is None:
+            return np.ascontiguousarray(self.frame(t)[:, y0:y1, x0:x1])
+        return np.array(view[:, y0:y1, x0:x1])
+
+    def _frame_view(self, t: int) -> Optional[np.ndarray]:
+        """The memory-mapped (C, Y, X) view of timepoint t (nothing read yet), or
+        None when the file is not laid out for it (Z stacks, compressed data,
+        unusual axes) - then crop() reads the whole frame."""
+        if getattr(self, "_no_view", False):
+            return None
+        try:
+            if self._n_z != 1 or not set(self._axes) <= {"T", "P", "C"}:
+                raise ValueError("not a plain T / P / C file")
+            loops = [a for a in self._axes if a in ("T", "P")]
+            sizes = dict(self._f.sizes)
+            idx = [t if a == "T" else self.position for a in loops]
+            seq = int(np.ravel_multi_index(idx, [int(sizes[a]) for a in loops])) if loops else 0
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                v = self._f.read_frame(seq)
+            if v.ndim == 2:
+                v = v[np.newaxis]
+            if v.shape != (self.n_channels, self.height, self.width):
+                raise ValueError("unexpected frame shape")
+            if not getattr(self, "_view_checked", False):   # once: the same pixels as frame()
+                full = self.frame(t)
+                ys = slice(0, self.height, max(1, self.height // 7))
+                xs = slice(0, self.width, max(1, self.width // 7))
+                if not np.array_equal(np.asarray(v)[:, ys, xs], full[:, ys, xs]):
+                    raise ValueError("memory-mapped frame differs")
+                self._view_checked = True
+            return v
+        except Exception:                                  # noqa: BLE001
+            self._no_view = True
+            return None
 
     def close(self) -> None:
         try:

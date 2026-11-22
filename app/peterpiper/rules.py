@@ -594,3 +594,131 @@ def help_guard(reg: Roi, main_only: Optional[Roi], um: float) -> Roi:
     if getattr(reg, "fit_level", None) is not None:
         out.fit_level = reg.fit_level
     return out
+
+
+# ==========================================================================
+#  V4.0: one cell's compartment tracked its own way (the ROI troubleshooter)
+# ==========================================================================
+OVERRIDE_SETTINGS = ("size_tol", "max_move_um", "mito_k")   # the settings a cell may change
+
+
+def _override_key(key) -> Optional[Tuple[str, int]]:
+    """(comp, cell index) from a key given as a tuple / list or 'comp:index'."""
+    if isinstance(key, str) and ":" in key:
+        key = key.split(":", 1)
+    try:
+        comp, k = key
+        comp, k = str(comp), int(k)
+    except (TypeError, ValueError):
+        return None
+    return (comp, k) if comp in COMPS and k >= 0 else None
+
+
+def complete_overrides(overrides, channels: Sequence[str], n_cells: Optional[int] = None
+                       ) -> Dict[Tuple[str, int], dict]:
+    """
+    Per-cell overrides as the tracker uses them: {(comp, cell index): {"rule":
+    TrackRule or None (the compartment's own rule), "settings": {name: float},
+    "why": text}}. Accepts that form with rules as TrackRule or rule dicts
+    (channel names / indices), or the saved list (overrides_to_list). A rule
+    that does not fit these channels is dropped (never changed into another
+    method); an override left with neither rule nor settings is dropped.
+    """
+    items = []
+    if isinstance(overrides, dict):
+        items = [(_override_key(k), v) for k, v in overrides.items()]
+    elif isinstance(overrides, (list, tuple)):
+        for d in overrides:
+            if isinstance(d, dict):
+                try:
+                    items.append(((str(d.get("comp")), int(d.get("cell")) - 1), d))
+                except (TypeError, ValueError):
+                    continue
+    out: Dict[Tuple[str, int], dict] = {}
+    C = len(channels or [])
+    for key, v in items:
+        if key is None or not isinstance(v, dict) or key[0] not in COMPS or key[1] < 0:
+            continue
+        if n_cells is not None and key[1] >= n_cells:
+            continue
+        r = v.get("rule")
+        if isinstance(r, dict):
+            r = TrackRule.from_dict(dict(r, comp=key[0]), channels)
+        if isinstance(r, TrackRule):
+            r = TrackRule(key[0], int(r.a), str(r.mode or "only").lower(), int(r.b),
+                          tuple(int(h) for h in (r.helpers or ())))
+            m = r.effective_mode()
+            if not (0 <= r.a < C) or (m in MODES and m != "only" and not (0 <= r.b < C)) \
+                    or (m == HELP and not all(0 <= h < C for h in r.helper_list())):
+                r = None
+        else:
+            r = None
+        st = {}
+        for name, val in (v.get("settings") or {}).items():
+            if name in OVERRIDE_SETTINGS:
+                try:
+                    f = float(val)
+                except (TypeError, ValueError):
+                    continue
+                if np.isfinite(f) and f >= 0:
+                    st[name] = f
+        if r is None and not st:
+            continue
+        out[key] = {"rule": r, "settings": st, "why": str(v.get("why") or "")}
+    return out
+
+
+def overrides_to_list(overrides, channels: Sequence[str]) -> List[dict]:
+    """JSON-ready: [{"comp", "cell" (1-based), "rule": rule dict or None,
+    "settings", "why"}] (saved in ROI / session files)."""
+    out = []
+    for (c, k), o in sorted(complete_overrides(overrides, channels).items(),
+                            key=lambda kv: (kv[0][1], COMPS.index(kv[0][0]))):
+        r = o.get("rule")
+        out.append({"comp": c, "cell": int(k) + 1,
+                    "rule": r.to_dict(channels) if r is not None else None,
+                    "settings": dict(o.get("settings") or {}), "why": o.get("why", "")})
+    return out
+
+
+def override_text(d: dict, channels: Sequence[str] = ()) -> str:
+    """One override in plain words, e.g. 'Cell 5 nucleus: followed on GFP ONLY;
+    size within 15 % (chosen in the ROI troubleshooter)'. d: an overrides_to_list
+    item (channel names) or a complete_overrides value with "comp" / "cell"."""
+    comp = str(d.get("comp", ""))
+    what = LABELS.get(comp, comp).lower()
+    bits = []
+    r = d.get("rule")
+    if isinstance(r, dict):
+        r = TrackRule.from_dict(dict(r, comp=comp), channels) if channels else None
+        if r is None and isinstance(d.get("rule"), dict):        # names only: say them
+            rd = d["rule"]
+            m = str(rd.get("mode", "only")).lower()
+            hs = rd.get("helpers") or []
+            if m == HELP and hs:
+                bits.append(f"followed on {rd.get('a')}, helped by " + " + ".join(map(str, hs)))
+            elif m in ("and", "with", "if") and rd.get("b"):
+                bits.append(f"followed on {rd.get('a')} {MODE_LABELS[m]} {rd.get('b')}")
+            else:
+                bits.append(f"followed on {rd.get('a')} ONLY")
+    if isinstance(r, TrackRule):
+        m = r.effective_mode()
+        a = _name(channels, r.a)
+        if m == HELP:
+            bits.append(f"followed on {a}, helped by "
+                        + " + ".join(_name(channels, h) for h in r.helper_list()))
+        elif m == "only":
+            bits.append(f"followed on {a} ONLY")
+        else:
+            bits.append(f"followed on {a} {MODE_LABELS[m]} {_name(channels, r.b)}")
+    st = d.get("settings") or {}
+    if "size_tol" in st:
+        bits.append(f"size within {float(st['size_tol']):.0%} of the drawn size")
+    if "max_move_um" in st:
+        bits.append(f"moves of up to {float(st['max_move_um']):g} µm per timepoint")
+    if "mito_k" in st:
+        bits.append(f"mitochondria threshold {float(st['mito_k']):g} x noise")
+    why = str(d.get("why") or "").strip() or "chosen in the ROI troubleshooter"
+    cell = d.get("cell")
+    head = f"Cell {cell} {what}" if cell is not None else what.capitalize()
+    return f"{head}: {'; '.join(bits) or 'its own settings'} ({why})"

@@ -8,8 +8,9 @@ The start screen (PeterPiper 1.1): a few big choices -
 - then the chosen movie with the two numbers every size and time depends on
 (pixel size, frame interval), its stage position and channel names and where
 the results go; your recent analyses (open one again in the analysis window, or
-its results folder) and the queue; and a row of small links (Saved files,
-Storage & cloud, More, text size, theme). It fits a 1366 x 768 screen without
+its results folder) and the queue; 4.0: the lab folder & backup (a third tab:
+gui/serverpanel.py - connect, options, backups); and a row of small links (Saved
+files, Storage & cloud, More, the background tasks, text size, theme). It fits a 1366 x 768 screen without
 scroll bars and opens maximized (app.py).
 
 Everything about WHAT to find and measure is set in the analysis window, next
@@ -468,6 +469,11 @@ class SetupDialog(QDialog):
         self._show_movie(False)
         self._refresh_queue()
         self._fill_recent()
+        try:                                       # 4.0: fetch progress in the queue list
+            from .. import tasks as _T
+            _T.qt_bridge().changed.connect(self._queue_fetch_changed)
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _fit_to_screen(self) -> None:
         """Large: the whole screen at most (app.py also maximizes it)."""
@@ -698,7 +704,36 @@ class SetupDialog(QDialog):
             b.setAutoDefault(False)
         ql.addWidget(W.row(self.btn_q_open, self.btn_q_remove, self.btn_q_clear))
         self.tabs.addTab(q, "Queue")
+        # 4.0: the lab folder & backup live here (not in the analysis window / Compare)
+        self.server_panel = _server_panel(self)
+        if self.server_panel is not None:
+            self.tabs.addTab(self.server_panel, "Lab folder && backup")
+            self.server_panel.changed.connect(self._server_changed)
+            self.tabs.setTabToolTip(2, "Your lab's shared folder: connect, the options for "
+                                       "copying there automatically, backups.")
         return self.tabs
+
+    def _server_changed(self) -> None:
+        """4.0: the lab folder tab shows a coloured dot for the lab folder line."""
+        p = self.server_panel
+        if p is None:
+            return
+        from PySide6.QtGui import QColor, QIcon, QPixmap
+        from . import theme as TH
+        t = TH.current()
+        col = {"green": t.ok, "amber": t.warn, "red": t.danger}.get(p.level(), "")
+        if not col:
+            self.tabs.setTabIcon(2, QIcon())
+            return
+        pm = QPixmap(12, 12)
+        pm.fill(Qt.transparent)
+        pa = QPainter(pm)
+        pa.setRenderHint(QPainter.Antialiasing, True)
+        pa.setPen(Qt.NoPen)
+        pa.setBrush(QColor(col))
+        pa.drawEllipse(1, 1, 10, 10)
+        pa.end()
+        self.tabs.setTabIcon(2, QIcon(pm))
 
     def _build_footer(self) -> QWidget:
         w = QWidget()
@@ -743,6 +778,9 @@ class SetupDialog(QDialog):
         self.btn_more.setMenu(menu)
         lay.addWidget(self.btn_more)
         lay.addStretch(1)
+        self.task_status = _task_status(self)       # 4.0: what runs in the background
+        if self.task_status is not None:
+            lay.addWidget(self.task_status)
         lay.addWidget(W.text_size_row(lambda: self.settings.ui_font_pt, self._set_text_size))
         lay.addWidget(QLabel("Theme"))
         self.cmb_theme = ThemeCombo(lambda: self.settings)
@@ -931,8 +969,10 @@ class SetupDialog(QDialog):
         cur = os.path.normcase(os.path.abspath(self.experiment.nd2_path)) if (
             self.experiment is not None and self.experiment.nd2_path) else None
         for i, it in enumerate(its):
+            words = STATUS_WORDS.get(it["status"], it["status"])
+            fetch = batchqueue.fetch_words(it["nd2"]) if it["status"] == "todo" else ""
             row = QTreeWidgetItem([str(i + 1), Path(it["nd2"]).name,
-                                   STATUS_WORDS.get(it["status"], it["status"])])
+                                   f"{words} · {fetch}" if fetch else words])
             row.setData(0, Qt.UserRole, it["nd2"])
             row.setToolTip(1, it["nd2"])
             if cur and os.path.normcase(os.path.abspath(it["nd2"])) == cur:
@@ -947,10 +987,28 @@ class SetupDialog(QDialog):
         for b in (self.btn_q_open, self.btn_q_remove, self.btn_q_clear):
             b.setEnabled(bool(its))
         nxt = batchqueue.next_after(None)
+        if nxt and not getattr(self, "_prefetched", False):
+            self._prefetched = True                 # 4.0: fetch it while the user looks
+            batchqueue.prefetch_next(None, 1)
         self.btn_queue.setVisible(bool(todo) and nxt is not None)
         if todo and nxt:
             self.btn_queue.set_texts(f"Continue your queue ({len(todo)} left)",
                                      f"Next: {Path(nxt).name}")
+
+    def _queue_fetch_changed(self, task) -> None:
+        """4.0: a movie of the queue being fetched - its status says how far."""
+        if task is None or task.kind not in ("fetch", "prefetch") or task.data.get("quiet"):
+            return
+        k = os.path.normcase(os.path.abspath(str(task.data.get("path") or "")))
+        for i in range(self.tree_queue.topLevelItemCount()):
+            row = self.tree_queue.topLevelItem(i)
+            nd2 = str(row.data(0, Qt.UserRole) or "")
+            if os.path.normcase(os.path.abspath(nd2)) == k:
+                st = next((it["status"] for it in batchqueue.items()
+                           if os.path.normcase(os.path.abspath(it["nd2"])) == k), "todo")
+                words = STATUS_WORDS.get(st, st)
+                fetch = batchqueue.fetch_words(nd2) if st == "todo" else ""
+                row.setText(2, f"{words} · {fetch}" if fetch else words)
 
     def _continue_queue(self) -> None:
         nxt = batchqueue.next_after(None)
@@ -1252,6 +1310,26 @@ def smart_status() -> Optional[dict]:
         from ..smartselect import status
         st = status()
         return dict(st) if isinstance(st, dict) else None
+    except Exception:                                              # noqa: BLE001
+        return None
+
+
+def _server_panel(parent):
+    """4.0: gui/serverpanel.ServerPanel, or None (that part is not there / fails)."""
+    try:
+        from .serverpanel import ServerPanel
+        return ServerPanel(parent)
+    except Exception:                                              # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def _task_status(parent):
+    """4.0: gui/taskstatus.TaskStatusButton, or None."""
+    try:
+        from .taskstatus import TaskStatusButton
+        return TaskStatusButton(parent)
     except Exception:                                              # noqa: BLE001
         return None
 

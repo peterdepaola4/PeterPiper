@@ -218,7 +218,7 @@ class UserDialog(QDialog):
         self.lbl_lab = ElideLabel("not linked")
         g.addWidget(self.lbl_lab, 1, 1)
         self.btn_lab = W.button("Lab settings...", self._lab_settings,
-                                "Admins and developers: the lab's shared PeterPiper folder, "
+                                "Admins: the lab's shared PeterPiper folder, "
                                 "the lab user list (roles, spellings, passwords) and the "
                                 "lab's data folders.")
         g.addWidget(self.btn_lab, 1, 2)
@@ -388,7 +388,7 @@ class UserDialog(QDialog):
         self.btn_lab.setEnabled(lab is not None and (users.is_admin(u) or not users.list_users()))
         self.btn_lab.setToolTip(
             "The lab's shared folder, lab user list and data folders." if self.btn_lab.isEnabled()
-            else "Only an admin or developer can change the lab settings: pick an admin's name "
+            else "Only an admin can change the lab settings: pick an admin's name "
                  "first.")
 
     # --------------------------------------------------------------- actions
@@ -992,12 +992,12 @@ class LabSettingsDialog(QDialog):
         self.btn_role = QToolButton()
         self.btn_role.setText("Role")
         self.btn_role.setPopupMode(QToolButton.InstantPopup)
-        rm = QMenu(self.btn_role)
-        for r in users.ROLES:
-            rm.addAction(users.ROLE_LABELS[r], lambda r=r: self._p_role(r))
-        self.btn_role.setMenu(rm)
-        self.btn_role.setToolTip("User, Admin or Developer (a title: the same abilities as "
-                                 "Admin). There is always at least one admin.")
+        self._role_menu = QMenu(self.btn_role)
+        self._role_menu.aboutToShow.connect(self._fill_role_menu)  # 4.0: per person
+        self._fill_role_menu()
+        self.btn_role.setMenu(self._role_menu)
+        self.btn_role.setToolTip("User or Admin. Admins can change the lab settings and "
+                                 "other people's roles. There is always at least one admin.")
         self.btn_phide = W.button("Hide / show", self._p_hide, "Hidden people are not offered "
                                   "on the lab's computers (nothing is deleted).")
         self.btn_psame = W.button("Same person as...", self._p_same, "Two entries are one "
@@ -1149,6 +1149,24 @@ class LabSettingsDialog(QDialog):
             self._run(lambda: self.lab.lab_rename(s, n), "Renamed.")
         else:
             self._run(lambda: users.rename_user(s, n), "Renamed.")
+
+    def roles_for(self, name: Optional[str]) -> List[str]:
+        """4.0: the roles offered for this person (users.roles_offered; a lab person
+        who already has a role keeps it offered)."""
+        out = users.roles_offered(name)
+        if name and self._linked():
+            p = next((p for p in self.lab.people() if p["name"] == name), None)
+            if p is not None and p["role"] not in out:
+                out.append(p["role"])
+            local = self.lab._local_match([name]) if p is not None else None
+            if local:
+                out += [r for r in users.roles_offered(local) if r not in out]
+        return [r for r in users.ROLES if r in out]
+
+    def _fill_role_menu(self) -> None:
+        self._role_menu.clear()
+        for r in self.roles_for(self._sel()):
+            self._role_menu.addAction(users.ROLE_LABELS[r], lambda r=r: self._p_role(r))
 
     def _p_role(self, r: str) -> None:
         s = self._sel()

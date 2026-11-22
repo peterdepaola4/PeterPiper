@@ -485,6 +485,23 @@ def admins() -> List[str]:
     return [u for u in list_users() if is_admin(u)]
 
 
+def roles_offered(name: Optional[str]) -> List[str]:
+    """4.0: the roles a role menu offers for this person: user and admin; the third
+    only for a person who already has it or has found a certain extra."""
+    out = ["user", "admin"]
+    if name and (role(name) == "developer" or _found_crown(name)):
+        out.append("developer")
+    return out
+
+
+def _found_crown(name: str) -> bool:
+    try:
+        from . import achievements
+        return "crown" in achievements.found_for(name)
+    except Exception:                                              # noqa: BLE001
+        return False
+
+
 def set_role(name: str, new_role: str, sync_lab: bool = True) -> None:
     """Make a user admin / developer / user. Refused (ValueError) when it would
     leave nobody admin."""

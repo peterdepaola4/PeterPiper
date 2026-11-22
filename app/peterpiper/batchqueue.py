@@ -4,6 +4,11 @@ one after another by hand - draw / check ROIs, SAVE, export, then Next movie.
 Kept per user in queue.json (userprefs), so it survives closing the app.
 
 Each item: {"nd2": path, "status": "todo" | "saved" | "exported" | "skipped"}.
+
+4.0: movies kept in the lab folder (online-only in Box Drive & co., or on a network
+drive) are fetched into a local movie cache in the background (transfers.py):
+open_path(nd2, on_ready) for the movie to open now (first in line), prefetch_next()
+for the next one while the user works, fetch_words(nd2) for the queue list.
 """
 from __future__ import annotations
 
@@ -81,17 +86,66 @@ def position(nd2: str) -> Optional[tuple]:
 
 def next_after(nd2: Optional[str] = None) -> Optional[str]:
     """The next file still to do after nd2 (wrapping round), or None."""
+    nxt = todo_after(nd2, 1)
+    return nxt[0] if nxt else None
+
+
+def todo_after(nd2: Optional[str] = None, n: int = 1) -> List[str]:
+    """The next n files still to do after nd2 (wrapping round)."""
     its = items()
     if not its:
-        return None
+        return []
     start = 0
     if nd2:
         for i, it in enumerate(its):
             if _key(it["nd2"]) == _key(nd2):
                 start = i + 1
                 break
+    out = []
     for j in range(len(its)):
         it = its[(start + j) % len(its)]
         if it["status"] == "todo" and (not nd2 or _key(it["nd2"]) != _key(nd2)):
-            return it["nd2"]
-    return None
+            out.append(it["nd2"])
+            if len(out) >= n:
+                break
+    return out
+
+
+# ------------------------------------------- 4.0: movies on the lab folder / server
+def prefetch_next(nd2: Optional[str] = None, n: int = 1) -> list:
+    """Fetch the next n movies still to do (after nd2) into the local movie cache in
+    the background, when they are on the server / online-only and the user's
+    'Fetch the next movie in the queue while I work' is on. Returns the tasks."""
+    try:
+        from . import transfers
+        return transfers.prefetch(todo_after(nd2, n))
+    except Exception:                                              # noqa: BLE001
+        return []
+
+
+def fetch_words(nd2: str) -> str:
+    """For the queue list (no disk access): '' (nothing known / on this computer),
+    'fetching 45%', 'ready here', 'fetch failed'."""
+    try:
+        from . import transfers
+        st = transfers.fetch_state(nd2)
+    except Exception:                                              # noqa: BLE001
+        return ""
+    if st["state"] == "fetching":
+        p = st.get("progress")
+        return "fetching" + (f" {100 * p:.0f}%" if p is not None else "...")
+    if st["state"] == "ready":
+        return "ready here"
+    if st["state"] == "failed":
+        return "fetch failed"
+    return ""
+
+
+def open_path(nd2: str, on_ready=None, center=None):
+    """'Next movie' / Open on a queued movie: the fetch task whose result is the
+    path to open (the cached copy, or the movie itself when it is on this computer
+    already) - on_ready(task) is called when it is there. Never blocks."""
+    from . import transfers
+    t = transfers.fetch_movie(nd2, center=center, on_done=on_ready, priority=0)
+    prefetch_next(nd2, 1)
+    return t

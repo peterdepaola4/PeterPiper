@@ -45,6 +45,30 @@ read-only lab folder is read only (the window says so).
 
 The link is per COMPUTER, in <PeterPiper data>/users.json ("lab"), not per user;
 so are the computer's own data folders when no lab is linked ("data_folders").
+
+4.0 - the lab folder made obvious (one concept: this same lab folder):
+    <lab folder>/.peterpiper-lab.json             marker: lab name, layout version,
+                                                  created by / when, where things are
+    <lab folder>/READ ME - PeterPiper lab folder.txt
+    <lab folder>/People/<person>/Results|Exports|Backups|Movies
+    <lab folder>/Shared/PeterPiper profiles|Detectors|Prism templates|Settings
+  setup_lab_folder(folder, name, by)   make that layout (someone choosing to - the
+                                       admin); an EXISTING 1.1 lab folder is adopted:
+                                       the marker records what is already there
+                                       (its 'PeterPiper profiles' stay put) - nothing
+                                       is moved or deleted.
+  find_lab_root(path)                  any folder in or below a lab -> its root
+                                       (walks up to the marker / lab list)
+  connect(path, user)                  link this computer (root stored per computer:
+                                       Windows and Mac paths differ; everything inside
+                                       is relative) and make People/<user>
+  scan_for_labs(roots)                 lab folders in the top levels of the sync apps'
+                                       folders (for a background thread)
+  person_dir(user) / lab_path(key)     where a person's / the lab's things are
+  own_folder_setup(user)               the user's results go to a folder of their own
+                                       (not People/<user>): explained, switch offered
+  health()                             reachable / writable / sync app running / disk
+                                       space -> Health(level, text, fix)
 """
 from __future__ import annotations
 
@@ -120,8 +144,9 @@ def writable(folder) -> bool:
 
 
 def is_lab_folder(folder) -> bool:
+    """A lab folder: it holds the lab user list (1.1) or the 4.0 marker file."""
     try:
-        return (Path(folder) / LAB_FILE).is_file()
+        return (Path(folder) / LAB_FILE).is_file() or (Path(folder) / MARKER).is_file()
     except OSError:
         return False
 
@@ -351,7 +376,7 @@ def profile_target(local: str) -> Optional[Tuple[str, Path, bool]]:
     lab_name = _bound_name(local)
     if not lab_name:
         return None
-    target = Path(folder) / PROFILES_DIR / (users.EXPORT_ROOT + users.folder_name(lab_name))
+    target = lab_path("profiles", folder) / (users.EXPORT_ROOT + users.folder_name(lab_name))
     return folder, target, not link_info().get("readonly")
 
 
@@ -451,7 +476,7 @@ def create_lab(folder, include: List[str], admin: Optional[str]) -> List[str]:
     data["people"] = _fold(data["people"])
     if not write_list(f, data):
         raise ValueError("The lab list could not be written there.")
-    (f / PROFILES_DIR).mkdir(exist_ok=True)
+    lab_path("profiles", f).mkdir(parents=True, exist_ok=True)
     _set_link(folder=str(f), last=_now(), readonly=False, note="")
     for u in list(include) + ([admin] if admin and admin not in include else []):
         _bind(u, u)
@@ -475,8 +500,8 @@ def link(folder, include: Optional[List[str]] = None) -> List[str]:
     alias). The list is then applied here. Returns notes."""
     f = Path(folder)
     if not is_lab_folder(f):
-        raise ValueError("There is no PeterPiper lab list in this folder (choose the folder "
-                         f"that holds '{LAB_FILE}', or Create a lab folder here).")
+        raise ValueError("This is not a PeterPiper lab folder (choose the lab's PeterPiper "
+                         "folder - ask whoever set it up - or set one up).")
     ro = not writable(f)
     _set_link(folder=str(f), readonly=ro, note="")
     notes = []
@@ -815,3 +840,521 @@ def remove_data_folder(path: str) -> None:
     d["data_folders"] = [e for e in d.get("data_folders") or []
                          if isinstance(e, dict) and _path_key(e.get("path", "")) != _path_key(path)]
     users._save(d)
+
+
+# =========================================================== 4.0: the layout
+MARKER = ".peterpiper-lab.json"
+MARKER_KIND = "PeterPiper lab folder"
+LAYOUT_VERSION = 1
+README = "READ ME - PeterPiper lab folder.txt"
+PEOPLE_DIR = "People"
+SHARED_DIR = "Shared"
+PERSON_PARTS = ("Results", "Exports", "Backups", "Movies")
+NEW_PATHS = {"people": PEOPLE_DIR, "shared": SHARED_DIR,
+             "profiles": f"{SHARED_DIR}/PeterPiper profiles",
+             "detectors": f"{SHARED_DIR}/Detectors",
+             "templates": f"{SHARED_DIR}/Prism templates",
+             "settings": f"{SHARED_DIR}/Settings"}
+# where things are in a lab folder WITHOUT a marker (a 1.1 lab folder)
+OLD_PATHS = dict(NEW_PATHS, profiles=PROFILES_DIR)
+WALK_UP = 30                       # find_lab_root: at most this many folders up
+TEST_HOOKS: Dict[str, object] = {}     # "processes": [names]; "free": bytes (tests)
+
+README_TEXT = """PeterPiper lab folder
+=====================
+
+This is the lab's shared PeterPiper folder. Your sync app (Box Drive, OneDrive,
+Google Drive, Dropbox ...) or the network drive carries it to every lab computer.
+
+  People/<name>/      each person's own things:
+      Results/        saves and autosaves (copied here automatically)
+      Exports/        Excel, Prism, CSV and pictures
+      Backups/        a backup of your PeterPiper profile, settings and run list
+      Movies/         analysed .nd2 movies (only if you switched that on)
+  Shared/             the lab's shared profiles, detectors, Prism templates, settings
+
+To connect a computer: in PeterPiper's start window, "Lab folder & backup" ->
+"Connect..." and pick THIS folder (or any folder inside it). PeterPiper makes
+People/<your name> for you.
+
+Please do not rename or move the hidden file .peterpiper-lab.json - it tells
+PeterPiper that this is the lab folder. PeterPiper never deletes anything here.
+"""
+
+
+def _now_s() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def read_marker(folder) -> Optional[dict]:
+    """The marker in `folder` ({kind, layout, lab_name, created_by, created, paths,
+    ...}) or None."""
+    try:
+        d = json.loads((Path(folder) / MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict) or d.get("kind") != MARKER_KIND:
+        return None
+    return d
+
+
+def _write_json(p: Path, data: dict) -> None:
+    tmp = p.with_name(f".{p.name}.{secrets.token_hex(3)}.pp-tmp")
+    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def lab_path(key: str, folder=None) -> Path:
+    """Where `key` ("people", "shared", "profiles", "detectors", "templates",
+    "settings") is in the lab folder (the linked one by default): from the marker,
+    else where 1.1 kept it."""
+    f = Path(folder or linked_folder() or ".")
+    m = read_marker(f)
+    paths = dict(OLD_PATHS)
+    if m is not None and isinstance(m.get("paths"), dict):
+        paths.update({k: str(v) for k, v in m["paths"].items() if isinstance(v, str)})
+    rel = paths.get(key, key)
+    return f.joinpath(*[p for p in rel.replace("\\", "/").split("/") if p])
+
+
+def lab_name(folder=None) -> str:
+    folder = folder or linked_folder()
+    if not folder:
+        return ""
+    m = read_marker(folder) or {}
+    return str(m.get("lab_name") or Path(str(folder)).name)
+
+
+def _existing(f: Path) -> dict:
+    """What is already in a folder that becomes (or already was) a lab folder: its
+    1.1 profiles folder, and top-level folders that look like a person's own
+    (named like someone on the lab list or a user here) - recorded, never moved."""
+    out: Dict[str, object] = {}
+    if (f / PROFILES_DIR).is_dir():
+        out["profiles"] = PROFILES_DIR
+    names = {}
+    try:
+        for e in read_list(f)["people"]:
+            for n in [e["name"]] + e["aliases"]:
+                names[n.lower()] = e["name"]
+    except Exception:                                           # noqa: BLE001
+        pass
+    try:
+        for u in users.all_users():
+            names.setdefault(u.lower(), u)
+            for a in users.aliases_of(u):
+                names.setdefault(a.lower(), u)
+    except Exception:                                           # noqa: BLE001
+        pass
+    own = {}
+    try:
+        for e in sorted(f.iterdir()):
+            if not e.is_dir() or e.name.startswith(".") or e.name in (PEOPLE_DIR, SHARED_DIR,
+                                                                       PROFILES_DIR):
+                continue
+            low = e.name.lower()
+            for n, person in names.items():
+                first = n.split()[0] if n.split() else n
+                if low == n or low.startswith(n + " ") or low == first \
+                        or low.startswith(first + " "):
+                    own[person] = e.name
+                    break
+    except OSError:
+        pass
+    if own:
+        out["people"] = own
+    return out
+
+
+def setup_lab_folder(folder, name: str = "", created_by: str = "") -> dict:
+    """'Set up a lab folder': the recommended layout in `folder` (made if needed) -
+    the marker, People/, Shared/ and the READ ME. A folder that already is a 1.1
+    lab folder (or has the lab's 'PeterPiper profiles') is ADOPTED: the marker
+    records what is there and where (its profiles stay where they are) - nothing is
+    moved, renamed or deleted; folders already there are left alone. A folder that
+    already has a marker is left as it is. Returns {"root", "adopted", "already",
+    "made": [relative folders made]}. ValueError when the folder cannot be written."""
+    f = Path(folder)
+    try:
+        f.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(f"The folder could not be made: {exc}") from exc
+    if not writable(f):
+        raise ValueError("This folder cannot be written - choose another one.")
+    old = read_marker(f)
+    if old is not None:
+        return {"root": str(f), "adopted": bool(old.get("adopted")), "already": True,
+                "made": []}
+    adopted = (f / LAB_FILE).is_file() or (f / PROFILES_DIR).is_dir()
+    paths = dict(NEW_PATHS)
+    if (f / PROFILES_DIR).is_dir():
+        paths["profiles"] = PROFILES_DIR
+    marker = {"kind": MARKER_KIND, "layout": LAYOUT_VERSION,
+              "lab_name": users.clean_name(name) or f.name,
+              "created_by": users.clean_name(created_by), "created": _now_s(),
+              "adopted": adopted, "paths": paths, "existing": _existing(f)}
+    made = []
+    for key in ("people", "shared", "profiles", "detectors", "templates", "settings"):
+        p = f.joinpath(*paths[key].split("/"))
+        if not p.is_dir():
+            p.mkdir(parents=True, exist_ok=True)
+            made.append(paths[key])
+    rd = f / README
+    if not rd.exists():
+        rd.write_text(README_TEXT.replace("\n", os.linesep if os.name == "nt" else "\n"),
+                      encoding="utf-8")
+    _write_json(f / MARKER, marker)
+    return {"root": str(f), "adopted": adopted, "already": False, "made": made}
+
+
+def find_lab_root(path) -> Optional[Tuple[str, bool]]:
+    """(lab root, has the 4.0 marker) for any folder (or file) in or below a lab
+    folder: walks up to the nearest marker; a 1.1 lab folder (lab list, no
+    marker) counts when no marker is found above it. None: not in a lab folder."""
+    try:
+        p = Path(os.path.abspath(str(path)))
+    except (OSError, ValueError):
+        return None
+    if p.is_file():
+        p = p.parent
+    old = None
+    for q in [p, *list(p.parents)[:WALK_UP]]:
+        try:
+            if (q / MARKER).is_file() and read_marker(q) is not None:
+                return str(q), True
+            if old is None and (q / LAB_FILE).is_file():
+                old = str(q)
+        except OSError:
+            continue
+    return (old, False) if old else None
+
+
+def person_dir(user: Optional[str] = None, folder=None, create: bool = False) -> Optional[Path]:
+    """<lab>/People/<person> (the lab-list spelling of `user`, default the current
+    user); with create, it and its Results / Exports / Backups / Movies are made.
+    None when no lab folder is linked or no user."""
+    folder = folder or linked_folder()
+    user = user or users.current()
+    if not folder or not user:
+        return None
+    name = _bound_name(user) or user
+    p = lab_path("people", folder) / users.folder_name(name)
+    if create:
+        for part in PERSON_PARTS:
+            (p / part).mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def connect(path, user: Optional[str] = None, make_person: bool = True,
+            adopt: bool = True) -> dict:
+    """'Connect...': `path` is any folder in or below the lab folder. Walks up to
+    the lab root, adopts a 1.1 lab folder (marker written, nothing moved - only
+    when `adopt` and it can be written), links this computer to it (the root is
+    stored for this computer only), adds `user` to the lab list and - with
+    make_person - makes People/<user>. Returns {"root", "notes", "person",
+    "adopted", "readonly"}. ValueError when `path` is not in a lab folder."""
+    found = find_lab_root(path)
+    if found is None:
+        raise ValueError("There is no PeterPiper lab folder here or in a folder above it. "
+                         "Pick the lab's PeterPiper folder (ask whoever set it up), or set "
+                         "one up.")
+    root, has_marker = found
+    ro = not writable(root)
+    adopted = False
+    if not has_marker and adopt and not ro:
+        setup_lab_folder(root, created_by=user or "")
+        adopted = True
+    user = user or users.current()
+    notes = link(root, include=[user] if user else None)
+    person = None
+    if make_person and user and not ro:
+        try:
+            person = str(person_dir(user, root, create=True))
+        except OSError as exc:
+            notes.append(f"your folder could not be made: {exc}")
+    return {"root": root, "notes": notes, "person": person, "adopted": adopted,
+            "readonly": ro}
+
+
+def _norm(p) -> str:
+    return os.path.normcase(os.path.abspath(str(p))).rstrip("\\/")
+
+
+def _inside(a, b) -> bool:
+    a, b = _norm(a), _norm(b)
+    return a == b or a.startswith(b + os.sep)
+
+
+def own_folder_setup(user: Optional[str] = None) -> Optional[dict]:
+    """The user's results go to a folder of their own (cloud.results_root) while a
+    lab folder is linked - e.g. 'Peter' made inside the lab folder, or 'Peter
+    ONLINE' elsewhere in the cloud: {"current", "suggested" (People/<user>/Results),
+    "inside" (the own folder is inside the lab folder)}. None when the results
+    already go to People/<user> (or nothing is set, or no lab is linked)."""
+    user = user or users.current()
+    folder = linked_folder()
+    if not user or not folder:
+        return None
+    try:
+        from . import cloud
+        cur = cloud.results_root()
+    except Exception:                                           # noqa: BLE001
+        return None
+    pd = person_dir(user, folder)
+    if not cur or pd is None or _inside(cur, pd):
+        return None
+    return {"current": cur, "suggested": str(pd / "Results"),
+            "inside": _inside(cur, folder)}
+
+
+def use_lab_results(user: Optional[str] = None) -> str:
+    """Results from now on go to People/<user>/Results (made). Nothing already
+    saved is moved. Returns the folder."""
+    pd = person_dir(user, create=True)
+    if pd is None:
+        raise ValueError("No lab folder is connected.")
+    from . import cloud
+    target = str(pd / "Results")
+    cloud.set_results_root(target)
+    return target
+
+
+# ------------------------------------------------------- finding lab folders
+def _cloud_roots() -> List[Tuple[str, str]]:
+    try:
+        from .platforms import cloud_roots                      # the "launch" part
+        return [(str(s), str(p)) for s, p in cloud_roots()]
+    except ImportError:
+        from .cloud import cloud_roots_fallback
+        return cloud_roots_fallback()
+
+
+def scan_for_labs(roots: Optional[List[Tuple[str, str]]] = None, depth: int = 3,
+                  budget_s: float = 10.0, cancelled=None, found=None) -> List[dict]:
+    """Lab folders in the top `depth` levels of each sync app's folder: [{"root",
+    "name", "service", "marker" (bool)}]. Reads folder listings only (no file is
+    opened except a marker found); at most budget_s seconds per sync folder; a lab
+    folder is not searched further. found(entry) is called for each as it is found.
+    For a background thread (a folder listing in Box Drive can take a moment)."""
+    roots = _cloud_roots() if roots is None else roots
+    out: List[dict] = []
+    seen = set()
+    for service, top in roots:
+        t0 = time.monotonic()
+        level = [Path(top)]
+        for d in range(depth + 1):
+            nxt = []
+            for p in level:
+                if cancelled is not None and cancelled():
+                    return out
+                if time.monotonic() - t0 > budget_s:
+                    nxt = []
+                    break
+                try:
+                    names = os.listdir(p)
+                except OSError:
+                    continue
+                if MARKER in names or LAB_FILE in names:
+                    k = _norm(p)
+                    if k not in seen:
+                        seen.add(k)
+                        m = read_marker(p) if MARKER in names else None
+                        e = {"root": str(p), "name": str((m or {}).get("lab_name") or p.name),
+                             "service": service, "marker": m is not None}
+                        out.append(e)
+                        if found is not None:
+                            found(e)
+                    continue
+                if d == depth or len(names) > 400:
+                    continue
+                for n in sorted(names):
+                    if n.startswith((".", "$", "~")) or n.upper().startswith("OUTPUT_") \
+                            or n.lower().endswith((".nd2", ".tif", ".tiff", ".xlsx", ".zip")):
+                        continue
+                    q = p / n
+                    try:
+                        if q.is_dir():
+                            nxt.append(q)
+                    except OSError:
+                        pass
+            level = nxt
+    return out
+
+
+# ------------------------------------------------------------------ health
+SYNC_APPS = {"Box": ("box.exe", "box", "box drive"),
+             "OneDrive": ("onedrive.exe", "onedrive"),
+             "Google Drive": ("googledrivefs.exe", "google drive"),
+             "Dropbox": ("dropbox.exe", "dropbox"),
+             "iCloud Drive": ("icloudrive.exe", "iclouddrive.exe", "bird"),
+             "Nextcloud": ("nextcloud.exe", "nextcloud"),
+             "ownCloud": ("owncloud.exe", "owncloud"),
+             "pCloud": ("pcloud.exe", "pcloud"),
+             "MEGA": ("megasync.exe", "megasync"),
+             "Egnyte": ("egnytedrive.exe", "egnyte drive", "egnytedrive")}
+_proc_cache: Dict[str, object] = {"t": 0.0, "names": None}
+
+
+def _process_names() -> Optional[List[str]]:
+    """The names of the running programs (lower case), or None when that cannot be
+    told. A read-only look (tasklist / ps), at most every 30 s."""
+    if "processes" in TEST_HOOKS:
+        return [str(n).lower() for n in TEST_HOOKS["processes"]]      # type: ignore[union-attr]
+    if time.monotonic() - float(_proc_cache["t"]) < 30 and _proc_cache["names"] is not None:
+        return list(_proc_cache["names"])                              # type: ignore[arg-type]
+    import subprocess
+    names: Optional[List[str]] = None
+    try:
+        if os.name == "nt":
+            r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True,   # noqa: S603,S607
+                               text=True, timeout=5,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            names = [ln.split('","')[0].strip('"').lower() for ln in r.stdout.splitlines()
+                     if ln.strip()]
+        else:
+            r = subprocess.run(["ps", "-axco", "command"], capture_output=True, text=True,  # noqa: S603,S607
+                               timeout=5)
+            names = [ln.strip().lower() for ln in r.stdout.splitlines()[1:] if ln.strip()]
+    except Exception:                                           # noqa: BLE001
+        names = None
+    _proc_cache.update(t=time.monotonic(), names=names)
+    return names
+
+
+def sync_app_running(service: str) -> Optional[bool]:
+    """Is the sync app of `service` ("Box", "OneDrive" ...) running? None: not known
+    (a network drive, an unknown app, or the program list cannot be read)."""
+    want = SYNC_APPS.get(service)
+    if not want:
+        return None
+    names = _process_names()
+    if names is None:
+        return None
+    return any(n in want for n in names)
+
+
+class Health:
+    """level: "green" | "amber" | "red" | "grey" (not connected); text: one line;
+    fix: what to do, in plain words ('' when nothing); details: more lines."""
+
+    def __init__(self, level: str, text: str, fix: str = "", details=()) -> None:
+        self.level, self.text, self.fix, self.details = level, text, fix, list(details)
+
+    def __repr__(self) -> str:
+        return f"Health({self.level!r}, {self.text!r})"
+
+
+FREE_RED = 5e9            # bytes: below this the disk is called nearly full
+FREE_AMBER = 20e9
+
+
+def _gb(n: float) -> str:
+    return f"{n / 1e9:.0f} GB" if n >= 10e9 else f"{n / 1e9:.1f} GB"
+
+
+def health(folder=None, cache_folder=None) -> Health:
+    """Is the lab folder usable now? Reachable, can be written, its sync app running,
+    enough free disk space here (the movie cache's drive), when another computer
+    last changed something. Never raises; may take a moment (for a thread)."""
+    folder = folder or linked_folder()
+    if not folder:
+        return Health("grey", "Not connected to a lab folder.",
+                      "Press Connect... and pick the lab's PeterPiper folder.")
+    service = ""
+    try:
+        from . import cloud
+        service = cloud.service_of(folder)
+    except Exception:                                           # noqa: BLE001
+        pass
+    app = {"Box": "Box Drive"}.get(service, service) or "the sync app"
+    if not os.path.isdir(folder):
+        fix = (f"Start {app} and sign in, then press Check again."
+               if service and service != "Network" else
+               "Connect to the lab's network drive (or plug in the disk), then press "
+               "Check again.")
+        return Health("red", "The lab folder cannot be reached.", fix, [str(folder)])
+    level, notes, fixes = "green", [], []
+    if not writable(folder):
+        level = "amber"
+        notes.append("read-only here")
+        fixes.append("Ask whoever set up the lab folder to give you edit rights.")
+    running = sync_app_running(service) if service and service != "Network" else None
+    if running is False:
+        level = "amber"
+        notes.append(f"{app} does not seem to be running")
+        fixes.append(f"Start {app}: until then nothing you save there is uploaded.")
+    elif running:
+        notes.append(f"{app} running")
+    try:
+        import shutil
+        free = int(TEST_HOOKS["free"]) if "free" in TEST_HOOKS else \
+            shutil.disk_usage(str(cache_folder or users.base_dir())).free
+        if free < FREE_RED:
+            level = "red"
+            notes.append(f"this computer's disk is almost full ({_gb(free)} free)")
+            fixes.append("Free some space (empty the movie cache, delete old copies), or "
+                         "choose a movie cache on another disk.")
+        elif free < FREE_AMBER:
+            level = "amber" if level == "green" else level
+            notes.append(f"only {_gb(free)} free on this computer")
+            fixes.append("Big movies need room in the movie cache - free some space soon.")
+        else:
+            notes.append(f"{_gb(free)} free")
+    except OSError:
+        pass
+    seen = last_change_elsewhere(folder)
+    details = [str(folder)]
+    if seen:
+        details.append(f"Last change from another computer: {seen}")
+    head = {"green": "Lab folder OK", "amber": "Lab folder: needs a look",
+            "red": "Lab folder: a problem"}[level]
+    return Health(level, head + (" - " + ", ".join(notes) if notes else ""),
+                  " ".join(fixes), details)
+
+
+def last_change_elsewhere(folder=None) -> str:
+    """When another computer last wrote its 'seen' note in the lab folder (a hint
+    that syncing works): 'today 14:02', '3 days ago' or ''."""
+    folder = folder or linked_folder()
+    if not folder:
+        return ""
+    me = _computer()
+    best = 0.0
+    try:
+        for p in lab_path("people", folder).glob("*/.peterpiper-seen-*.json"):
+            if p.name != f".peterpiper-seen-{me}.json":
+                try:
+                    best = max(best, p.stat().st_mtime)
+                except OSError:
+                    pass
+    except OSError:
+        return ""
+    if not best:
+        return ""
+    t = datetime.fromtimestamp(best)
+    days = (datetime.now() - t).days
+    return t.strftime("today %H:%M") if t.date() == datetime.now().date() else (
+        f"{days} day{'s' if days != 1 else ''} ago")
+
+
+def _computer() -> str:
+    import platform
+    import re
+    n = platform.node() or "computer"
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", n)[:40]
+
+
+def note_seen(user: Optional[str] = None) -> bool:
+    """Write this computer's small 'seen' note in People/<user> (at most once an
+    hour), so other computers can tell that syncing works."""
+    pd = person_dir(user)
+    if pd is None or not pd.is_dir():
+        return False
+    p = pd / f".peterpiper-seen-{_computer()}.json"
+    try:
+        if p.exists() and time.time() - p.stat().st_mtime < 3600:
+            return True
+        _write_json(p, {"computer": _computer(), "seen": _now_s()})
+        return True
+    except OSError:
+        return False

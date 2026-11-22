@@ -846,8 +846,19 @@ def copy_target(nd2_path, out_dir, root) -> Path:
     return Path(plain_path(str(root))) / _results_rel(nd2, Path(plain_path(str(out_dir))))
 
 
+def _retrying(fn, cancel=None):
+    """4.0: run a copy again when the error is one a sync app causes for a moment
+    (file locked, cloud placeholder not ready, a time-out) - transfers.retry_call."""
+    try:
+        from .transfers import retry_call
+    except Exception:                                              # noqa: BLE001
+        return fn()
+    return retry_call(fn, cancelled=lambda: _cancelled(cancel), retries=4, backoff=0.5)
+
+
 def keep_copy(nd2_path, out_dir, root=None, extra=(), progress=None,
-              cancel=None) -> BackupReport:
+              cancel=None, include: Optional[Callable[[str], bool]] = None,
+              ) -> BackupReport:
     """1.2.2: keep a second copy of this movie's results (OUTPUT_<movie>/<user>:
     autosaves, SAVEs, exports) in <root>/OUTPUT_<movie>/<user> (root: the user's
     'Also keep a copy in' folder). Only PeterPiper's own result files are copied -
@@ -856,7 +867,9 @@ def keep_copy(nd2_path, out_dir, root=None, extra=(), progress=None,
     is untouched since we wrote it (remembered in COPY_MANIFEST) - any other file
     of the same name is kept and the new copy gets _2, _3 ... `extra`: further
     folders to copy in as <copy>/<their name> (an export saved outside the results
-    folder). Never raises; runs fine in a worker thread."""
+    folder). 4.0: include(relative posix path) -> bool picks which files (None:
+    all); a copy that fails for a moment (a sync app holding the file) is tried
+    again. Never raises; runs fine in a worker thread."""
     report = BackupReport()
     root = root if root is not None else copy_root()
     if not root:
@@ -895,6 +908,8 @@ def keep_copy(nd2_path, out_dir, root=None, extra=(), progress=None,
                         continue
                     src = here / n
                     rel = (sub / src.relative_to(base)).as_posix()
+                    if include is not None and not include(rel):
+                        continue
                     try:
                         st = os.stat(long_path(src))
                     except OSError as exc:
@@ -929,13 +944,21 @@ def keep_copy(nd2_path, out_dir, root=None, extra=(), progress=None,
                 report.cancelled = True
                 break
             try:
+                start = report.bytes_copied
                 if replace:
                     tmp = dst.with_name(f"{dst.name}.peterpiper-new")
-                    final = _copy_one(src, tmp, st, report, progress, cancel)
+
+                    def one(src=src, tmp=tmp, st=st, start=start):
+                        report.bytes_copied = start
+                        return _copy_one(src, tmp, st, report, progress, cancel)
+                    final = _retrying(one, cancel)
                     os.replace(long_path(final), long_path(dst))
                     final = dst
                 else:
-                    final = _copy_one(src, dst, st, report, progress, cancel)
+                    def one(src=src, dst=dst, st=st, start=start):
+                        report.bytes_copied = start
+                        return _copy_one(src, dst, st, report, progress, cancel)
+                    final = _retrying(one, cancel)
                 if rel is not None and Path(final) == dst:
                     fst = os.stat(long_path(final))
                     man[rel] = [fst.st_size, fst.st_mtime_ns]
@@ -1008,6 +1031,17 @@ def backup_root() -> str:
 
 def set_backup_root(path, check: bool = True) -> None:
     _set("backup_root", path, check)
+
+
+def cloud_roots_fallback() -> List[Tuple[str, str]]:
+    """4.0: [(service, path)] of the sync apps' folders on this computer (no network
+    drives - they are not searched). Used when platforms.cloud_roots (the "launch"
+    part) is not there."""
+    out = []
+    for p in places():
+        if p.service != NETWORK and _isdir(p.path):
+            out.append((p.service, p.path))
+    return out
 
 
 def suggested_results_folder(place: Place) -> str:

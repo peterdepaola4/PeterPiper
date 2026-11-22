@@ -13,6 +13,18 @@ Interaction
     Polyline mode (V2.5) clicks add points of a line, double-click / right-click /
                          Enter finishes it (tracker boundary lines)
 
+4.0
+    Background candidates  set_bg_candidates(cands, current): translucent green
+                         squares 'BG 1'..'BG n' (the current one brighter) with a
+                         round '+' beside each: bg_plus_clicked(i); a click inside
+                         one: bg_region_clicked(i). The chosen background is a
+                         dashed green outline named 'Background'.
+    N x background       set_roi_badges({(comp, k): [(channel, multiple)]}, show):
+                         a small badge beside every ROI, laid out on each paint
+                         (never overlapping each other or another ROI, hidden when
+                         zoomed far out). set_roi_info(callback): hover over an ROI
+                         shows its exact numbers (bgmultiple.tooltip_html).
+
 Brightness
     One horizontal scale bar with a single handle: the handle is the white
     point. Everything right of it displays as white, and the bar itself shows
@@ -35,10 +47,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import (QBrush, QColor, QFont, QLinearGradient, QPainter,
-                           QPainterPath, QPen)
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-                               QVBoxLayout, QWidget)
+from PySide6.QtGui import (QBrush, QColor, QCursor, QFont, QFontMetricsF, QLinearGradient,
+                           QPainter, QPainterPath, QPen)
+from PySide6.QtWidgets import (QGraphicsItem, QGraphicsObject, QGraphicsRectItem, QHBoxLayout,
+                               QLabel, QPushButton, QSizePolicy, QToolTip, QVBoxLayout,
+                               QWidget)
 
 from ..segment import Roi
 
@@ -272,6 +285,183 @@ class ScaleBar(QWidget):
 
 
 # ==========================================================================
+#  4.0: background candidates ("BG 1".."BG n", a clickable "+") and the
+#  "N x background" badges of every ROI
+# ==========================================================================
+class _PlusItem(QGraphicsItem):
+    """A small round '+' drawn at a fixed screen size (it ignores the zoom), just
+    right of its region's right edge (OFF px from its position). Clicks are found
+    by ImageView._on_click (plus_at), not here."""
+
+    R = 10.0
+    OFF = R + 4.0
+
+    def __init__(self, current: bool = False) -> None:
+        super().__init__()
+        self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+        self.setAcceptedMouseButtons(Qt.NoButton)
+        self.current = current
+        self.setZValue(31)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def boundingRect(self) -> QRectF:                          # noqa: N802
+        r = self.R + 2
+        return QRectF(self.OFF - r, -r, 2 * r, 2 * r)
+
+    def centre_scene(self) -> QPointF:
+        return self.mapToScene(QPointF(self.OFF, 0.0))
+
+    def paint(self, p: QPainter, *_a) -> None:
+        p.setRenderHint(QPainter.Antialiasing)
+        p.translate(self.OFF, 0.0)
+        fill = QColor(*COL_BACK) if self.current else QColor(20, 24, 28, 220)
+        p.setPen(QPen(QColor(*COL_BACK), 1.6))
+        p.setBrush(fill)
+        p.drawEllipse(QPointF(0, 0), self.R, self.R)
+        p.setPen(QPen(QColor(10, 10, 10) if self.current else QColor(*COL_BACK), 2.2))
+        a = self.R * 0.5
+        p.drawLine(QPointF(-a, 0), QPointF(a, 0))
+        p.drawLine(QPointF(0, -a), QPointF(0, a))
+
+
+class _BadgeLayer(QGraphicsObject):
+    """All 'N x background' badges, painted in ONE item in the view box's own
+    pixel coordinates (so text stays the same size whatever the zoom). The layout
+    (where each badge goes, which are hidden) is redone on every paint: cheap,
+    and it follows zoom / pan / resize by itself."""
+
+    GAP = 4.0          # px between the ROI and its badge
+    PAD = 3.0          # px inside the pill
+    TINY = 9.0         # ROIs smaller than this on screen: badges hidden (zoomed far out)
+
+    def __init__(self, view: "ImageView") -> None:
+        super().__init__()
+        self._view = view
+        self.setAcceptedMouseButtons(Qt.NoButton)
+        self.setZValue(40)
+        self.entries: list = []        # (key, bbox, pairs_all, pairs_main, strength)
+        self.font = QFont()
+        self.font.setPointSizeF(max(7.0, self.font.pointSizeF() - 1.0))
+        self.font_b = QFont(self.font)
+        self.font_b.setBold(True)
+        self._fm = QFontMetricsF(self.font)
+        self._fmb = QFontMetricsF(self.font_b)
+        self._wcache: Dict[Tuple[str, bool], float] = {}
+        self.last_rects: List[Tuple[object, QRectF]] = []
+
+    def boundingRect(self) -> QRectF:                          # noqa: N802
+        p = self.parentItem()
+        return p.boundingRect() if p is not None else QRectF()
+
+    def width_of(self, text: str, bold: bool = False) -> float:
+        k = (text, bold)
+        w = self._wcache.get(k)
+        if w is None:
+            w = (self._fmb if bold else self._fm).horizontalAdvance(text)
+            self._wcache[k] = w
+        return w
+
+    def segments(self, pairs) -> Tuple[list, float]:
+        """[(name, value text, colour, bold, x offset)], total width."""
+        from .. import bgmultiple as BM
+        out, x = [], self.PAD
+        for i, (name, v) in enumerate(pairs):
+            if i:
+                x += self.width_of("  ")
+            lev = BM.level_of(v)
+            nm = f"{name} "
+            val = BM.fmt_multiple(v)
+            out.append((nm, val, BM.LEVEL_COLOURS[lev], lev >= 3, x))
+            x += self.width_of(nm) + self.width_of(val, lev >= 3)
+        return out, x + self.PAD
+
+    def layout(self) -> List[Tuple[object, QRectF, list]]:
+        """[(key, rect in view-box px, segments)] of the badges shown now: no two
+        overlap, none lies on another ROI (or its number above it); a badge that
+        cannot be placed next to its ROI is left out (the strongest are placed
+        first)."""
+        v = self._view
+        if v._badge_show == "off" or not self.entries:
+            return []
+        vb = v.vb
+        o = vb.mapFromView(QPointF(0.0, 0.0))
+        e = vb.mapFromView(QPointF(1.0, 1.0))
+        sx, sy = e.x() - o.x(), e.y() - o.y()
+        if sx <= 0 or sy <= 0:
+            return []
+        area = vb.boundingRect()
+        h = self._fm.height() + 2 * 1.5
+        box = np.array([b for _k, b, *_r in self.entries], float)    # y0, x0, y1, x1
+        Ls, Rs = o.x() + box[:, 1] * sx, o.x() + box[:, 3] * sx
+        Ts, Bs = o.y() + box[:, 0] * sy, o.y() + box[:, 2] * sy
+        if float(np.median(Rs - Ls)) < self.TINY:
+            return []                                       # zoomed far out
+        To = Ts - h - self.GAP                              # each ROI with its number
+        n = len(self.entries)
+        P = np.empty((n, 4))                                # placed badges: l, t, r, b
+        k_placed = 0
+        out = []
+        order = np.argsort(-np.array([e_[4] for e_ in self.entries], float), kind="stable")
+        for i in order:
+            key, _b, pairs_all, pairs_main, _s = self.entries[i]
+            L, R, T, B = Ls[i], Rs[i], Ts[i], Bs[i]
+            wpx = R - L
+            if wpx < self.TINY or R < 0 or L > area.right() or B < 0 or T > area.bottom():
+                continue
+            compact = v._badge_show == "main" or len(pairs_all) > 2 and wpx < 90 \
+                or wpx < 40
+            segs, w = self.segments(pairs_main if compact else pairs_all)
+            if not segs:
+                continue
+            cy = (T + B) / 2.0
+            tries = ((R + self.GAP, cy - h / 2),                     # right
+                     (L - self.GAP - w, cy - h / 2),                 # left
+                     ((L + R - w) / 2, B + self.GAP),                # below
+                     ((L + R - w) / 2, T - self.GAP - h - h))        # above its number
+            for (l, t) in tries:
+                r, b = l + w, t + h
+                if l < area.left() or r > area.right() or t < area.top() or b > area.bottom():
+                    continue                                 # only whole badges
+                hit = (Ls < r) & (l < Rs) & (To < b) & (t < Bs)
+                hit[i] = False
+                if hit.any():
+                    continue
+                if k_placed:
+                    q = P[:k_placed]
+                    if ((q[:, 0] < r) & (l < q[:, 2]) & (q[:, 1] < b) & (t < q[:, 3])).any():
+                        continue
+                P[k_placed] = (l, t, r, b)
+                k_placed += 1
+                out.append((key, QRectF(l, t, w, h), segs))
+                break
+        return out
+
+    def paint(self, p: QPainter, *_a) -> None:
+        from .. import bgmultiple as BM
+        rects = self.layout()
+        self.last_rects = [(k, r) for k, r, _s in rects]
+        if not rects:
+            return
+        p.setRenderHint(QPainter.Antialiasing)
+        pill = QColor(BM.BADGE_BG)
+        pill.setAlphaF(BM.BADGE_ALPHA)
+        name_col = QColor(225, 228, 232)
+        asc = self._fm.ascent()
+        for _k, r, segs in rects:
+            p.setPen(Qt.NoPen)
+            p.setBrush(pill)
+            p.drawRoundedRect(r, 4, 4)
+            base = r.top() + 1.5 + asc
+            for nm, val, col, bold, x in segs:
+                p.setFont(self.font)
+                p.setPen(name_col)
+                p.drawText(QPointF(r.left() + x, base), nm)
+                p.setFont(self.font_b if bold else self.font)
+                p.setPen(QColor(col))
+                p.drawText(QPointF(r.left() + x + self.width_of(nm), base), val)
+
+
+# ==========================================================================
 #  The canvas
 # ==========================================================================
 class ImageView(QWidget):
@@ -289,6 +479,8 @@ class ImageView(QWidget):
     stroke_done = Signal(object)                  # v2.2: a freehand line [(x, y), ...] (Split)
     lasso_done = Signal(object)                   # v2.5: a freehand outline [(x, y), ...]
     polyline_done = Signal(object)                # v2.5: a line of clicked points [(x, y), ...]
+    bg_plus_clicked = Signal(int)                 # 4.0: the '+' of background candidate i (0-based)
+    bg_region_clicked = Signal(int)               # 4.0: a click inside candidate i (not on its '+')
     status = Signal(str)
 
     def __init__(self) -> None:
@@ -349,7 +541,14 @@ class ImageView(QWidget):
         self._c_inc = curve(COL_INCLUDE, 1.4)
         self._c_exc = curve(COL_EXCLUDE, 1.2, dash=True)
         self._c_sel = curve(COL_SELECT, 2.6)
-        self._c_bak = curve(COL_BACK, 2.0)
+        self._c_bak = curve(COL_BACK, 2.2)
+        self._c_bak.setPen(pg.mkPen(QColor(*COL_BACK), width=2.2, style=Qt.DashLine))
+        self._c_bak.setZValue(13)                # 4.0: the chosen background: dashed + named
+        self._bak_label = pg.TextItem("Background", color=QColor(*COL_BACK), anchor=(0.0, 1.0),
+                                      fill=pg.mkBrush(12, 16, 20, 190))
+        self._bak_label.setZValue(32)
+        self._bak_label.setVisible(False)
+        self.vb.addItem(self._bak_label)
         self._c_draw = curve(COL_DRAW, 1.6)
         self._c_ctx = curve((170, 170, 170), 0.9, dash=True)   # other compartments, faint
         self._c_ctx.setZValue(8)
@@ -379,6 +578,21 @@ class ImageView(QWidget):
 
         self._mode = "view"              # "view" | "polygon" | "rect"
         self._points: List[tuple] = []
+
+        # 4.0: background candidates and the N x background badges / hover
+        self._bg_cands: List[Roi] = []
+        self._bg_items: list = []        # (rect item, label item, plus item) per candidate
+        self._bg_cur = 0
+        self._bg_show_all = True
+        self._badges = _BadgeLayer(self)
+        self._badges.setParentItem(self.vb)
+        self._badge_show = "all"
+        self._badge_geom: Dict[tuple, Roi] = {}
+        self._shown_comp = ""
+        self._info_cb = None
+        self._hover_key = None
+        self.vb.sigRangeChanged.connect(lambda *_a: self._badges.update())
+        self.vb.sigResized.connect(self._badges_resized)
 
         self.glw.scene().sigMouseClicked.connect(self._on_click)
         self.glw.scene().sigMouseMoved.connect(self._on_move)
@@ -510,9 +724,13 @@ class ImageView(QWidget):
     # -------------------------------------------------------------- ROIs
     def set_rois(self, rois: Sequence[Roi], background: Optional[Roi] = None,
                  selected: Optional[int] = None,
-                 colours: Optional[Dict[int, str]] = None) -> None:
+                 colours: Optional[Dict[int, str]] = None, comp: Optional[str] = None) -> None:
         """colours: {roi index: '#rrggbb'} for included cells - the same colour as
-        the cell's trace in the trace panel (others: yellow included / red dotted)."""
+        the cell's trace in the trace panel (others: yellow included / red dotted).
+        comp (4.0, optional): the compartment these ROIs are - the key the hover
+        tooltip asks set_roi_info's callback about."""
+        if comp is not None:
+            self._shown_comp = str(comp)
         self._rois = list(rois)
         self._background = background
         self._selected = selected
@@ -583,9 +801,7 @@ class ImageView(QWidget):
                 item.setData([], [])
             for t in self._labels:
                 t.setVisible(False)
-            if self._background is not None:
-                x, y = _poly_arrays([self._background])
-                self._c_bak.setData(x, y)
+            self._draw_background()
             return
         inc = [r for k, r in enumerate(self._rois) if r.include and k not in colours]
         exc = [r for r in self._rois if not r.include]
@@ -622,11 +838,7 @@ class ImageView(QWidget):
         else:
             self._c_sel.setData([], [])
 
-        if self._background is not None:
-            x, y = _poly_arrays([self._background])
-            self._c_bak.setData(x, y)
-        else:
-            self._c_bak.setData([], [])
+        self._draw_background()
 
         # The number is the cell's ID everywhere: Cell_<n> in the trace panel and
         # the files. Text items are reused (creating them is what made scrubbing slow).
@@ -661,6 +873,215 @@ class ImageView(QWidget):
                 used += 1
         for t in self._labels[used:]:
             t.setVisible(False)
+
+    def _draw_background(self) -> None:
+        """The chosen background region: a dashed green outline named 'Background'."""
+        bg = self._background
+        if bg is None or not getattr(bg, "area", 0):
+            self._c_bak.setData([], [])
+            self._bak_label.setVisible(False)
+            return
+        x, y = _poly_arrays([bg])
+        self._c_bak.setData(x, y)
+        y0, x0, _y1, _x1 = bg.bbox
+        self._bak_label.setPos(float(x0), float(y0) - 2.0)
+        self._bak_label.setVisible(True)
+
+    # ------------------------------------------- 4.0 background candidates
+    def set_bg_candidates(self, cands: Sequence, current: int = 0,
+                          show_all: Optional[bool] = None) -> None:
+        """Show proposed background regions (bgpropose.Candidate or Roi, best
+        first) as translucent green squares labelled 'BG 1'..'BG n', each with a
+        clickable '+' (bg_plus_clicked(i)); the current one is emphasised. []
+        clears them (e.g. once a background is chosen)."""
+        for it in self._bg_items:
+            for g in it:
+                self.vb.removeItem(g)
+        self._bg_items = []
+        self._bg_cands = [getattr(c, "roi", c) for c in (cands or []) if c is not None]
+        if show_all is not None:
+            self._bg_show_all = bool(show_all)
+        for i, r in enumerate(self._bg_cands):
+            y0, x0, y1, x1 = r.bbox
+            rect = QGraphicsRectItem(QRectF(float(x0), float(y0), float(x1 - x0), float(y1 - y0)))
+            rect.setZValue(14)
+            lab = pg.TextItem(f"BG {i + 1}", anchor=(0.0, 1.0), fill=pg.mkBrush(12, 16, 20, 200))
+            f = lab.textItem.font()
+            f.setBold(True)
+            lab.setFont(f)
+            lab.setZValue(30)
+            lab.setPos(float(x0), float(y0))
+            plus = _PlusItem()
+            plus.setPos(float(x1), (y0 + y1) / 2.0)
+            for g in (rect, lab, plus):
+                self.vb.addItem(g)
+            self._bg_items.append((rect, lab, plus))
+        self.set_bg_current(current)
+
+    def set_bg_current(self, i: int) -> None:
+        """Emphasise candidate i (0-based): brighter fill, solid thick outline."""
+        n = len(self._bg_cands)
+        self._bg_cur = int(np.clip(i, 0, max(0, n - 1))) if n else 0
+        for k, (rect, lab, plus) in enumerate(self._bg_items):
+            cur = k == self._bg_cur
+            vis = cur or self._bg_show_all
+            fill = QColor(*COL_BACK)
+            fill.setAlpha(50 if cur else 26)
+            pen = QPen(QColor(*COL_BACK), 2.6 if cur else 1.2)
+            pen.setCosmetic(True)
+            if not cur:
+                pen.setStyle(Qt.DotLine)
+            rect.setBrush(fill)
+            rect.setPen(pen)
+            lab.setColor(QColor(*COL_BACK) if cur else QColor(200, 240, 200))
+            plus.current = cur
+            plus.update()
+            for g in (rect, lab, plus):
+                g.setVisible(vis)
+
+    def set_bg_show_all(self, on: bool) -> None:
+        """All candidates (True) or only the current one."""
+        self._bg_show_all = bool(on)
+        self.set_bg_current(self._bg_cur)
+
+    def bg_candidates(self) -> List[Roi]:
+        return list(self._bg_cands)
+
+    def bg_current(self) -> int:
+        return self._bg_cur
+
+    def show_region(self, roi: Roi, margin: float = 2.5) -> None:
+        """Zoom / pan so this region (and some of its surroundings) fills the view."""
+        if roi is None:
+            return
+        y0, x0, y1, x1 = roi.bbox
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        half = max(x1 - x0, y1 - y0) * margin / 2.0
+        self.vb.setRange(xRange=(cx - half, cx + half), yRange=(cy - half, cy + half),
+                         padding=0)
+
+    def plus_at(self, scene_pos) -> Optional[int]:
+        """The candidate whose '+' is under this scene position (or None)."""
+        for i, (_rect, _lab, plus) in enumerate(self._bg_items):
+            if not plus.isVisible():
+                continue
+            d = plus.centre_scene() - scene_pos
+            if d.x() * d.x() + d.y() * d.y() <= (plus.R + 3) ** 2:
+                return i
+        return None
+
+    def bg_candidate_at(self, x: float, y: float) -> Optional[int]:
+        for i, r in enumerate(self._bg_cands):
+            if i < len(self._bg_items) and not self._bg_items[i][0].isVisible():
+                continue
+            y0, x0, y1, x1 = r.bbox
+            if x0 <= x < x1 and y0 <= y < y1:
+                return i
+        return None
+
+    # ------------------------------------------- 4.0 N x background badges
+    def set_roi_badges(self, badges: Dict[tuple, Sequence[Tuple[str, float]]],
+                       show: str = "all", rois: Optional[Dict[tuple, Roi]] = None,
+                       main: Optional[str] = None) -> None:
+        """
+        badges: {(comp, k): [(channel name, multiple), ...]} at the timepoint shown
+        (bgmultiple.multiples). show: 'all' (every channel; shortened to one when
+        the ROI is small on screen or there are many channels), 'main' (only
+        `main` - the channel shown in the image - else the strongest) or 'off'.
+        rois: {(comp, k): Roi} where each badge goes (kept until given again);
+        without it (comp, k) uses the k-th ROI of set_rois. Cheap: call it on
+        every timepoint change.
+        """
+        from .. import bgmultiple as BM
+        self._badge_show = show if show in ("all", "main", "off") else "all"
+        if rois is not None:
+            self._badge_geom = {k: r for k, r in rois.items() if r is not None}
+        entries = []
+        for key, pairs in (badges or {}).items():
+            r = self._badge_geom.get(key)
+            if r is None and isinstance(key, tuple) and len(key) == 2:
+                k = key[1]
+                if isinstance(k, int) and 0 <= k < len(self._rois):
+                    r = self._rois[k]
+            if r is None or not getattr(r, "area", 0):
+                continue
+            pairs = [(str(n), float(v) if v is not None else float("nan")) for n, v in pairs]
+            p_all = BM.badge_pairs(pairs, "all", main)
+            p_main = BM.badge_pairs(pairs, "main", main)
+            s = BM.strongest(pairs)
+            entries.append((key, tuple(int(v) for v in r.bbox), p_all, p_main,
+                            s[1] if s else 0.0))
+        self._badges.entries = entries
+        self._badges.update()
+
+    def badge_rects(self) -> List[Tuple[tuple, QRectF]]:
+        """(key, rect in view-box px) of the badges shown now (tests / layout)."""
+        return [(k, r) for k, r, _s in self._badges.layout()]
+
+    def _badges_resized(self, *_a) -> None:
+        self._badges.prepareGeometryChange()
+        self._badges.update()
+
+    def set_roi_info(self, callback) -> None:
+        """Hover over an ROI shows a rich tooltip: callback(comp, k) -> dict (see
+        bgmultiple.tooltip_html: cell, comp, area_um2, t, baseline_t, channels
+        [{name, mean, bg, sum, base_mean, base_bg}]) or ready HTML, or None. Asked
+        only when the mouse comes onto another ROI."""
+        self._info_cb = callback
+        self._hover_key = None
+
+    def roi_tooltip(self, comp: str, k: int) -> str:
+        """The hover text of ROI (comp, k) ('' when there is nothing to say)."""
+        if self._info_cb is None:
+            return ""
+        try:
+            info = self._info_cb(comp, k)
+        except Exception:                                          # noqa: BLE001
+            return ""
+        if not info:
+            return ""
+        if isinstance(info, str):
+            return info
+        from .. import bgmultiple as BM
+        return BM.tooltip_html(info)
+
+    def hover_key_at(self, x: float, y: float) -> Optional[tuple]:
+        """(comp, k) of the ROI under image point (x, y): the badge ROIs (smallest
+        first), else the ROIs shown (set_rois, compartment `comp`)."""
+        if self._badge_geom:
+            xi, yi = int(round(x)), int(round(y))
+            best, best_a = None, None
+            for key, r in self._badge_geom.items():
+                y0, x0, y1, x1 = r.bbox
+                if not (y0 <= yi < y1 and x0 <= xi < x1):
+                    continue
+                hit = r.outline if getattr(r, "outline", None) is not None else r.mask
+                if hit[yi - y0, xi - x0] and (best_a is None or r.area < best_a):
+                    best, best_a = key, r.area
+            if best is not None:
+                return best
+        k = self.roi_at(x, y)
+        return None if k is None else (self._shown_comp, int(k))
+
+    def _hover(self, pos) -> None:
+        if self._info_cb is None or self._mode != "view":
+            return
+        if not self.vb.sceneBoundingRect().contains(pos):
+            key = None
+        else:
+            x, y = self._scene_to_image(pos)
+            key = self.hover_key_at(x, y)
+        if key == self._hover_key:
+            return
+        self._hover_key = key
+        if key is None:
+            QToolTip.hideText()
+            return
+        txt = self.roi_tooltip(*key)
+        if txt:
+            QToolTip.showText(QCursor.pos(), txt, self.glw)
+        else:
+            QToolTip.hideText()
 
     # ------------------------------------------------------------- modes
     def start_polygon(self) -> None:
@@ -761,6 +1182,8 @@ class ImageView(QWidget):
         return float(pt.x()), float(pt.y())
 
     def _on_move(self, pos) -> None:
+        if self._mode == "view":
+            self._hover(pos)
         if self._mode in ("view", "freehand", "lasso") or not self._points:
             return
         if not self.vb.sceneBoundingRect().contains(pos):
@@ -863,6 +1286,17 @@ class ImageView(QWidget):
             return
         if ev.button() != Qt.LeftButton:
             return
+        if self._bg_items and not ev.double():
+            i = self.plus_at(ev.scenePos())          # 4.0: '+' of a background candidate
+            if i is not None:
+                self.bg_plus_clicked.emit(int(i))
+                ev.accept()
+                return
+            i = self.bg_candidate_at(x, y)
+            if i is not None and self.roi_at(x, y) is None:
+                self.bg_region_clicked.emit(int(i))
+                ev.accept()
+                return
         if not ev.double():
             self.point_clicked.emit(x, y, bool(ev.modifiers() & Qt.ShiftModifier))
         k = self.roi_at(x, y)

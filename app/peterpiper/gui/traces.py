@@ -21,6 +21,14 @@ to choose how the graph will look when it is exported.
                   cell, double-click to include / exclude it; click anywhere
                   else to jump the image to that time
     Orange line   the timepoint shown in the image (follows the slider / Play)
+    Baseline      4.0: the baseline timepoint (F0 / R0: time 0) is chosen right
+                  above the cell list (baseline_changed, 0-based); 'Undo' beside
+                  Include all / Exclude all asks the window to take back the
+                  last change (undo_requested; set_undo_enabled)
+    Fit           4.0: the plot always fits what is drawn - on every change of
+                  quantity, view, compartment, baseline, 'Mean only', 'Hide
+                  excluded' and on resize - unless you zoomed yourself (wheel,
+                  drag, Zoom box): your zoom stays until the graph changes
 
 Every value is background-subtracted. Means, SEM, SD and 95% CI come from
 graphstyle.stats - the same numbers as the exported graphs and tables.
@@ -147,6 +155,8 @@ class TracePanel(QWidget):
     style_changed = Signal(dict)             # GraphStyle.to_dict() after you changed the look
     export_requested = Signal(str)           # 'Save graph...': the quantity shown
     view_changed = Signal(str)               # VIEW_CHECK | VIEW_EXPORTED
+    baseline_changed = Signal(int)           # 4.0: the user chose this baseline (0-based)
+    undo_requested = Signal()                # 4.0: 'Undo' by the cell list
 
     def changeEvent(self, e) -> None:                               # noqa: N802
         """1.1: a theme change restyles the accent buttons (Check cells / Zoom box)."""
@@ -198,6 +208,7 @@ class TracePanel(QWidget):
         self._exp_stats: Optional[Tuple[np.ndarray, ...]] = None
         self._mean = self._lo = self._hi = self._band = None
         self._family = _qt_family()
+        self._user_zoom = False              # 4.0: True once you zoomed / panned yourself
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
@@ -247,13 +258,13 @@ class TracePanel(QWidget):
         rl.addWidget(QLabel("Show"))
         self.cmb_what = QComboBox()
         self.cmb_what.setMinimumWidth(160)
-        self.cmb_what.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.cmb_what.currentIndexChanged.connect(lambda _i: self.refresh(reset=True))
         rl.addWidget(self.cmb_what, 1)
         self.chk_hide = QCheckBox("Hide excluded")
-        self.chk_hide.toggled.connect(lambda _v: self.refresh())
+        self.chk_hide.toggled.connect(lambda _v: self.refresh(reset=True))
         rl.addWidget(self.chk_hide)
         self.chk_mean = QCheckBox("Mean only")
-        self.chk_mean.toggled.connect(lambda _v: self.refresh())
+        self.chk_mean.toggled.connect(lambda _v: self.refresh(reset=True))
         rl.addWidget(self.chk_mean)
         lay.addWidget(row)
 
@@ -273,7 +284,8 @@ class TracePanel(QWidget):
         tl.addWidget(self.btn_box)
         tl.addWidget(W.button("Reset zoom", self.reset_zoom,
                               "Show everything again (As exported: your fixed axis ranges, "
-                              "if you set any in More style...)."))
+                              "if you set any in More style...). The graph also fits by "
+                              "itself whenever you change what it shows."))
         self.lbl_hover = QLabel("")
         self.lbl_hover.setProperty("muted", True)
         # a long readout is cut at the panel's edge (full text in the tooltip): it
@@ -295,6 +307,9 @@ class TracePanel(QWidget):
         self.plot.scene().sigMouseClicked.connect(self._scene_click)
         self.vb.sigXRangeChanged.connect(lambda *_a: self._update_beam())
         self.vb.sigResized.connect(lambda *_a: self._update_beam())
+        # 4.0: your own zoom (wheel, drag, Zoom box) is kept until the graph changes
+        self.vb.sigRangeChangedManually.connect(self._zoomed_by_user)
+        self.vb.sigResized.connect(lambda *_a: self._refit_later())
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Include", "Cell", "Note"])
@@ -314,9 +329,15 @@ class TracePanel(QWidget):
         lower = QWidget()
         ll = QVBoxLayout(lower)
         ll.setContentsMargins(0, 0, 0, 0)
+        ll.addWidget(self._build_baseline_row())
         ll.addWidget(self.table, 1)
+        self.btn_undo = W.button("Undo", self.undo_requested.emit,
+                                 "Take back the last change: including / excluding cells, "
+                                 "drawing, removing or changing an ROI (Ctrl+Z).")
+        self.btn_undo.setEnabled(False)
         ll.addWidget(W.row(W.button("Include all", lambda: self.include_all.emit(True)),
-                           W.button("Exclude all", lambda: self.include_all.emit(False))))
+                           W.button("Exclude all", lambda: self.include_all.emit(False)),
+                           self.btn_undo))
         split = QSplitter(Qt.Vertical)
         split.addWidget(self.plot)
         split.addWidget(lower)
@@ -326,6 +347,63 @@ class TracePanel(QWidget):
         self._baseline_line = None
         self._sync_controls()
         self._show_view_controls()
+
+    # ======================================================== 4.0 baseline
+    def _build_baseline_row(self) -> QWidget:
+        """'Baseline timepoint [ 5 ] (?)' - right above the cell list."""
+        from PySide6.QtWidgets import QSpinBox
+        from .tips import help_button, tip
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        text = ("The baseline is the timepoint every cell is compared with: F/F0 and R/R0 "
+                "divide each timepoint by the value at the baseline (F0, R0), and time 0 "
+                "on the x axis is the baseline. Pick a timepoint just BEFORE you add "
+                "anything to the cells. The graph, the means and every export follow.")
+        lab = QLabel("Baseline timepoint")
+        tip(lab, text, "Baseline (F0)", "view_baseline")
+        lay.addWidget(lab)
+        self.sp_base = QSpinBox()
+        self.sp_base.setRange(1, 1)
+        self.sp_base.setKeyboardTracking(False)
+        self.sp_base.valueChanged.connect(self._baseline_spun)
+        tip(self.sp_base, text, "Baseline (F0)", "view_baseline")
+        lay.addWidget(self.sp_base)
+        self.lbl_base = QLabel("")
+        self.lbl_base.setProperty("muted", True)
+        lay.addWidget(self.lbl_base)
+        lay.addStretch(1)
+        lay.addWidget(help_button(text, "Baseline (F0)", "view_baseline"))
+        return w
+
+    def _baseline_spun(self, v: int) -> None:
+        b = int(v) - 1
+        if b == self._base:
+            return
+        self._base = b
+        self._base_label()
+        self.refresh(reset=True)
+        self.baseline_changed.emit(b)
+
+    def _base_label(self) -> None:
+        T = self._M.n_timepoints if self._M is not None else 0
+        self.lbl_base.setText(f"of {T}  (time 0)" if T else "")
+
+    def _sync_base_spin(self) -> None:
+        T = self._M.n_timepoints if self._M is not None else max(1, self._base + 1)
+        self.sp_base.blockSignals(True)
+        self.sp_base.setRange(1, max(1, T))
+        self.sp_base.setValue(int(min(max(1, self._base + 1), max(1, T))))
+        self.sp_base.blockSignals(False)
+        self._base_label()
+
+    def set_undo_enabled(self, on: bool) -> None:
+        """4.0: whether there is anything to undo (the window knows)."""
+        self.btn_undo.setEnabled(bool(on))
+
+    def baseline(self) -> int:
+        """The baseline timepoint shown (0-based)."""
+        return int(self._base)
 
     # ======================================================== style controls
     def _build_style_box(self) -> QWidget:
@@ -633,6 +711,7 @@ class TracePanel(QWidget):
         self.cmb_what.addItems(names)
         self.cmb_what.setCurrentIndex(max(0, self.cmb_what.findText(keep)))
         self.cmb_what.blockSignals(False)
+        self._sync_base_spin()
         self._fill_table()
         self.refresh(reset=True)
 
@@ -646,10 +725,14 @@ class TracePanel(QWidget):
         self._restyle()
         self._update_mean()
         self._update_header()
+        if not self._user_zoom:                    # 4.0: still fits the included cells
+            self.reset_zoom()
 
     def set_baseline(self, base: int) -> None:
+        """The baseline timepoint (0-based) - from the window (no baseline_changed)."""
         self._base = int(base)
-        self.refresh()
+        self._sync_base_spin()
+        self.refresh(reset=True)
 
     def set_time(self, t: int) -> None:
         self._t = int(t)
@@ -673,6 +756,7 @@ class TracePanel(QWidget):
         self._mean = self._lo = self._hi = self._band = None
         self.plot.clear()
         self._cursor = self._baseline_line = None
+        self._user_zoom = False
         self.plot.setTitle("")
         self.table.blockSignals(True)
         self.table.setRowCount(0)
@@ -714,7 +798,9 @@ class TracePanel(QWidget):
         self._full, ylabel = q[name](b)
         self._x, xlabel = self.exp.time_axis(T, b)
         self._xlabel = xlabel
-        keep_range = None if reset else self.vb.viewRange()
+        if reset:                                  # 4.0: the graph changed - it fits again
+            self._user_zoom = False
+        keep_range = None if (reset or not self._user_zoom) else self.vb.viewRange()
         self.plot.clear()
         self._curves = []
         self._errbar = self._exp_stats = None
@@ -884,7 +970,26 @@ class TracePanel(QWidget):
         self._lo.setData(self._x, lo, connect="finite")
         self._hi.setData(self._x, hi, connect="finite")
 
+    def _zoomed_by_user(self, *_a) -> None:
+        self._user_zoom = True
+
+    def user_zoomed(self) -> bool:
+        return bool(self._user_zoom)
+
+    def _refit_later(self) -> None:
+        """On resize: fit again (unless you zoomed yourself)."""
+        if self._full is not None and not self._user_zoom and \
+                not getattr(self, "_refit_pending", False):
+            self._refit_pending = True
+
+            def go():
+                self._refit_pending = False
+                if self._full is not None and not self._user_zoom:
+                    self.reset_zoom()
+            QTimer.singleShot(0, go)
+
     def reset_zoom(self) -> None:
+        self._user_zoom = False
         if self._full is None:
             return
         if self._view == VIEW_EXPORTED:

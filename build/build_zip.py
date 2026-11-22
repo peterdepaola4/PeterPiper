@@ -4,7 +4,7 @@ Developer tool (not shipped): build the PeterPiper zip that is sent to lab mates
     python build/build_zip.py [--out DIR] [--force] [--unzip DIR]
 
 Makes <out>/<APP_NAME>.zip (APP_NAME from app/peterpiper/__init__.py, e.g.
-PeterPiperV1.2.zip) from this repository's working tree, with every file under a
+PeterPiperV4.0.zip) from this repository's working tree, with every file under a
 top folder "<APP_NAME>/". Only files tracked by git ship: a stray untracked
 file or folder (test output, a release folder ...) is skipped and listed, never
 shipped. Also left out: .git, dev_tests, build, _home, out, _out, _work, release,

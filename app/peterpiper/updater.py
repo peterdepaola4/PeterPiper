@@ -11,7 +11,7 @@ What it changes (never your data: profiles, settings, run lists, saved files,
 logs and results live in "PeterPiper data" and next to your movies - outside the
 program folder - and are never touched):
 - Windows, a release of the same program folder (e.g. 1.2.0 -> 1.2.1, same
-  PeterPiperV1.2 and the same package list): only the program files that differ
+  PeterPiperV4.0 and the same package list): only the program files that differ
   from the release zip are replaced; each replaced file is first copied to
   <program folder>/_update_backup/<old version>_<time>/. Nothing outside the
   zip's own file list is touched.

@@ -22,9 +22,10 @@ def _app_log() -> None:
     import atexit
     import faulthandler
     import time
-    if sys.platform == "darwin":
-        folder = Path.home() / "Library" / "Logs" / "PeterPiper"
-    else:
+    try:                                           # 4.0: platforms.logs_dir()
+        from peterpiper.platforms import logs_dir
+        folder = logs_dir()
+    except Exception:                                              # noqa: BLE001
         folder = Path.home() / "PeterPiper data" / "logs"
     try:
         folder.mkdir(parents=True, exist_ok=True)

@@ -205,21 +205,16 @@ ASSETS = __import__("pathlib").Path(__file__).resolve().parents[1] / "assets"
 
 def open_path(path) -> bool:
     """Open a file or folder with its own program (Explorer / Finder, Excel,
-    GraphPad Prism ...), on Windows and macOS. False if that failed."""
-    import os
-    import subprocess
-    p = str(path)
-    try:
-        if sys.platform == "win32":
-            from ..safety import plain_path
-            os.startfile(plain_path(p))                    # noqa: S606
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", p])                  # noqa: S603, S607
-        else:
-            subprocess.Popen(["xdg-open", p])              # noqa: S603, S607
-        return True
-    except OSError:
-        return False
+    GraphPad Prism ...), on Windows and macOS. False if that failed.
+    4.0: platforms.open_path does it (one place for Windows and macOS)."""
+    from ..platforms import open_path as _o
+    return _o(path)
+
+
+def reveal(path) -> bool:
+    """4.0: show a file selected in its folder (Explorer / Finder)."""
+    from ..platforms import reveal_in_file_manager
+    return reveal_in_file_manager(path)
 
 
 def app_icon():

@@ -203,12 +203,8 @@ def main() -> int:
     from . import APP_NAME, __version__
 
     # PeterPiper 1.0: the taskbar shows PeterPiper's own icon, not Python's
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PeterPiper.App")
-        except Exception:                                          # noqa: BLE001
-            pass
+    from . import platforms
+    platforms.set_windows_app_id("PeterPiper.App")
     app = QApplication(sys.argv)
     _install_charlotte(app)                       # 1.1: optional, guarded
     app.setApplicationName(APP_NAME)

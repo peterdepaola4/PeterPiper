@@ -563,19 +563,11 @@ def service_of(path, found: Optional[List[Place]] = None) -> str:
 def is_online_only(path) -> bool:
     """True when the file's data is not on this computer (a OneDrive / Google
     Drive / Box / Dropbox / iCloud placeholder): reading it downloads it first.
-    Only the file's attributes are read - nothing is downloaded."""
-    try:
-        st = _stat(long_path(str(path)))
-    except (OSError, ValueError):
-        return False
-    sysn = _system()
-    if sysn.startswith("win"):
-        attrs = int(getattr(st, "st_file_attributes", 0) or 0)
-        return bool(attrs & (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
-                             | FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_OFFLINE))
-    if sysn == "darwin":
-        return bool(int(getattr(st, "st_flags", 0) or 0) & SF_DATALESS)
-    return False
+    Only the file's attributes are read - nothing is downloaded. 4.0:
+    platforms.is_online_only does it (with this module's _system / _stat, which
+    tests replace)."""
+    from .platforms import is_online_only as _ioo
+    return _ioo(path, _system(), _stat)
 
 
 def human_size(n: float) -> str:

@@ -1833,7 +1833,8 @@ def _resolve_overlaps(comp: str, regs: List[Optional[Roi]], q: List[float],
                 lo = fewest[k] if fewest is not None else None
                 if lo and planes is not None and planes[k] is not None and nr.area < lo:
                     nr = _regrow(nr, comp, planes[k], lo, sides[k],
-                                 [out[j] for j in kept if out[j] is not None], um, pad)
+                                 [out[j] for j in kept if out[j] is not None], um,
+                                 pad[k] if isinstance(pad, (list, tuple)) else pad)
                 out[k] = nr
             else:
                 out[k] = Roi((r.bbox[0], r.bbox[1], r.bbox[0] + 1, r.bbox[1] + 1),
@@ -1864,12 +1865,55 @@ def _regrow(r: Roi, comp: str, plane: np.ndarray, n: int, side: Optional[np.ndar
     return out
 
 
+class _FullFrames:
+    """V4.0: how the tracker reads frames - here whole frames from the source
+    (retrack.SparseFrames reads only the parts a re-track needs)."""
+    sparse = False
+
+    def __init__(self, src) -> None:
+        self.src = src
+
+    def get(self, t: int) -> np.ndarray:
+        return np.asarray(self.src.frame(int(t)))
+
+    def ensure(self, arr: np.ndarray, box) -> None:
+        """Make sure the pixels of box (y0, x0, y1, x1) are read (always, here)."""
+
+    def version(self, arr: np.ndarray) -> int:
+        return 0
+
+
+def pair_pad(margin: int, ref_area: float, um: float, comp: str, first: bool = False) -> int:
+    """V4.0: how far (px) around a followed region's predicted box the tracker can
+    read pixels in one frame - the moved-outline fallback, the redraw window, the
+    regrow window and the AND / WITH / IF windows (retrack reads only this)."""
+    ring_px = int(max(2, _px(RING_UM, um)))
+    sig = max(SIGMA_MIN_PX, _px(SIGMA_UM.get(comp, 1.0), um))
+    extra = max(ring_px + int(np.ceil(3 * max(0.5, _px(0.5, um)))) + 1,
+                ring_px + int(np.ceil(3 * sig)) + 1, int(_px(6.0, um)) + 1)
+    if first:
+        extra = max(extra, int(_px(EDGE_PAD_UM, um)) + 1)
+    grow = int(np.ceil(np.sqrt(max(float(ref_area), 0.0) / np.pi))) + margin + 2
+    return int(2 * (margin + 1) + ring_px + grow + extra + 2)
+
+
+def pair_settings(overrides, comp: str, k: int, size_tol: float, max_move_um: float,
+                  mito_k: float) -> Tuple[float, float, float]:
+    """(size_tol, max_move_um, mito_k) of cell k's compartment: its own (a cell
+    rule override from the ROI troubleshooter) or the run's."""
+    o = (overrides or {}).get((comp, int(k))) or {}
+    s = o.get("settings") or {}
+    return (float(s.get("size_tol", size_tol)), float(s.get("max_move_um", max_move_um)),
+            float(s.get("mito_k", mito_k)))
+
+
 def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: int,
                 max_move_um: float = 3.0, mito_k: float = 3.0, sat_level: int = 65535,
                 lead: Sequence[str] = COMPS, progress: ProgressFn = None,
                 size_tol: float = 0.25, rules: Optional[Dict[str, "TrackRule"]] = None,
                 gate_snr: float = 5.0, overlap_k: float = 3.0,
-                boundaries: Optional[Dict[int, list]] = None) -> dict:
+                boundaries: Optional[Dict[int, list]] = None,
+                overrides: Optional[dict] = None, _replay=None) -> dict:
     """
     Follow every cell from timepoint t0 forwards and backwards, REDRAWING every
     ROI at every timepoint, and measure every compartment on every channel.
@@ -1892,6 +1936,12 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     that cell's ROIs never cross (boundary_side).
     size_tol: the followed region keeps between (1 - size_tol) and
     (1 + size_tol) x the pixels drawn (hard); 0 = exactly the drawn count.
+    V4.0 overrides: {(comp, cell index): {"rule": TrackRule or rule dict,
+    "settings": {"size_tol", "max_move_um", "mito_k"}}} - one cell's compartment
+    tracked its own way (chosen in the ROI troubleshooter); see
+    rules.complete_overrides. _replay: internal (retrack.py) - only some
+    (compartment, cell) pairs are tracked, the others are replayed from an
+    earlier result; the return value is then a partial result.
     The background region is measured at every timepoint by BackgroundMeter
     (cells included; very bright and fast-moving objects and the measured ROIs
     left out, from that timepoint's pixels).
@@ -1901,7 +1951,12 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                  rules=[rule dicts] (with rules only), params={every tracking
                  constant, for the methods}, gate={comp: {cell: SNR}} (IF only),
                  background={the region, its ROI overlap and the fluctuation
-                 check}, bg_excluded={} (nothing is left out of the background))).
+                 check}, bg_excluded={} (nothing is left out of the background),
+                 V4.0: shifts=(T, N, 2) int - each cell's whole-pixel move applied
+                 at each timepoint, track_q={comp: (T, N)} - each ROI's redraw
+                 quality before the AND / WITH trim, trimmed={comp: (T, N) bool} -
+                 the ROI gave pixels to a neighbour (all three for retrack.py),
+                 overrides=[...] (with overrides only)).
     """
     from concurrent.futures import ThreadPoolExecutor
     T, C, N = exp.n_timepoints, exp.n_channels, len(cells)
@@ -1909,13 +1964,37 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     comps = [c for c in COMPS if any(c in cell for cell in cells)]
     um = exp.um_per_px
     margin = int(max(MARGIN_MIN_PX, round(_px(max_move_um, um))))
+    rp = _replay
+    frames = rp.frames if rp is not None else _FullFrames(src)
+    active = rp.active if rp is not None else None
+
+    def act(c: str, k: int) -> bool:
+        return active is None or (c, k) in active
+
+    # V4.0: per-cell overrides (rule and / or settings of one compartment of one cell)
+    ov: Dict[Tuple[str, int], dict] = {}
+    if overrides:
+        from . import rules as _RL0
+        ov = _RL0.complete_overrides(overrides, list(exp.channels), N)
+    tol_of: Dict[Tuple[str, int], float] = {}
+    marg_of: Dict[Tuple[str, int], int] = {}
+    mk_of: Dict[Tuple[str, int], float] = {}
+    for k, cell in enumerate(cells):
+        for c in cell:
+            st, mv, mk = pair_settings(ov, c, k, size_tol, max_move_um, mito_k)
+            tol_of[(c, k)], mk_of[(c, k)] = st, mk
+            marg_of[(c, k)] = margin if (c, k) not in ov else \
+                int(max(MARGIN_MIN_PX, round(_px(mv, um))))
     mean = {c: np.full((T, C, N), np.nan) for c in comps}
     total = {c: np.full((T, C, N), np.nan) for c in comps}
     area = {c: np.zeros((T, N), int) for c in comps}
     nsat = {c: np.zeros((T, C, N), int) for c in comps}
     qual = {c: np.zeros((T, N)) for c in comps}
+    tq = {c: np.zeros((T, N)) for c in comps}            # V4.0: quality before the trim
+    trim = {c: np.zeros((T, N), bool) for c in comps}    # V4.0: gave pixels to a neighbour
+    shifts = np.zeros((T, N, 2), np.int32)               # V4.0: whole-pixel moves
     rois = {c: [[None] * N for _ in range(T)] for c in comps}
-    meter = BackgroundMeter(background, T, C, um)
+    meter = BackgroundMeter(background, T, C, um) if rp is None else None
     # the background is measured in its own thread, in the order the frames come
     # (one worker: the meter sees every frame exactly as the tracker does)
     bg_pool = ThreadPoolExecutor(max_workers=1)
@@ -1924,37 +2003,62 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     anchor = [next((c for c in list(lead) + list(COMPS) if c in cell), None) for cell in cells]
     order_c = [c for c in COMPS if c in comps]            # nucleus first: others need it
     pool = ThreadPoolExecutor(max_workers=3)              # frames are read ahead
-    first = np.asarray(src.frame(int(t0)))
+    first = frames.get(int(t0))
     # tracking rules (None = V2.2): every rule follows on channel A (the ONLY outline)
     RL, rule_of, norm = None, {}, None
-    if rules is not None:
+    if rules is not None or any(o.get("rule") is not None for o in ov.values()):
         from . import rules as RL
+    if rules is not None:
         rule_of = RL.complete_rules(rules, cells, comps, list(exp.channels))
-        if any(r.effective_mode() != "only" for r in rule_of.values()):
+    if rp is not None and getattr(rp, "skip", None):     # V4.0: cells far from the
+        cells = [{} if k in rp.skip else cell for k, cell in enumerate(cells)]   # re-tracked
+        anchor = [None if k in rp.skip else a for k, a in enumerate(anchor)]     # ones: left out
+
+    def rule_ck(c: str, k: int):
+        o = ov.get((c, k))
+        if o is not None and o.get("rule") is not None:
+            return o["rule"]
+        return rule_of.get(c)
+
+    all_rules = list(rule_of.values()) + [o["rule"] for o in ov.values()
+                                          if o.get("rule") is not None]
+    if any(r.effective_mode() != "only" for r in all_rules):
+        if rp is None:
             norm = RL.make_norm(first)                    # frozen at the drawn frame
-    and_comps = [c for c in comps if RL and RL._ab(rule_of[c], C)[1] == "and"]
-    if_comps = [c for c in comps if RL and RL._ab(rule_of[c], C)[1] == "if"]
-    with_comps = [c for c in comps if RL and RL._ab(rule_of[c], C)[1] == "with"]
-    help_comps = [c for c in comps if RL and RL._ab(rule_of[c], C)[1] == "help"]
+        else:                                             # V4.0: from the whole drawn frame
+            norm = rp.norm
+            if norm is None:
+                raise ValueError("A re-track needs the channel scaling of the drawn frame.")
+    mode = {(c, k): (RL._ab(rule_ck(c, k), C)[1] if RL is not None and rule_ck(c, k) is not None
+                     else None) for k, cell in enumerate(cells) for c in cell}
+    and_comps = [c for c in comps if RL and c in rule_of and RL._ab(rule_of[c], C)[1] == "and"]
+    if_comps = [c for c in comps if RL and c in rule_of and RL._ab(rule_of[c], C)[1] == "if"]
+    help_comps = [c for c in comps if RL and c in rule_of and RL._ab(rule_of[c], C)[1] == "help"]
+    if ov:                                                # a cell of its own way
+        for (c, k), m in mode.items():
+            for lst, name in ((if_comps, "if"), (help_comps, "help"), (and_comps, "and")):
+                if m == name and c not in lst:
+                    lst.append(c)
     gate: Dict[str, Dict[int, float]] = {c: {} for c in if_comps}
     gcache: list = []                                     # [(frame, key, helper image)]
     hsnr: Dict[str, Dict[int, dict]] = {c: {} for c in help_comps}
 
-    def plane(stack: np.ndarray, _cache: dict, c: str, r: Roi) -> Tuple[np.ndarray, int]:
-        """(image compartment c is followed on in this frame, channel recorded on
-        the ROI): channel A's raw plane for every older rule (V2.5 lock); V3.0
-        helpers: the main channel + HELP_WEIGHT x each helper (rules.guide_plane)."""
-        if RL is None:
+    def plane(stack: np.ndarray, _cache: dict, c: str, r: Roi, k: int) -> Tuple[np.ndarray, int]:
+        """(image compartment c of cell k is followed on in this frame, channel
+        recorded on the ROI): channel A's raw plane for every older rule (V2.5 lock);
+        V3.0 helpers: the main channel + HELP_WEIGHT x each helper (rules.guide_plane)."""
+        rl = rule_ck(c, k) if RL is not None else None
+        if rl is None:
             ch = min(int(getattr(r, "channel", 0)), C - 1)
             return stack[ch], ch
-        a = RL._ab(rule_of[c], C)[0]
-        if c not in help_comps:
+        a = RL._ab(rl, C)[0]
+        if mode[(c, k)] != "help":
             return stack[a], a
-        key = RL.guide_key(rule_of[c], C)
-        for st, k, g in gcache:
-            if st is stack and k == key:
+        key = (RL.guide_key(rl, C), frames.version(stack))
+        for st, kk, g in gcache:
+            if st is stack and kk == key:
                 return g, a
-        g = RL.guide_plane(stack, rule_of[c], norm)
+        g = RL.guide_plane(stack, rl, norm)
         gcache.append((stack, key, g))
         del gcache[:-4]                                   # a few frames are enough
         return g, a
@@ -1972,20 +2076,31 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             if sides[k] is not None:
                 lines_used[k] = [[[float(p[0]), float(p[1])] for p in ln] for ln in lines]
 
+    ref_area = [{c: float(_region(r).area) for c, r in cell.items()} for cell in cells]
+    if frames.sparse:                                     # the pixels the drawn frame needs
+        for k, cell in enumerate(cells):
+            for c, r in cell.items():
+                if act(c, k):
+                    frames.ensure(first, _box(r.bbox, pair_pad(marg_of[(c, k)], ref_area[k][c],
+                                                               um, c, True), H, W))
     # the edge level of every ROI, from the frame you clicked on (channel A)
-    level = [{c: _edge_level(plane(first, {}, c, r)[0], _region(r), c, um)
-              for c, r in cell.items()} for cell in cells]
+    level = [{c: _edge_level(plane(first, {}, c, r, k)[0], _region(r), c, um)
+              for c, r in cell.items() if act(c, k)} for k, cell in enumerate(cells)]
     # V3.0 helpers: the main channel's own edge level too (the 1 um guard)
-    level_main = [{c: _edge_level(first[RL._ab(rule_of[c], C)[0]], _region(r), c, um)
-                   for c, r in cell.items() if c in help_comps} for cell in cells]
+    level_main = [{c: _edge_level(first[RL._ab(rule_ck(c, k), C)[0]], _region(r), c, um)
+                   for c, r in cell.items() if mode[(c, k)] == "help" and act(c, k)}
+                  for k, cell in enumerate(cells)]
     # WITH: the outline's own edge level on the combined image, frozen at t0
     lev_with: List[Dict[str, float]] = [dict() for _ in cells]
-    for c in with_comps:
-        g_with = RL.guide_plane(first, rule_of[c], norm)
-        for k, cell in enumerate(cells):
-            if c in cell:
-                lev_with[k][c] = _edge_level(g_with, _region(cell[c]), c, um)
-        del g_with
+    g_with: Dict[tuple, np.ndarray] = {}
+    for k, cell in enumerate(cells):
+        for c in cell:
+            if mode[(c, k)] == "with" and act(c, k):
+                key = RL.guide_key(rule_ck(c, k), C)
+                if key not in g_with:
+                    g_with[key] = RL.guide_plane(first, rule_ck(c, k), norm)
+                lev_with[k][c] = _edge_level(g_with[key], _region(cell[c]), c, um)
+    del g_with
     holes = []
     for cell in cells:                                    # cytoplasm without a nucleus ROI
         r = cell.get("cytoplasm")
@@ -1993,12 +2108,15 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             holes.append(Roi(r.bbox, r.outline & ~r.mask, "hole"))
         else:
             holes.append(None)
-    ref_area = [{c: float(_region(r).area) for c, r in cell.items()} for cell in cells]
     done = [0]
+    disturbed: set = set()
+    trim_now: Dict[Tuple[str, int], bool] = {}
 
     def record(t: int, stack: np.ndarray, cur, q) -> None:
         for k, cell in enumerate(cur):
             for c, r in cell.items():
+                if not act(c, k):
+                    continue
                 mu, a, ns, s = _measure(stack, r, sat_level)
                 mean[c][t, :, k], area[c][t, k], nsat[c][t, :, k] = mu, a, ns
                 total[c][t, :, k] = s
@@ -2006,37 +2124,40 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                 r.contours()                              # ready for smooth display
                 rois[c][t][k] = r
         # the background of this timepoint (measured once its neighbours are in)
-        bg_jobs.append(bg_pool.submit(meter.add, t, stack,
-                                      meter.roi_mask([r for cell in cur for r in cell.values()])))
+        if meter is not None:
+            bg_jobs.append(bg_pool.submit(meter.add, t, stack, meter.roi_mask(
+                [r for cell in cur for r in cell.values()])))
         done[0] += 1
         if progress:
             if not progress(done[0] / T, f"Following and redrawing {N} cells"   # 1.2: the bar
-                                         f"\ntimepoint {t + 1} of {T} ({done[0]} done)"):
+                                         f"\ntimepoint {t + 1} of {T} ({done[0]} done)"
+                            if rp is None else rp.message(done[0], T)):
                 raise Cancelled()
 
     def measured(stack: np.ndarray, cur, q):
         """AND / WITH rules: the measured ROIs keep only the pixels the second
         channel allows, inside the followed outline (the followed ROIs in `cur`
         stay whole, for the next frame and the neighbours)."""
-        if not and_comps and not with_comps:
+        if not any(m in ("and", "with") for m in mode.values()):
             return cur
         out = []
         for k, cell in enumerate(cur):
             d = dict(cell)
-            for c in and_comps + with_comps:
-                if c not in d:
+            for c in order_c:
+                if c not in d or mode.get((c, k)) not in ("and", "with") or not act(c, k):
                     continue
-                if c in and_comps:
-                    d[c] = RL.apply_and(d[c], stack, rule_of[c], norm, um, overlap_k)
+                rl = rule_ck(c, k)
+                if mode[(c, k)] == "and":
+                    d[c] = RL.apply_and(d[c], stack, rl, norm, um, overlap_k)
                 else:
-                    d[c] = RL.apply_with(d[c], stack, rule_of[c], norm, um,
+                    d[c] = RL.apply_with(d[c], stack, rl, norm, um,
                                          lev_with[k].get(c, 0.5), c)
                 if not d[c].mask.any():
                     q[k][c] = 0.3                         # nothing left: NaN
             out.append(d)
         return out
 
-    def outline_all(stack: np.ndarray, cur, q, pred, first_frame: bool, hole):
+    def outline_all(stack: np.ndarray, cur, q, pred, first_frame: bool, hole, t: int):
         """Redraw every ROI of every cell in this frame (nucleus first)."""
         new = [dict() for _ in cells]
         for c in order_c:
@@ -2045,15 +2166,21 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             nuclei_now = [n.get("nucleus") for n in new]
             regs: List[Optional[Roi]] = [None] * N
             chans, planes = [0] * N, [None] * N
+            kept: Dict[int, Roi] = {}
             for k, p in enumerate(pred):
                 if c not in p:
                     continue
-                g, ch = plane(stack, {}, c, p[c])
+                if not act(c, k):                         # V4.0: replayed as it was
+                    regs[k] = kept[k] = rp.region(c, t, k)
+                    q[k][c] = rp.quality(c, t, k)
+                    continue
+                g, ch = plane(stack, {}, c, p[c], k)
+                mg = marg_of[(c, k)]
                 walls = [] if c == "nucleus" else \
                     [nuclei_now[j] for j in range(N) if j != k and nuclei_now[j] is not None]
-                tol = min(FIRST_FRAME_TOL, size_tol) if first_frame else size_tol
+                tol = min(FIRST_FRAME_TOL, tol_of[(c, k)]) if first_frame else tol_of[(c, k)]
                 reg = _redraw(g, regions[k], c, lev[k][c],
-                              um, margin, regions[:k] + regions[k + 1:], walls,
+                              um, mg, regions[:k] + regions[k + 1:], walls,
                               ref_area[k].get(c), tol, sides[k])
                 # the clicked frame keeps your shape if its redraw fails (0.9)
                 q[k][c] = 1.0 if reg is not None else (0.9 if first_frame else 0.3)
@@ -2061,24 +2188,33 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     reg = regions[k]
                 elif getattr(reg, "fit_level", None) is not None:
                     lev[k][c] = float(reg.fit_level)
-                if c in help_comps:                       # V3.0: stay near the main outline
-                    a_ch = RL._ab(rule_of[c], C)[0]
+                if mode[(c, k)] == "help":                # V3.0: stay near the main outline
+                    a_ch = RL._ab(rule_ck(c, k), C)[0]
                     regm = _redraw(stack[a_ch], regions[k], c, levm[k][c],
-                                   um, margin, regions[:k] + regions[k + 1:], walls,
+                                   um, mg, regions[:k] + regions[k + 1:], walls,
                                    ref_area[k].get(c), tol, sides[k])
                     if regm is not None and getattr(regm, "fit_level", None) is not None:
                         levm[k][c] = float(regm.fit_level)
                     reg = RL.help_guard(reg, regm if regm is not None else regions[k], um)
                 regs[k], chans[k], planes[k] = reg, ch, g
-            tl = min(FIRST_FRAME_TOL, size_tol) if first_frame else size_tol
-            fewest = [size_limits(ref_area[k][c], tl)[0] if c in ref_area[k] else None
-                      for k in range(N)]
+            fewest = [size_limits(ref_area[k][c], min(FIRST_FRAME_TOL, tol_of[(c, k)])
+                                  if first_frame else tol_of[(c, k)])[0]
+                      if c in ref_area[k] else None for k in range(N)]
+            pads = margin if not ov else [marg_of.get((c, k), margin) for k in range(N)]
+            drawn = list(regs)
             regs = _resolve_overlaps(c, regs, [q[k].get(c, 1.0) for k in range(N)], sides,
-                                     before, planes, fewest, um, margin)
+                                     before, planes, fewest, um, pads)
             for k in range(N):
-                if regs[k] is not None:
-                    new[k][c] = _finish(c, regs[k], planes[k], um, mito_k,
-                                        new[k].get("nucleus"), hole[k], chans[k])
+                if regs[k] is None:
+                    continue
+                trim_now[(c, k)] = regs[k] is not drawn[k]
+                if k in kept:
+                    if regs[k] is not kept[k]:            # a re-tracked cell took its pixels
+                        disturbed.add((c, k))
+                    new[k][c] = rp.followed(c, t, k)
+                    continue
+                new[k][c] = _finish(c, regs[k], planes[k], um, mk_of[(c, k)],
+                                    new[k].get("nucleus"), hole[k], chans[k])
         return new
 
     lev: List[Dict[str, float]] = []
@@ -2091,11 +2227,11 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         levm = [dict(lv) for lv in level_main]
         hole = list(holes)
         acc = [[0.0, 0.0] for _ in cells]
-        futures = {t: pool.submit(lambda tt=t: np.asarray(src.frame(int(tt)))) for t in order[:4]}
+        futures = {t: pool.submit(frames.get, t) for t in order[:4]}
         prev = None
         for i, t in enumerate(order):
             if i + 4 < len(order):
-                futures[order[i + 4]] = pool.submit(lambda tt=order[i + 4]: np.asarray(src.frame(int(tt))))
+                futures[order[i + 4]] = pool.submit(frames.get, order[i + 4])
             stack = futures.pop(t).result()
             q = [dict() for _ in cells]
             if prev is not None:
@@ -2106,35 +2242,60 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     if key is None:
                         pred.append({})
                         continue
-                    g_prev = plane(prev, {}, key, cell[key])[0]
-                    g_now = plane(stack, {}, key, cell[key])[0]
-                    dy, dx = _sub_shift(g_prev, g_now, cell[key].bbox, margin)
-                    acc[k][0] += dy
-                    acc[k][1] += dx
-                    iy, ix = int(round(acc[k][0])), int(round(acc[k][1]))
-                    acc[k][0] -= iy
-                    acc[k][1] -= ix
+                    if act(key, k):
+                        mg = marg_of[(key, k)]
+                        if frames.sparse:
+                            box = _box(cell[key].bbox, mg + SHIFT_PAD_PX + 1, H, W)
+                            frames.ensure(prev, box)
+                            frames.ensure(stack, box)
+                        g_prev = plane(prev, {}, key, cell[key], k)[0]
+                        g_now = plane(stack, {}, key, cell[key], k)[0]
+                        dy, dx = _sub_shift(g_prev, g_now, cell[key].bbox, mg)
+                        acc[k][0] += dy
+                        acc[k][1] += dx
+                        iy, ix = int(round(acc[k][0])), int(round(acc[k][1]))
+                        acc[k][0] -= iy
+                        acc[k][1] -= ix
+                    else:                                 # V4.0: replayed as it was
+                        iy, ix = rp.shift(t, k)
+                    shifts[t, k] = (iy, ix)
                     pred.append({c: _moved(r, iy, ix, (H, W)) for c, r in cell.items()})
                     if hole[k] is not None and (iy or ix):
                         hole[k] = hole[k].shifted(iy, ix, (H, W))
+                if frames.sparse:
+                    for k, p in enumerate(pred):
+                        for c, r in p.items():
+                            if act(c, k):
+                                frames.ensure(stack, _box(r.bbox, pair_pad(
+                                    marg_of[(c, k)], ref_area[k][c], um, c), H, W))
                 # 2-5  redraw, nucleus first
-                cur = outline_all(stack, cur, q, pred, False, hole)
+                cur = outline_all(stack, cur, q, pred, False, hole, t)
             else:
+                if frames.sparse:
+                    for k, cell in enumerate(cur):
+                        for c, r in cell.items():
+                            if act(c, k):
+                                frames.ensure(stack, _box(r.bbox, pair_pad(
+                                    marg_of[(c, k)], ref_area[k][c], um, c, True), H, W))
                 # the clicked frame: your ROIs, outlined by the same method as every
                 # other frame (so there is no step between the first two timepoints),
                 # within 10 % of the size you drew (the guard refers to that size)
-                cur = outline_all(stack, cur, q, cur, True, hole)
+                cur = outline_all(stack, cur, q, cur, True, hole, t)
                 if not skip_first:                        # IF rules: signal in B at t0
                     for c in if_comps:
                         for k, cell in enumerate(cur):
-                            if c in cell:
-                                gate[c][k] = RL.gate_snr(stack, cell[c], rule_of[c], um, norm)
+                            if c in cell and mode[(c, k)] == "if" and act(c, k):
+                                gate[c][k] = RL.gate_snr(stack, cell[c], rule_ck(c, k), um, norm)
                     for c in help_comps:                  # V3.0: helper signal at t0
                         for k, cell in enumerate(cur):
-                            if c in cell:
+                            if c in cell and mode[(c, k)] == "help" and act(c, k):
                                 hsnr[c][k] = {exp.channels[h]: v for h, v in RL.helper_snr(
-                                    stack, cell[c], rule_of[c], um, norm).items()}
+                                    stack, cell[c], rule_ck(c, k), um, norm).items()}
             if not (skip_first and i == 0):
+                for k, cell in enumerate(cur):
+                    for c in cell:
+                        tq[c][t, k] = q[k].get(c, 1.0)
+                        trim[c][t, k] = trim_now.get((c, k), False)
                 record(t, stack, measured(stack, cur, q), q)
             prev = stack
 
@@ -2144,10 +2305,22 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             run(list(range(t0, -1, -1)), True)        # and backwards to the start
         for j in bg_jobs:
             j.result()                                # an error in the meter surfaces here
-        meter.finish()
+        if meter is not None:
+            meter.finish()
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
         bg_pool.shutdown(wait=True, cancel_futures=True)
+    ov_list = []
+    for (c, k), o in sorted(ov.items(), key=lambda kv: (kv[0][1], COMPS.index(kv[0][0])
+                                                         if kv[0][0] in COMPS else 9)):
+        if c in cells[k]:
+            ov_list.append(_override_record(o, c, k, list(exp.channels)))
+    if rp is not None:                                    # V4.0: the re-tracked pairs only
+        return dict(partial=True, mean=mean, total=total, area=area, nsat=nsat, qual=qual,
+                    track_q=tq, trimmed=trim, shifts=shifts, rois=rois, gate=gate, helper_snr=hsnr,
+                    disturbed=disturbed, comps=comps, norm=norm, lines_used=lines_used,
+                    rule_of=rule_of, help_comps=help_comps, if_comps=if_comps,
+                    margin=margin, overrides=ov_list)
     for c in comps:
         for t in range(T):
             for k in range(N):
@@ -2172,7 +2345,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                                  lines_used)
     out["background"] = meter.summary()
     out["bg_excluded"] = dict(meter.excluded)
-    if RL is not None:
+    if rules is not None:
         out["rules"] = [rule_of[c].to_dict(list(exp.channels)) for c in comps]
     if help_comps:                                        # V3.0: for the methods
         out["params"]["help_weight"] = float(RL.HELP_WEIGHT)
@@ -2180,7 +2353,23 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         out["helper_snr"] = hsnr
     if if_comps:
         out["gate"] = gate
+    out["shifts"] = shifts                                # V4.0: for retrack.py
+    out["track_q"] = tq
+    out["trimmed"] = trim
+    if ov_list:                                           # V4.0: cells tracked their own way
+        out["overrides"] = ov_list
+        out["params"]["overrides"] = ov_list
     return out
+
+
+def _override_record(o: dict, comp: str, k: int, channels: Sequence[str]) -> dict:
+    """One cell override as recorded in the result / methods: {"comp", "cell"
+    (1-based), "rule" (rule dict or None), "settings", "why"}."""
+    r = o.get("rule")
+    return {"comp": comp, "cell": int(k) + 1,
+            "rule": r.to_dict(channels) if r is not None else None,
+            "settings": {kk: float(v) for kk, v in (o.get("settings") or {}).items()},
+            "why": str(o.get("why") or "")}
 
 
 def track_params(comps: Sequence[str], um: float, max_move_um: float, margin: int,

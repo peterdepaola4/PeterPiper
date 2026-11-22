@@ -25,6 +25,13 @@ v2.5 adds (older files load as before, without them):
   - content_key: a hash of everything that matters in the file (ROIs, tracking,
     settings - not when / by which window it was saved), stored in the state, so
     an identical session is not saved twice and the earlier-runs list shows it once.
+4.0 adds (older files load as before; older versions ignore the new parts):
+  - what a re-track of single cells needs (track["shifts"], ["track_q"],
+    ["trimmed"]: each cell's whole-pixel move per timepoint, each ROI's redraw
+    quality and whether it gave pixels to a neighbour) - without them the next
+    change is tracked in full once;
+  - per-cell overrides from the ROI troubleshooter (track["overrides"] and, for
+    the session, state["overrides"] - see overrides_state / overrides_from_state).
 Every older file still loads: v1.x (ROIs only), v1.9-v2.1 (no tracking), v2.2.
 """
 from __future__ import annotations
@@ -122,6 +129,10 @@ def pack_track(track: dict) -> dict:
     for key in ("params", "gate", "background"):
         if track.get(key):
             meta[key] = track[key]
+    if track.get("overrides"):                 # 4.0: cells tracked their own way
+        meta["overrides"] = list(track["overrides"])
+    if track.get("shifts") is not None:        # 4.0: for re-tracking single cells
+        blob["trk_shifts"] = np.asarray(track["shifts"], np.int32)
     bgx = track.get("bg_excluded") or {}
     if bgx:                                    # v2.5: bright / moving pixels left out
         ts = sorted(int(t) for t in bgx)
@@ -164,6 +175,12 @@ def pack_track(track: dict) -> dict:
                 blob[f"trk_{c}_m_{f}"] = np.asarray(v)
         meta[f"chan_{c}"] = list(M.channels)
         meta[f"mode_{c}"] = M.roi_mode
+        tq = (track.get("track_q") or {}).get(c)
+        if tq is not None:                     # 4.0
+            blob[f"trk_{c}_tq"] = np.asarray(tq, np.float32)
+        tr = (track.get("trimmed") or {}).get(c)
+        if tr is not None:
+            blob[f"trk_{c}_trim"] = np.packbits(np.asarray(tr, bool).ravel())
     blob["track_json"] = np.asarray(_dumps(meta))
     return blob
 
@@ -285,7 +302,40 @@ def unpack_track(z, state: Optional[dict] = None,
         out["background"] = meta["background"]
     if bgx:
         out["bg_excluded"] = bgx
+    if meta.get("overrides"):                  # 4.0
+        out["overrides"] = list(meta["overrides"])
+    try:                                       # 4.0: what re-tracking single cells needs
+        if "trk_shifts" in z and rois:
+            sh = np.asarray(z["trk_shifts"]).astype(np.int32)
+            tq = {c: np.asarray(z[f"trk_{c}_tq"]).astype(np.float64) for c in rois}
+            tr = {}
+            for c in rois:
+                shape = tq[c].shape
+                tr[c] = np.unpackbits(np.asarray(z[f"trk_{c}_trim"]))[:shape[0] * shape[1]] \
+                    .reshape(shape).astype(bool)
+            if all(v.shape == sh.shape[:2] for v in tq.values()):
+                out["shifts"], out["track_q"], out["trimmed"] = sh, tq, tr
+    except (KeyError, ValueError, TypeError, IndexError):
+        pass                                   # without them the next change tracks in full
     return out
+
+
+def overrides_state(overrides, channels: Sequence[str]) -> List[dict]:
+    """4.0: per-cell overrides as saved in the session state (state["overrides"]):
+    [{"comp", "cell" (1-based), "rule" (channel names), "settings", "why"}]."""
+    from .rules import overrides_to_list
+    return overrides_to_list(overrides or {}, list(channels))
+
+
+def overrides_from_state(state: Optional[dict], channels: Sequence[str],
+                         n_cells: Optional[int] = None) -> dict:
+    """4.0: the per-cell overrides of a saved session ({(comp, cell index): {...}},
+    rules.complete_overrides) - {} for files before 4.0 or when none fit."""
+    from .rules import complete_overrides
+    v = (state or {}).get("overrides") if isinstance(state, dict) else None
+    if not v:
+        return {}
+    return complete_overrides(v, list(channels), n_cells)
 
 
 def load_roi_track(path, channels: Optional[Sequence[str]] = None) -> Optional[dict]:

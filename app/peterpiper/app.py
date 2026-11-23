@@ -268,7 +268,102 @@ def main() -> int:
     try:
         return run_loop(_QtUI(app, pick_user))
     finally:
-        tasks.center().shutdown(5)            # running copies / exports: up to 5 s more
+        finish_background()                   # running exports / uploads: ask first
+        from . import transfers
+        transfers.program_end(shutdown=False)  # the quit backup (options) - only here
+        tasks.center().shutdown(5)
+        stop_workers()
+
+
+def _job_words(active) -> str:
+    from collections import Counter
+    c = Counter(t.kind for t in active)
+    return ", ".join(f"{n} {k}" for k, n in c.items())
+
+
+def ask_finish(active) -> str:
+    """'wait' | 'cancel' | 'quit' - the question at the real end (tests replace it)."""
+    from PySide6.QtWidgets import QMessageBox
+    n = len(active)
+    box = QMessageBox(QMessageBox.Question, "Background jobs still running",
+                      f"{n} background job{'s are' if n != 1 else ' is'} still running "
+                      f"({_job_words(active)}).\n\nWait for {'them' if n != 1 else 'it'} "
+                      f"(recommended - a cut-off export is incomplete), cancel "
+                      f"{'them' if n != 1 else 'it'}, or quit anyway?")
+    wait = box.addButton("Wait for them", QMessageBox.AcceptRole)
+    cancel = box.addButton("Cancel them", QMessageBox.DestructiveRole)
+    box.addButton("Quit anyway", QMessageBox.RejectRole)
+    box.setDefaultButton(wait)
+    box.exec()
+    c = box.clickedButton()
+    return "wait" if c is wait else "cancel" if c is cancel else "quit"
+
+
+def finish_background(ask=None, pump=None, limit: float = 6 * 3600.0) -> str:
+    """4.0: at the real end, background jobs (exports, uploads, copies) still running
+    are not cut off silently: the user chooses to wait for them (a bar meanwhile),
+    cancel them, or quit anyway. Autosaves are always waited for. Returns the choice
+    ('' = nothing was running)."""
+    import time
+    from . import tasks
+    c = tasks.center()
+    active = [t for t in c.active() if t.kind != "autosave"]
+    if not active:
+        c.wait_all(30)
+        return ""
+    choice = (ask or ask_finish)(active)
+    if choice == "cancel":
+        for t in active:
+            t.cancel()
+        c.wait_all(10)
+        return choice
+    if choice != "wait":
+        return choice
+    dlg = None
+    if pump is None:
+        try:
+            from PySide6.QtWidgets import QApplication, QProgressDialog
+            dlg = QProgressDialog("Waiting for the background jobs to finish ...", "Quit now",
+                                  0, 0)
+            dlg.setWindowTitle("Finishing")
+            dlg.setMinimumDuration(0)
+            dlg.show()
+            pump = QApplication.processEvents
+        except Exception:                                          # noqa: BLE001
+            pump = lambda: None                                    # noqa: E731
+    t0 = time.time()
+    while c.active() and time.time() - t0 < limit:
+        if dlg is not None:
+            left = c.active()
+            dlg.setLabelText(f"Waiting for {_job_words(left)} ...\n"
+                             + "\n".join(t.summary() for t in left[:4]))
+            if dlg.wasCanceled():
+                break
+        pump()
+        time.sleep(0.05)
+    if dlg is not None:
+        dlg.close()
+    return choice
+
+
+def stop_workers(timeout: float = 10.0) -> bool:
+    """4.0: the tracker's worker processes (manual.worker_pool) end with the program -
+    none left behind. True when they stopped."""
+    import threading
+    try:
+        from . import manual
+    except Exception:                                              # noqa: BLE001
+        return True
+    with manual._PROCS_LOCK:
+        ex, manual._PROCS = manual._PROCS, None
+        manual._PROCS_FAILED = True
+    if ex is None:
+        return True
+    t = threading.Thread(target=lambda: ex.shutdown(wait=True, cancel_futures=True),
+                         daemon=True)
+    t.start()
+    t.join(timeout)
+    return not t.is_alive()
 
 
 if __name__ == "__main__":

@@ -49,6 +49,13 @@ def _app_log() -> None:
 
 
 if __name__ == "__main__":
+    # 4.0: the tracker's worker processes are started with 'spawn' - a packaged app
+    # must let them start (freeze_support first, before anything else)
+    import multiprocessing
+    multiprocessing.freeze_support()
+    if getattr(sys, "frozen", False):
+        from peterpiper import manual as _manual
+        _manual.PROCS_WHEN_FROZEN = True
     if "--selftest" in sys.argv:
         from peterpiper.selftest import main as selftest
         i = sys.argv.index("--selftest")

@@ -220,7 +220,17 @@ class TaskCenter:
             t = Task(self, kind, title, fn, on_done, heavy, priority, data, key)
             self._tasks.append(t)
             self._trim()
+            closed = self._closed
         self._notify(t, "added")
+        if closed:
+            # 4.0 integration: the center was shut down (the program is ending) - the
+            # work is never silently dropped: it runs now, in this thread
+            with self._lock:
+                t.state = RUNNING
+                t.started = time.time()
+                t._t0 = time.monotonic()
+            self._run(t)
+            return t
         self._pump()
         return t
 
@@ -301,9 +311,13 @@ class TaskCenter:
             self._tasks = [t for t in self._tasks if t.state not in ENDED]
         self._notify(None, "cleared")
 
+    def closed(self) -> bool:
+        return bool(self._closed)
+
     def shutdown(self, timeout: float = 5.0) -> bool:
-        """At program end: nothing new starts; wait up to `timeout` s for the running
-        ones. True when all ended."""
+        """At program end ONLY (app.main): nothing new starts in the background (a
+        task submitted afterwards runs at once, in the caller's thread); wait up to
+        `timeout` s for the running ones. True when all ended."""
         with self._lock:
             self._closed = True
         return self.wait_all(timeout)
@@ -347,8 +361,11 @@ class TaskCenter:
                 return
             run_h = sum(1 for t in self._tasks if t.state == RUNNING and t.heavy)
             run_l = sum(1 for t in self._tasks if t.state == RUNNING and not t.heavy)
+            busy_keys = {t.key for t in self._tasks if t.state == RUNNING and t.key}
             for t in sorted((t for t in self._tasks if t.state == QUEUED),
                             key=lambda t: (t.priority, t.id)):
+                if t.key and t.key in busy_keys:
+                    continue          # 4.0: one task per key at a time - runs after it
                 if t.heavy and run_h < self.max_heavy:
                     run_h += 1
                 elif not t.heavy and run_l < self.max_light:
@@ -358,6 +375,8 @@ class TaskCenter:
                 t.state = RUNNING
                 t.started = time.time()
                 t._t0 = time.monotonic()
+                if t.key:
+                    busy_keys.add(t.key)
                 start.append(t)
         for t in start:
             self._notify(t, "state")

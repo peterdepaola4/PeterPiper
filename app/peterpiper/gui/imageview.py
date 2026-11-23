@@ -332,7 +332,8 @@ class _BadgeLayer(QGraphicsObject):
 
     GAP = 4.0          # px between the ROI and its badge
     PAD = 3.0          # px inside the pill
-    TINY = 9.0         # ROIs smaller than this on screen: badges hidden (zoomed far out)
+    TINY = 9.0         # ROIs smaller than this on screen: the compact badge (just "22×")
+    COMPACT_W = 40.0   # ... and narrower than this: the main channel only
 
     def __init__(self, view: "ImageView") -> None:
         super().__init__()
@@ -361,16 +362,17 @@ class _BadgeLayer(QGraphicsObject):
             self._wcache[k] = w
         return w
 
-    def segments(self, pairs) -> Tuple[list, float]:
-        """[(name, value text, colour, bold, x offset)], total width."""
+    def segments(self, pairs, names: bool = True) -> Tuple[list, float]:
+        """[(name, value text, colour, bold, x offset)], total width. names=False:
+        the number only ('22×' - the compact badge)."""
         from .. import bgmultiple as BM
         out, x = [], self.PAD
         for i, (name, v) in enumerate(pairs):
             if i:
                 x += self.width_of("  ")
             lev = BM.level_of(v)
-            nm = f"{name} "
-            val = BM.fmt_multiple(v)
+            nm = f"{name} " if names else ""
+            val = BM.fmt_multiple(v) if names else BM.fmt_multiple(v).replace("x", "×")
             out.append((nm, val, BM.LEVEL_COLOURS[lev], lev >= 3, x))
             x += self.width_of(nm) + self.width_of(val, lev >= 3)
         return out, x + self.PAD
@@ -394,8 +396,10 @@ class _BadgeLayer(QGraphicsObject):
         box = np.array([b for _k, b, *_r in self.entries], float)    # y0, x0, y1, x1
         Ls, Rs = o.x() + box[:, 1] * sx, o.x() + box[:, 3] * sx
         Ts, Bs = o.y() + box[:, 0] * sy, o.y() + box[:, 2] * sy
-        if float(np.median(Rs - Ls)) < self.TINY:
-            return []                                       # zoomed far out
+        # 4.0 integration: badges ALWAYS show - zoomed far out each is the compact
+        # form (the main channel's number only, '22×'); one is left out only where it
+        # would cover another badge or ROI
+        far = float(np.median(Rs - Ls)) < self.TINY
         To = Ts - h - self.GAP                              # each ROI with its number
         n = len(self.entries)
         P = np.empty((n, 4))                                # placed badges: l, t, r, b
@@ -406,11 +410,12 @@ class _BadgeLayer(QGraphicsObject):
             key, _b, pairs_all, pairs_main, _s = self.entries[i]
             L, R, T, B = Ls[i], Rs[i], Ts[i], Bs[i]
             wpx = R - L
-            if wpx < self.TINY or R < 0 or L > area.right() or B < 0 or T > area.bottom():
+            if R < 0 or L > area.right() or B < 0 or T > area.bottom():
                 continue
-            compact = v._badge_show == "main" or len(pairs_all) > 2 and wpx < 90 \
-                or wpx < 40
-            segs, w = self.segments(pairs_main if compact else pairs_all)
+            numbers = v._badge_show == "numbers" or far or wpx < self.TINY
+            compact = numbers or v._badge_show == "main" or len(pairs_all) > 2 and wpx < 90 \
+                or wpx < self.COMPACT_W
+            segs, w = self.segments(pairs_main if compact else pairs_all, names=not numbers)
             if not segs:
                 continue
             cy = (T + B) / 2.0
@@ -982,7 +987,7 @@ class ImageView(QWidget):
     # ------------------------------------------- 4.0 N x background badges
     def set_roi_badges(self, badges: Dict[tuple, Sequence[Tuple[str, float]]],
                        show: str = "all", rois: Optional[Dict[tuple, Roi]] = None,
-                       main: Optional[str] = None) -> None:
+                       main: Optional[str] = None, tint: bool = False) -> None:
         """
         badges: {(comp, k): [(channel name, multiple), ...]} at the timepoint shown
         (bgmultiple.multiples). show: 'all' (every channel; shortened to one when
@@ -991,12 +996,17 @@ class ImageView(QWidget):
         rois: {(comp, k): Roi} where each badge goes (kept until given again);
         without it (comp, k) uses the k-th ROI of set_rois. Cheap: call it on
         every timepoint change.
+        4.0 integration: show 'numbers' = the compact badge only ('22×', the main
+        channel); zoomed far out every mode shows that compact form (badges always
+        show). tint: each ROI also gets a halo in the colour of its main channel's
+        level (bgmultiple.LEVEL_COLOURS) - the level reads where a number is left out.
         """
         from .. import bgmultiple as BM
-        self._badge_show = show if show in ("all", "main", "off") else "all"
+        self._badge_show = show if show in ("all", "main", "numbers", "off") else "all"
         if rois is not None:
             self._badge_geom = {k: r for k, r in rois.items() if r is not None}
         entries = []
+        tint_rois: Dict[int, list] = {0: [], 1: [], 2: [], 3: []}
         for key, pairs in (badges or {}).items():
             r = self._badge_geom.get(key)
             if r is None and isinstance(key, tuple) and len(key) == 2:
@@ -1011,8 +1021,36 @@ class ImageView(QWidget):
             s = BM.strongest(pairs)
             entries.append((key, tuple(int(v) for v in r.bbox), p_all, p_main,
                             s[1] if s else 0.0))
+            if tint and self._badge_show != "off" and p_main:
+                tint_rois[BM.level_of(p_main[0][1])].append(r)
         self._badges.entries = entries
         self._badges.update()
+        self._set_tint(tint_rois if tint and self._badge_show != "off" else None)
+
+    def _set_tint(self, by_level) -> None:
+        """Halos round the ROIs, one curve per level colour (NaN-separated polylines,
+        like the outlines: cheap)."""
+        from .. import bgmultiple as BM
+        if not getattr(self, "_tint_curves", None):
+            self._tint_curves = []
+            for col in BM.LEVEL_COLOURS:
+                c = QColor(col)
+                c.setAlpha(150)
+                pen = pg.mkPen(c, width=4.5)
+                pen.setCosmetic(True)
+                cv = pg.PlotCurveItem(pen=pen, connect="finite")
+                cv.setZValue(9)                     # under the outlines (10)
+                self.vb.addItem(cv)
+                self._tint_curves.append(cv)
+        for lev, cv in enumerate(self._tint_curves):
+            rois = (by_level or {}).get(lev) or []
+            if rois and self._show_outlines:
+                x, y = _poly_arrays(rois)
+                cv.setData(x, y, connect="finite")
+                cv.setVisible(True)
+            else:
+                cv.setData([], [])
+                cv.setVisible(False)
 
     def badge_rects(self) -> List[Tuple[tuple, QRectF]]:
         """(key, rect in view-box px) of the badges shown now (tests / layout)."""

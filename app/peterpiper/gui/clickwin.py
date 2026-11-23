@@ -186,7 +186,8 @@ STEP_NAMES = ("Rules", "ROIs", "Track", "Check", "Export")   # before 4.0 (the s
 # 4.0: the pages (gui/pageflow.py); 0 = the start window, the window shows 1 - 3
 P_START, P_DRAW, P_TRACK, P_GRAPHS = 0, 1, 2, 3
 OLD_STEP_PAGE = (P_DRAW, P_DRAW, P_TRACK, P_TRACK, P_GRAPHS)   # _goto_step(old step)
-BADGE_MODES = (("all", "all"), ("main", "main"), ("off", "off"))
+BADGE_MODES = (("all", "All channels"), ("main", "Main channel"),
+               ("numbers", "Numbers only"), ("off", "Off"))
 NEXT_TIPS = {P_DRAW: "Follow every cell through the movie and measure every channel in every "
                      "ROI (TRACK & MEASURE), then check the traces.",
              P_TRACK: "Build graphs and export your results (Excel, Prism, CSV ...).",
@@ -301,13 +302,26 @@ class _SessionWriter(QObject):
                 t = self._thread
             if t is None:
                 return
-            if t.state == TK.CANCELLED or (t.finished and t.state != TK.DONE):
-                with self._lock:                     # never ran (the program is ending)
-                    self._thread = None
+            if t.state == TK.CANCELLED or (t.finished and t.state != TK.DONE) or                     (t.state == TK.QUEUED and TK.center().closed()):
+                with self._lock:                     # never ran (the program is ending):
+                    self._thread = None              # written here, now
                 if self._jobs:
                     self._run()
                 return
             t.wait(0.05)
+
+
+def _norm_snap(snap):
+    """4.0: a retrack.snapshot as it is after a round trip through a saved file (JSON:
+    tuples become lists; tracker-boundary keys stay cell numbers) - so a snapshot
+    read back from a session compares exactly like one made now."""
+    if snap is None:
+        return None
+    import json
+    out = json.loads(json.dumps(snap, default=list))
+    if isinstance(out.get("boundaries"), dict):
+        out["boundaries"] = {int(k): v for k, v in out["boundaries"].items()}
+    return out
 
 
 def _results_written(nd2: str, out_dir: str, kind: str, extra=()) -> None:
@@ -321,6 +335,8 @@ def _results_written(nd2: str, out_dir: str, kind: str, extra=()) -> None:
         pass
 
 
+_LINGER: list = []                               # 4.0: jobs still stopping after a close
+EXPORT_MARKER = "EXPORT NOT FINISHED.txt"         # 4.0: in an export folder until it is done
 _COPY_EXTRA: Dict[str, list] = {}                # 4.0: export folders the next copy adds
 _COPY_LOCK = threading.Lock()
 
@@ -573,6 +589,14 @@ class ClickWindow(QMainWindow):
         self.store.prefetch(0, ahead=6, behind=0)
         self._show_page(P_DRAW)
         QTimer.singleShot(0, self._sync_bg_ui)       # 4.0: propose background places
+        # 4.0: the tracker's worker processes start now, in the background, so the
+        # first TRACK & MEASURE does not wait for them
+        try:
+            from .. import manual as _MN
+            threading.Thread(target=_MN.warm_up_workers, name="peterpiper-warm-up",
+                             daemon=True).start()
+        except Exception:                                          # noqa: BLE001
+            pass
         # V3.0: no automatic background region - it often sat on real cells; you
         # place it (batch analysis, with nobody to click, still places it itself)
         if getattr(exp, "export_tiffs", False):
@@ -592,6 +616,17 @@ class ClickWindow(QMainWindow):
         self.setWindowState(self.windowState() & ~Qt.WindowMaximized)
         super().resize(*a)
         self._asked_w = self.width()
+
+    def _narrow_side(self) -> None:
+        """Pages 3 / 4: the middle panel as narrow as its contents allow."""
+        sp = self._splitter
+        sizes = sp.sizes()
+        if len(sizes) == 2 and sum(sizes) > 0:
+            side = max(self._side_scroll.minimumWidth(),
+                       self._side_scroll.widget().minimumSizeHint().width() + 16)
+            if self._page == P_DRAW:
+                side = max(side, min(440, sum(sizes) // 3))
+            sp.setSizes([sum(sizes) - side, side])
 
     def _keep_width(self) -> None:
         """4.0: switching pages may grow the window for a moment (a panel wider while
@@ -699,25 +734,49 @@ class ClickWindow(QMainWindow):
         self.chk_numbers.toggled.connect(self.view.set_show_numbers)
         dl.addWidget(self.chk_numbers)
         dl.addSpacing(6)
-        lab = QLabel("× bg")
-        tip(lab, BM.BADGE_TIP, "N x background", BM.BADGE_PIC)
-        dl.addWidget(lab)
-        self.cmb_badges = QComboBox()                # 4.0: N x background on every ROI
-        self.cmb_badges.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        self.cmb_badges.setMinimumContentsLength(4)
+        # 4.0: N x background on every ROI - a small menu: all / main / numbers only /
+        # off, and 'Colour outlines by level' (the state lives in cmb_badges, not shown)
+        from PySide6.QtGui import QActionGroup
+        from PySide6.QtWidgets import QToolButton
+        self.cmb_badges = QComboBox(self)
+        self.cmb_badges.hide()
         for key, words in BADGE_MODES:
             self.cmb_badges.addItem(words, key)
         cur = str(getattr(self.settings, "ui_badges", "all") or "all")
         self.cmb_badges.setCurrentIndex(max(0, self.cmb_badges.findData(cur)))
-        tip(self.cmb_badges, BM.BADGE_TIP + " 'main channel': only the channel shown in the "
-                                            "image (or in the graph).", "N x background",
-            BM.BADGE_PIC)
         self.cmb_badges.currentIndexChanged.connect(self._badges_mode_changed)
-        dl.addWidget(self.cmb_badges)
+        self.btn_badges = QToolButton()
+        self.btn_badges.setText("× bg")
+        self.btn_badges.setPopupMode(QToolButton.InstantPopup)
+        tip(self.btn_badges, BM.BADGE_TIP + " Choose: every channel, the main channel (the "
+                                            "one shown in the image or the graph), the "
+                                            "numbers only, or off; and whether each outline "
+                                            "is tinted by its level.", "N x background",
+            BM.BADGE_PIC)
+        bm = QMenu(self.btn_badges)
+        grp = QActionGroup(bm)
+        self._badge_acts = {}
+        for key, words in BADGE_MODES:
+            a = bm.addAction(words)
+            a.setCheckable(True)
+            a.setChecked(key == self._badge_mode())
+            grp.addAction(a)
+            a.triggered.connect(lambda _c=False, k=key: self.cmb_badges.setCurrentIndex(
+                self.cmb_badges.findData(k)))
+            self._badge_acts[key] = a
+        bm.addSeparator()
+        self.act_tint = bm.addAction("Colour outlines by level")
+        self.act_tint.setCheckable(True)
+        self.act_tint.setChecked(bool(getattr(self.settings, "ui_badge_tint", True)))
+        self.act_tint.toggled.connect(self._badges_mode_changed)
+        self.btn_badges.setMenu(bm)
+        dl.addWidget(self.btn_badges)
         dl.addStretch(1)
         ll.addWidget(disp)
-        # the progress bar with Stop beside it (Stop only matters while a job runs)
+        # the progress bar with Stop beside it - 4.0: only while a job runs (and a few
+        # seconds after, with its 'done' note)
         prow = QWidget()
+        self._prow = prow
         pl = QHBoxLayout(prow)
         pl.setContentsMargins(2, 0, 2, 0)
         pl.setSpacing(6)
@@ -730,11 +789,13 @@ class ClickWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         pl.addWidget(self.btn_stop, 0, Qt.AlignTop)
         ll.addWidget(prow)
-        # 1.1: what just happened, under the image - a long message takes its lines
-        # from the image, so the side panel never needs a scroll bar
-        self.lbl_status = W.wrapped_label("Ready.")
-        self.lbl_status.setContentsMargins(4, 0, 4, 2)
-        ll.addWidget(self.lbl_status)
+        prow.hide()                                   # 4.0: shown only while a job runs
+        self._prow_timer = QTimer(self)
+        self._prow_timer.setSingleShot(True)
+        self._prow_timer.setInterval(4000)
+        self._prow_timer.timeout.connect(self._progress_idle)
+        # 4.0: what just happened - ONE line, in the status bar (the whole text on hover)
+        self.lbl_status = W.ElidedLabel("Ready.", Qt.ElideRight)
         splitter.addWidget(left)
         self._splitter = splitter
 
@@ -957,10 +1018,12 @@ class ClickWindow(QMainWindow):
         """4.0: the autosave line on the left, the background tasks on the right."""
         sb = self.statusBar()
         sb.setSizeGripEnabled(False)
-        self.lbl_saved = W.ElidedLabel(self._saved_text(), Qt.ElideRight)
+        sb.addWidget(self.lbl_status, 1)              # what just happened (one line)
+        self.lbl_saved = QLabel("")                   # 'Autosaved 16:25' (short)
         self.lbl_saved.setProperty("muted", True)
-        self.lbl_saved.setToolTip(str(history.session_dir(self.exp.out_dir)))
-        sb.addWidget(self.lbl_saved, 1)
+        self.lbl_saved.setToolTip(self._saved_text() + chr(10) +
+                                  str(history.session_dir(self.exp.out_dir)))
+        sb.addPermanentWidget(self.lbl_saved)
         from .taskstatus import TaskStatusButton
         self.task_status = TaskStatusButton(self)
         sb.addPermanentWidget(self.task_status)
@@ -1304,10 +1367,6 @@ class ClickWindow(QMainWindow):
                               "Compare.")
         self.sp_snr.valueChanged.connect(self._snr_changed)
         lay.addWidget(box)
-        note = W.wrapped_label("Press  ▶ Play  under the image to watch the outlines follow the "
-                               "cells. Include / exclude cells, the baseline timepoint and Undo "
-                               "are in the list beside the traces (right).", muted=True)
-        lay.addWidget(note)
         lay.addStretch(1)
         # the baseline (time 0): chosen beside the cell list (traces.sp_base); this spin
         # box only holds the value for the rest of the window (never shown)
@@ -1321,6 +1380,7 @@ class ClickWindow(QMainWindow):
         # ================================================ page 4: Graphs & export
         lay = self._new_page(P_GRAPHS)
         box, form = W.group("Graphs")
+        box.hide()                                    # 4.0: the graph builder (right) says it
         self.graphs_box = box
         self.graphs_area = QWidget()                  # part 'graphs' may add controls here
         gl = QVBoxLayout(self.graphs_area)
@@ -1373,10 +1433,10 @@ class ClickWindow(QMainWindow):
         out = Path(self.exp.out_dir)
         shown = (out.parent.name + os.sep + out.name                # V3.0: OUTPUT_<movie>/<user>
                  if out.parent.name.upper().startswith("OUTPUT_") else out.name)
-        self.lbl_where = W.wrapped_label("SAVE keeps this version of your work for Compare; "
-                                         "EXPORT writes your export list into a new folder "
-                                         "inside " + shown.replace("_", "_​") + ".", muted=True)
-        tip(self.lbl_where, str(out), "Results folder")
+        self.lbl_where = W.wrapped_label("Into " + shown.replace("_", "_​"), muted=True)
+        tip(self.lbl_where, "SAVE keeps this version of your work for Compare; EXPORT writes "
+                            "your export list into a new folder inside " + str(out) + ".",
+            "Results folder")
         form.addRow(self.lbl_where)
         self.ed_note = QLineEdit()
         self.ed_note.setPlaceholderText("Note (optional), e.g. 'without the dim cells'")
@@ -3121,8 +3181,10 @@ class ClickWindow(QMainWindow):
                 w.setVisible(False)
         self._pages[k].setVisible(True)
         # Graphs & export: the graph builder (right) gets the room
-        self._side_scroll.setMinimumWidth(300 if k == P_GRAPHS else 330 if k == P_TRACK
+        self._side_scroll.setMinimumWidth(250 if k == P_GRAPHS else 285 if k == P_TRACK
                                           else 360)
+        if old != k or k != P_DRAW:                   # 3 / 4 narrow: image + right panel
+            QTimer.singleShot(0, self._narrow_side)
         for ms in (0, 150, 400):
             QTimer.singleShot(ms, self._keep_width)
         self.flow.set_page(k)
@@ -4282,9 +4344,16 @@ class ClickWindow(QMainWindow):
         return str(self.cmb_badges.currentData() or "all") if hasattr(self, "cmb_badges") \
             else "all"
 
-    def _badges_mode_changed(self, _i: int = 0) -> None:
+    def _badges_mode_changed(self, _i=0) -> None:
         self.settings.ui_badges = self._badge_mode()
+        self.settings.ui_badge_tint = self._badge_tint()
+        a = getattr(self, "_badge_acts", {}).get(self._badge_mode())
+        if a is not None and not a.isChecked():
+            a.setChecked(True)
         self._update_badges()
+
+    def _badge_tint(self) -> bool:
+        return bool(getattr(self, "act_tint", None) is not None and self.act_tint.isChecked())
 
     def _graph_quantity_changed(self, text: str) -> None:
         """The traces graph shows another quantity: the badges' main channel follows
@@ -4345,7 +4414,7 @@ class ClickWindow(QMainWindow):
         names = list(self.exp.channels)
         badges = {key: list(zip(names, [float(v) for v in X[j]])) for j, key in enumerate(keys)}
         self.view.set_roi_badges(badges, mode, rois={key: live[j] for j, key in enumerate(keys)},
-                                 main=self._main_channel())
+                                 main=self._main_channel(), tint=self._badge_tint())
 
     def _roi_info(self, comp: str, k: int):
         """The hover text's numbers of ROI (comp, k) at the timepoint shown."""
@@ -4567,12 +4636,27 @@ class ClickWindow(QMainWindow):
             self.btn_undo.setEnabled(False)
             self.traces.set_undo_enabled(False)
         self.btn_stop.setEnabled(on)
+        self._progress_shown(on)
         if not on:
             self._update_hint()
             self._update_next()
         if on:
             self.flow.set_next(self.flow.btn_next.text().replace("&&", "&").rstrip(" ▶"), False)
             self.flow.set_hint("Working... see the progress bar under the image (Stop cancels).")
+
+    def _progress_shown(self, on: bool) -> None:
+        """4.0: the bar + Stop only while a job runs, and ~4 s after (its 'done' note)."""
+        if not hasattr(self, "_prow"):
+            return
+        if on:
+            self._prow_timer.stop()
+            self._prow.show()
+        else:
+            self._prow_timer.start()
+
+    def _progress_idle(self) -> None:
+        if not (self._busy_now() or self.retracking()):
+            self._prow.hide()
 
     def _start(self, job, on_done, label: str) -> None:
         if self._busy_now():
@@ -4663,6 +4747,27 @@ class ClickWindow(QMainWindow):
                     f"timepoints (about {self._eta_s(n)} s)...")
 
     # ------------------------------------------- 4.0 re-track only what changed
+    def _track_to_save(self):
+        """The tracking a file gets: the current one, or - an update still pending -
+        the earlier one (the state says it is stale)."""
+        return self.track if self.track is not None else self._prev_track
+
+    def _settle_tracking(self, timeout: float = 120.0) -> bool:
+        """4.0: before SAVE / closing: a pending automatic update is finished first (a
+        bar under the image; at most `timeout` s). True when the tracking is current."""
+        if self._prev_track is None or self.track is not None:
+            return True
+        self._retrack_timer.stop()
+        if not self.retracking():
+            self._auto_retrack()
+        t0 = time.time()
+        if self.retracking():
+            self.set_status("Finishing the tracking update first ...")
+        while self.retracking() and time.time() - t0 < timeout:
+            QApplication.processEvents()
+            time.sleep(0.02)
+        return self.track is not None
+
     def _schedule_retrack(self) -> None:
         """After a change (ROI edit, background, a cell's override): bring the tracking
         up to date automatically ~0.8 s after the last change (retrack.update: only
@@ -4693,7 +4798,8 @@ class ClickWindow(QMainWindow):
         cells = self._followed_cells()
         if not any(cells) or self.background is None:
             return
-        new = self._snap(cells)
+        new = _norm_snap(self._snap(cells))
+        old = _norm_snap(old)
         p = RT.plan(old, new)
         if p["full"] or old is None:
             why = p.get("why") or "the tracking inputs changed"
@@ -4707,6 +4813,7 @@ class ClickWindow(QMainWindow):
             self._on_tracked(prev, loaded=not p.get("regate"), snap=new, quiet=True)
             return
         ks = sorted({k for ks_ in p["retrack"].values() for k in ks_})
+        self.traces.set_pending(ks)               # their old traces: grey, dashed
         what = ", ".join(str(k + 1) for k in ks[:8]) + (" ..." if len(ks) > 8 else "")
         self.lbl_track.setText(f"Updating {p['why']}" + (f" (cell {what})" if ks else "")
                                + " - the other cells keep their tracking.")
@@ -4719,9 +4826,10 @@ class ClickWindow(QMainWindow):
             if self._closed:
                 return
             self.progress.reset("Updated.")
+            self._progress_shown(False)
             self.btn_stop.setEnabled(self._busy_now())
             self._last_retrack_s = time.perf_counter() - t_start
-            if self._snap() == new:                # nothing changed meanwhile: use it
+            if _norm_snap(self._snap()) == new:    # nothing changed meanwhile: use it
                 self._prev_track = None
                 self._on_tracked(out, snap=new, quiet=True)
                 self.set_status(f"Updated in {self._last_retrack_s:.1f} s "
@@ -4733,6 +4841,8 @@ class ClickWindow(QMainWindow):
         def failed(msg: str, detail: str) -> None:
             self._retrack_runner = None
             self.progress.reset("Update stopped.")
+            self.traces.set_pending(())
+            self._progress_shown(False)
             self.btn_stop.setEnabled(self._busy_now())
             self.set_status(f"Could not update the tracking ({msg}) - press TRACK & MEASURE.")
             self._update_next()
@@ -4740,10 +4850,13 @@ class ClickWindow(QMainWindow):
         def cancelled() -> None:
             self._retrack_runner = None
             self.progress.reset("Update stopped by you.")
+            self.traces.set_pending(())
+            self._progress_shown(False)
             self.btn_stop.setEnabled(self._busy_now())
             self.set_status("Update stopped - press TRACK & MEASURE (or change a cell again).")
             self._update_next()
         self.progress.reset(f"Updating {p['why']} ...")
+        self._progress_shown(True)
         self._retrack_runner = JobRunner(
             FuncJob(RT.update, self.src, self.exp, cells, self.background, int(self.t0 or 0),
                     prev, old, new, **kw),
@@ -4802,6 +4915,11 @@ class ClickWindow(QMainWindow):
 
     def _on_tracked(self, out: dict, loaded: bool = False, snap: Optional[dict] = None,
                     quiet: bool = False) -> None:
+        self.traces.set_pending(())
+        self._on_tracked_now(out, loaded, snap, quiet)
+
+    def _on_tracked_now(self, out: dict, loaded: bool = False, snap: Optional[dict] = None,
+                        quiet: bool = False) -> None:
         """Tracking finished (or was loaded with an ROI file: loaded=True keeps your
         include / exclude choices as saved instead of applying the IF rule again).
         4.0: snap = the retrack.snapshot it was made with (None: the one taken when
@@ -4873,12 +4991,13 @@ class ClickWindow(QMainWindow):
             f"include them anyway." for c, ks in gated.items() if not loaded)
         warn = "" if loaded else background_warning(out.get("background") or {},
                                                      channels=list(self.exp.channels))
-        self.lbl_track.setText(f"Tracked {n} cells through {self.exp.n_timepoints} timepoints. "
-                               f"ROIs redrawn at every timepoint ({pct}); where a redraw "
-                               f"looked wrong the previous outline was moved with the cell "
-                               f"instead (noted per cell in QC)." + gate_txt
+        self.lbl_track.setText(f"Tracked {n} cells, {self.exp.n_timepoints} timepoints." + gate_txt
                                + (f"<br><b style='color:{self._warn_colour()}'>{warn}</b>"
                                   if warn else ""))
+        self.lbl_track.setToolTip(f"ROIs redrawn at every timepoint ({pct}); where a redraw "
+                                  f"looked wrong the previous outline was moved with the cell "
+                                  f"instead (noted per cell in QC). After a change to one cell, "
+                                  f"only what it affects is tracked again, by itself.")
         self.progress.reset("Tracking finished.")
         self.btn_export.setEnabled(True)
         self._refresh()
@@ -4888,8 +5007,7 @@ class ClickWindow(QMainWindow):
             self._show_page(P_TRACK)                # 4.0: the Track & check page
         if not quiet or self._page != P_DRAW:
             self._show_traces()
-        self.set_status("Tracked. Press ▶ Play to watch the outlines follow the cells. "
-                        "Switch Compartment to see each one's traces." + gate_txt)
+        self.set_status(f"Tracked {n} cells." + gate_txt)      # (the hint says what next)
         if warn:                          # V2.7: an object in the background region - redraw?
             self._bg_box = QMessageBox(QMessageBox.Warning, "Object in the background region", warn,
                                        parent=self)
@@ -5109,13 +5227,45 @@ class ClickWindow(QMainWindow):
 
         def work(progress=None, cancelled=None):
             src, own = None, False
+            # 4.0: an export cut off (cancelled, failed, the program killed) is clearly
+            # marked: a note file in it until it has finished (the folder keeps its name,
+            # so the long-path plan still holds), '_INCOMPLETE' added when it stopped
+            from ..exportpaths import export_folder_name
+            name = fname or export_folder_name()
+            folder, n = Path(root) / name, 2
+            while exists(folder):
+                folder, n = Path(root) / f"{name}_{n}", n + 1
+            marker = folder / EXPORT_MARKER
+            marked = {"on": False}
+
+            def prog(f, m="", *a, **k):
+                if not marked["on"] and is_dir(folder):
+                    try:
+                        marker.write_text("This export was not finished: some files may "
+                                          "be missing. Export again.", encoding="utf-8")
+                        marked["on"] = True
+                    except OSError:
+                        pass
+                return progress(f, m) if progress else True
             try:
                 if need_src:                        # its own reader of the movie
                     src, own = reader()
                 out = run_export(root, exp, settings, comps, keys, src=src,
                                  background=background, t0=int(t0 or 0), roi_file_fn=roi_file,
-                                 prefix=stem, provenance=prov, folder_name=fname, tag=tag,
-                                 title=title, progress=progress)
+                                 prefix=stem, provenance=prov, folder_name=folder.name,
+                                 tag=tag, title=title, progress=prog)
+                try:
+                    if marker.exists():
+                        marker.unlink()
+                except OSError:
+                    pass
+            except BaseException:
+                try:
+                    if is_dir(folder):
+                        os.replace(folder, folder.with_name(folder.name + "_INCOMPLETE"))
+                except OSError:
+                    pass
+                raise
             finally:
                 if src is not None and own:
                     try:
@@ -5179,12 +5329,34 @@ class ClickWindow(QMainWindow):
         if isinstance(self.src, ND2Source):
             local = self._local_movie or str(self.exp.nd2_path)
             pos = int(getattr(self.src, "position", 0) or 0)
+            from .. import transfers
+            transfers.pin(local)                     # 4.0: the cache copy stays until the
+                                                     # job has closed its reader
+
+            class _Pinned:
+                """The job's reader: closing it also lets the cache copy go."""
+
+                def __init__(self, s) -> None:
+                    self._s = s
+
+                def __getattr__(self, n):
+                    return getattr(self._s, n)
+
+                def close(self) -> None:
+                    try:
+                        self._s.close()
+                    finally:
+                        transfers.unpin(local)
 
             def make():
-                s = open_source(local)
+                try:
+                    s = open_source(local)
+                except BaseException:
+                    transfers.unpin(local)
+                    raise
                 if pos:
                     s.position = pos
-                return s, True
+                return _Pinned(s), True
             return make
         shared = self.src
         return lambda: (shared, False)
@@ -5487,6 +5659,11 @@ class ClickWindow(QMainWindow):
         if self.overrides:                               # 4.0: the troubleshooter's choices
             from ..roifile import overrides_state
             state["overrides"] = overrides_state(self.overrides, names)
+        if self.track is None and self._prev_track is not None:
+            # 4.0: an update was pending: the earlier tracking is kept, marked stale, with
+            # what it was made from - reloaded, only what changed is tracked again
+            state["track_stale"] = True
+            state["track_snap"] = _norm_snap(self._prev_snap)
         return state, anchors, comps, self.background, (e.height, e.width), \
             int(self.t0 or 0)
 
@@ -5500,11 +5677,13 @@ class ClickWindow(QMainWindow):
         if note is None:
             note = self.ed_note.text() if hasattr(self, "ed_note") else ""
         note = " ".join(str(note or "").split())[:120]
+        self._settle_tracking()                 # 4.0: a pending update first
         state, anchors, comps, bg, shape, t0 = self._roi_state("saved")
         state["note"] = note
         try:
             path = save_roi_file(roi_path(self.exp.out_dir, self.exp.nd2_path), anchors, bg,
-                                 shape, t0 + 1, state=state, comps=comps, track=self.track)
+                                 shape, t0 + 1, state=state, comps=comps,
+                                 track=self._track_to_save())
         except Exception as exc:                                   # noqa: BLE001
             QMessageBox.critical(self, "Could not save the ROIs", error_text(exc))
             return None
@@ -5709,7 +5888,13 @@ class ClickWindow(QMainWindow):
         if n and problem is None and track is not None:
             problem = self._other_movie(st)     # measured on other pixels: not used here
         ok_track = n > 0 and problem is None
-        if ok_track:                                   # the saved tracking: no need to re-track
+        if ok_track and st.get("track_stale") and isinstance(st.get("track_snap"), dict):
+            # 4.0: saved while an update was pending - brought up to date now (only what
+            # changed since that tracking is tracked again)
+            self._prev_track, self._prev_snap = track, st.get("track_snap")
+            self._was_tracked = True
+            self._schedule_retrack()
+        elif ok_track:                                 # the saved tracking: no need to re-track
             self._on_tracked(track, loaded=True)
         if self._session_file is not None:
             # this window already saved a session file (the work you had before
@@ -5840,7 +6025,7 @@ class ClickWindow(QMainWindow):
                 self._session_file = path
             state, anchors, comps, bg, shape, t0 = self._roi_state("session")
             blob = session_blob(anchors, bg, shape, t0 + 1, state=state, comps=comps,
-                                track=self.track)
+                                track=self._track_to_save())
             import json as _json
             key = str(_json.loads(str(blob["state_json"])).get("content_key") or "")
         except Exception as exc:                                   # noqa: BLE001
@@ -5867,8 +6052,9 @@ class ClickWindow(QMainWindow):
             return
         with_trk = "with the tracking" if self._save_log and self._save_log[-1].get("tracked") \
             else "ROIs only - not tracked yet"
-        self.lbl_saved.setText(f"Autosaved at {datetime.now():%H:%M:%S} ({with_trk}).")
-        self.lbl_saved.setToolTip(path)
+        self.lbl_saved.setText(f"Autosaved {datetime.now():%H:%M}")
+        self.lbl_saved.setToolTip(f"Autosaved at {datetime.now():%H:%M:%S} ({with_trk}):"
+                                  + chr(10) + path)
         self._keep_copy()                       # 1.2.2: also into the second folder
 
     # ---------------------------------------------- 1.2.2: the second copy
@@ -5902,7 +6088,9 @@ class ClickWindow(QMainWindow):
     def _autosave_toggled(self, on: bool) -> None:
         self.settings.autosave_sessions = bool(on)
         save_settings(self.settings, self.exp)
-        self.lbl_saved.setText(self._saved_text())
+        self.lbl_saved.setText("" if getattr(self.settings, "autosave_sessions", True)
+                               else "Autosave off")
+        self.lbl_saved.setToolTip(self._saved_text())
         if on:
             self._dirty = self._dirty or bool(any(self.cells))
             self._mark_dirty()
@@ -6170,6 +6358,12 @@ class ClickWindow(QMainWindow):
                 return
         self._play.stop()
         self._save_timer.stop()
+        if self._prev_track is not None and self.track is None:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:                                   # 4.0: a pending update finishes first
+                self._settle_tracking(60.0)
+            finally:
+                QApplication.restoreOverrideCursor()
         self._autosave(even_if_busy=True)          # the last changes (if any)...
         self._writer.flush()                       # ...are on disk before the window goes
         if not self._closed:                       # 1.1
@@ -6186,14 +6380,39 @@ class ClickWindow(QMainWindow):
             pass
         self._writer._alive = False
         self._retrack_timer.stop()
+        still = []
         for r in (self._bg_job, getattr(self, "_bg_own_job", None), self._retrack_runner):
-            if r is not None and not r.is_finished():           # 4.0: ~0.1 s jobs
-                r.stop_and_wait(10.0, QApplication.processEvents)
-        try:                                       # 4.0: the local movie copy may go now
-            from .. import transfers
-            transfers.unpin(self._local_movie)
-        except Exception:                                          # noqa: BLE001
-            pass
+            if r is not None and not r.is_finished():           # 4.0: short jobs
+                if not r.stop_and_wait(10.0, QApplication.processEvents):
+                    still.append(r)
+        src, local = self.src, self._local_movie
+
+        def release() -> None:
+            try:                                   # 4.0: the local movie copy may go now
+                from .. import transfers
+                transfers.unpin(local)
+            except Exception:                                      # noqa: BLE001
+                pass
+            try:
+                src.close()
+            except Exception:                                      # noqa: BLE001
+                pass
         self.store.close()
-        self.src.close()
+        if still:
+            # a job that reads the movie has not stopped yet: its reader is closed when
+            # it has (never under a running thread); keep the runners alive until then
+            _LINGER.extend(still)
+            left = {"n": len(still)}
+
+            def one_done(r=None) -> None:
+                left["n"] -= 1
+                if left["n"] <= 0:
+                    release()
+                    for x in still:
+                        if x in _LINGER:
+                            _LINGER.remove(x)
+            for r in still:
+                r.thread.finished.connect(one_done)
+        else:
+            release()
         super().closeEvent(ev)

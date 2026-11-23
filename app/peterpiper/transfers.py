@@ -289,7 +289,7 @@ def connected() -> bool:
 
 # ======================================================== the movie cache
 _cache_lock = threading.RLock()
-_pinned: set = set()
+_pinned: Dict[str, int] = {}       # 4.0: a reference count per open / reading user
 
 
 def _key(path) -> str:
@@ -424,11 +424,19 @@ def server_path_of(local) -> Optional[str]:
 
 def pin(local) -> None:
     """A movie open now: never removed from the cache while pinned."""
-    _pinned.add(_key(local))
+    k = _key(local)
+    with _cache_lock:
+        _pinned[k] = _pinned.get(k, 0) + 1
 
 
 def unpin(local) -> None:
-    _pinned.discard(_key(local))
+    k = _key(local)
+    with _cache_lock:
+        n = _pinned.get(k, 0) - 1
+        if n > 0:
+            _pinned[k] = n
+        else:
+            _pinned.pop(k, None)
 
 
 def cleanup_cache(limit: Optional[int] = None, keep: Iterable = ()) -> Tuple[int, int]:
@@ -438,7 +446,7 @@ def cleanup_cache(limit: Optional[int] = None, keep: Iterable = ()) -> Tuple[int
     (bytes freed, files removed)."""
     cd = cache_dir()
     limit = cache_limit_bytes(cd) if limit is None else int(limit)
-    keep_k = {_key(k) for k in keep} | set(_pinned)
+    keep_k = {_key(k) for k in keep} | set(_pinned)            # every key pinned at least once
     freed = removed = 0
     with _cache_lock:
         d = _load_index(cd)
@@ -767,20 +775,29 @@ def _on_quit() -> None:
 
 
 def install_quit_backup() -> bool:
-    """Back up when PeterPiper closes (QApplication.aboutToQuit, once)."""
+    """Back up when PeterPiper closes. 4.0 integration: NOT on QApplication.aboutToQuit
+    - the program's loop runs app.exec() once per analysis window, so that signal comes
+    at every Next movie / back to the start window. This only asks for the backup;
+    app.main calls program_end() once, at the real end."""
     global _quit_hooked
+    _quit_hooked = True
+    return True
+
+
+def program_end(shutdown: bool = True) -> None:
+    """The real end of the program (app.main): the backup the options ask for (if
+    install_quit_backup was asked), then - shutdown - the task center stops."""
     if _quit_hooked:
-        return True
-    try:
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app is None:
-            return False
-        app.aboutToQuit.connect(_on_quit)
-        _quit_hooked = True
-        return True
-    except Exception:                                              # noqa: BLE001
-        return False
+        try:
+            if _opts().get("backup_on_close", True) and backup_folder() is not None:
+                backup_profile()
+        except Exception:                                          # noqa: BLE001
+            pass
+    if shutdown:
+        try:
+            T.center().shutdown(timeout=3.0)
+        except Exception:                                          # noqa: BLE001
+            pass
 
 
 # ============================================================ speed check

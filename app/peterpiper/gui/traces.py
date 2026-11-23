@@ -341,7 +341,12 @@ class TracePanel(QWidget):
         split = QSplitter(Qt.Vertical)
         split.addWidget(self.plot)
         split.addWidget(lower)
-        split.setSizes([600, 320])
+        # 4.0 integration: the cell list shows ~6 rows at 1366 x 768 (the plot fits itself)
+        rh = self.table.verticalHeader().defaultSectionSize()
+        self.table.setMinimumHeight(int(self.table.horizontalHeader().sizeHint().height()
+                                        + 6 * rh + 4))
+        split.setSizes([460, 540])
+        self.split = split
         lay.addWidget(split, 1)
         self._cursor = None
         self._baseline_line = None
@@ -1045,7 +1050,25 @@ class TracePanel(QWidget):
     def _box_mode(self, on: bool) -> None:
         self.vb.setMouseMode(pg.ViewBox.RectMode if on else pg.ViewBox.PanMode)
 
+    def set_pending(self, cells) -> None:
+        """4.0: cells whose tracking is being updated: their old traces are drawn grey
+        and dashed until the new ones come (set_pending(()) when done)."""
+        new = set(int(k) for k in (cells or ()))
+        if new == getattr(self, "_pending", set()):
+            return
+        self._pending = new
+        for item, k in getattr(self, "_curves", []):
+            try:
+                item.setPen(self._pen(k))
+            except RuntimeError:
+                pass
+
+    def pending(self) -> set:
+        return set(getattr(self, "_pending", set()))
+
     def _pen(self, k: int):
+        if k in getattr(self, "_pending", ()):
+            return pg.mkPen(QColor(150, 150, 150), width=1.4, style=Qt.DashLine)
         if k == self._sel:
             return pg.mkPen(HILITE, width=3.0)
         if self._view == VIEW_EXPORTED:
@@ -1069,16 +1092,19 @@ class TracePanel(QWidget):
     def _update_header(self) -> None:
         n_in = sum(1 for k in self._cells if k in self._inc)
         if self._view == VIEW_EXPORTED:
-            self._set_header(f"{self._label}: {n_in} of {len(self._cells)} cells included "
-                                f"(ticked below). As exported: "
-                                f"{GS.style_summary(self._style)} of the included cells. "
-                                f"All values background-subtracted." + self._blank_note())
+            self._set_header(f"{self._label}: {n_in} of {len(self._cells)} included · "
+                             f"{GS.style_summary(self._style)}" + self._blank_note(),
+                             "As exported: only the included cells (ticked below), in the "
+                             "look you choose here. All values background-subtracted.")
             return
         err = self._err()
         shade = "" if err == "none" else f", shaded = {ERROR_TEXT.get(err, err)}"
-        self._set_header(f"{self._label}: {n_in} of {len(self._cells)} cells included "
-                            f"(ticked below). Blue = mean of the included{shade}. "
-                            f"All values background-subtracted." + self._blank_note())
+        # 4.0 integration: one short line; the rest on hover
+        self._set_header(f"{self._label}: {n_in} of {len(self._cells)} included · "
+                         f"blue = mean{shade}" + self._blank_note(),
+                         "Cells ticked below are included in the means, graphs and files. "
+                         "Blue = the mean of the included cells. All values "
+                         "background-subtracted.")
 
     def _err(self) -> str:
         """V3.0: the error of your graph look (one choice everywhere; SD default)."""
@@ -1094,17 +1120,19 @@ class TracePanel(QWidget):
         if not blank:
             return ""
         from ..measure import min_snr
-        return (f" {len(blank)} included cell{'' if len(blank) == 1 else 's'} "
-                f"{'has' if len(blank) == 1 else 'have'} no value here: a channel of this "
-                f"quantity is below {min_snr():g} x the noise of the ROI mean at the baseline "
-                f"(dividing by almost nothing; Ratio check, on Track & check, sets this).")
+        self._blank_tip = (f"A channel of this quantity is below {min_snr():g} x the noise "
+                           f"of the ROI mean at the baseline (dividing by almost nothing "
+                           f"gives wild numbers; 'Ratio check' on Track & check sets this).")
+        return (f" · {len(blank)} {'has' if len(blank) == 1 else 'have'} no value here")
 
-    def _set_header(self, text: str) -> None:
+    def _set_header(self, text: str, tip: str = "") -> None:
         # FitLabel only ever grows (its minimum height also floors heightForWidth),
         # so a shorter text after a longer one (As exported -> Check cells) would
         # keep an empty second line and shrink the plot: start from 0 each time.
         self.header.setMinimumHeight(0)
         self.header.setText(text)
+        extra = getattr(self, "_blank_tip", "") if "no value here" in text else ""
+        self.header.setToolTip((tip + (" " + extra if extra else "")).strip())
 
     # ================================================================ table
     def _fill_table(self) -> None:

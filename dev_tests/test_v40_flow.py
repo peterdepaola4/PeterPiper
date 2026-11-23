@@ -219,6 +219,52 @@ def part_a_b_c_d_e(w):
     pump(0.1)
     ok("C 'off' hides the badges", not w.view._badges.entries)
     w.cmb_badges.setCurrentIndex(w.cmb_badges.findData("all"))
+    pump(0.2)
+    w.view.vb.scaleBy((12, 12))                    # zoomed far out
+    pump(0.3)
+    lay_ = w.view._badges.layout()
+    ok("C zoomed far out the badges still show, compact ('22×': number only)",
+       len(lay_) >= 4 and all(s[0][0] == "" and s[0][1].endswith("×") for _k, _r, s in lay_),
+       f"{len(lay_)} shown, e.g. {lay_[0][2][0][1] if lay_ else ''}")
+    w.view.fit()
+    pump(0.2)
+    w.cmb_badges.setCurrentIndex(w.cmb_badges.findData("numbers"))
+    pump(0.2)
+    lay_ = w.view._badges.layout()
+    ok("C 'numbers only': the compact badge at any zoom",
+       lay_ and all(s[0][0] == "" for _k, _r, s in lay_))
+    w.act_tint.setChecked(True)
+    pump(0.2)
+    tinted = sum(1 for c in getattr(w.view, "_tint_curves", []) if c.isVisible())
+    ok("C 'Colour outlines by level': halos in the level colours", tinted >= 1, tinted)
+    w.act_tint.setChecked(False)
+    pump(0.1)
+    ok("C ... and off again", not any(c.isVisible() for c in w.view._tint_curves))
+    # cost with 100 ROIs: badges + tint + layout + paint
+    from peterpiper.segment import Roi
+    base = [r for r in w._rois("nucleus") if r is not None]
+    many, pairs = {}, {}
+    for j in range(100):
+        r0 = base[j % len(base)]
+        dy, dx = 3 * (j // len(base)), 2 * (j // len(base))
+        y0, x0, y1, x1 = r0.bbox
+        r = Roi((y0 + dy, x0 + dx, y1 + dy, x1 + dx), r0.mask.copy(), "nucleus")
+        many[("nucleus", j)] = r
+        pairs[("nucleus", j)] = [("Cy5", 5.0 + j % 7), ("GFP", 1.2 + j % 3), ("mCherry", 2.0)]
+    from PySide6.QtGui import QImage, QPainter
+    img = QImage(800, 600, QImage.Format_ARGB32)
+    ts = []
+    for _ in range(5):
+        t = time.perf_counter()
+        w.view.set_roi_badges(pairs, "all", rois=many, main="Cy5", tint=True)
+        p_ = QPainter(img)
+        w.view._badges.paint(p_)
+        p_.end()
+        ts.append((time.perf_counter() - t) * 1000)
+    ok("C 100 ROIs: badges + tint + layout + paint < 20 ms", sorted(ts)[2] < 20,
+       f"{sorted(ts)[2]:.1f} ms (median of 5)")
+    w.cmb_badges.setCurrentIndex(w.cmb_badges.findData("all"))
+    w.cmb_badges.setCurrentIndex(w.cmb_badges.findData("all"))
     w.slider.setValue(1)
     pump(0.3)
     # ---- D undo: include / exclude, compartment chosen
@@ -287,6 +333,11 @@ def part_f(w):
     w._remove(5, "nucleus")
     ok("F removing a cell after tracking: the tracking waits for its update",
        w.track is None and w._prev_track is not None)
+    from PySide6.QtCore import Qt as _Qt
+    w.traces.set_pending([1])                      # (what the update does for its cells)
+    pens = {k: it.opts["pen"] for it, k in w.traces._curves}
+    ok("F cells being updated: their old traces grey and dashed",
+       1 in pens and pens[1].style() == _Qt.DashLine and pens[1].color().red() == 150)
     t = time.perf_counter()
     wait(w)
     dt = time.perf_counter() - t

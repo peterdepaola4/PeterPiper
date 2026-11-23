@@ -30,7 +30,7 @@ One zip for **Windows 10 / 11 (64-bit)** and **macOS 14 (Sonoma) or newer**:
 5. **4 Graphs & export**: build graphs, **SAVE** and **EXPORT** (in the background); in a queue, **Next movie**. *Compare runs* puts dishes together.
 
 **Cite** - name the version you used and keep the exported methods text with your data:
-DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 4.0.0 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper - also *Cite this repository* (from `CITATION.cff`) and section 11.
+DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 4.0.1 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper - also *Cite this repository* (from `CITATION.cff`) and section 11.
 
 **For developers** - `CONTRIBUTING.md` (tests run on a small synthetic movie shipped with the code), `docs/PUBLISHING.md`, `CHANGELOG.md`; the code map is in section 16.
 
@@ -38,7 +38,7 @@ DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Niko
 
 ## The manual
 
-**PeterPiper version 4.0.0** (program name `PeterPiperV4.0`; formerly PD4nav, continuing PD4nav V3.0) · Windows 10 / 11, 64-bit, and macOS 14+ · Python 3.11 - 3.14 · runs entirely on your own computer
+**PeterPiper version 4.0.1** (program name `PeterPiperV4.0`; formerly PD4nav, continuing PD4nav V3.0) · Windows 10 / 11, 64-bit, and macOS 14+ · Python 3.11 - 3.14 · runs entirely on your own computer
 
 PeterPiper measures fluorescence in single cells over time in Nikon NIS-Elements `.nd2` time-lapse movies. You click on the cells; PeterPiper draws each region of interest (ROI) from the image, follows every ROI through every timepoint by redrawing it from that timepoint's pixels, measures every channel in every ROI, subtracts a background measured at every timepoint, and exports Excel, GraphPad Prism, CSV, graphs, ROI pictures and a ready-to-edit methods text. Saved runs (dishes) can be compared and averaged as replicates (mean of dish means ± SEM, n = dishes).
 
@@ -1441,9 +1441,9 @@ Colour and accessibility checks of the user interface (1.1, section 6.18; they d
 
 ### 11.5 How to cite PeterPiper
 
-> DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 4.0.0 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper https://doi.org/10.5281/zenodo.24120837.
+> DePaola P IV. PeterPiper: single-cell fluorescence time-course analysis for Nikon .nd2 movies, version 4.0.1 (2026). Schmitt Lab, University of California, Los Angeles. https://github.com/peterdepaola4/PeterPiper https://doi.org/10.5281/zenodo.24120837.
 
-`CITATION.cff` in the repository holds the same (GitHub shows it as *Cite this repository*). Name the version you used (`4.0.0`; the program `PeterPiperV4.0`, shown in the window title, the Settings sheet and every methods text) and keep the exported methods text and provenance with your data.
+`CITATION.cff` in the repository holds the same (GitHub shows it as *Cite this repository*). Name the version you used (`4.0.1`; the program `PeterPiperV4.0`, shown in the window title, the Settings sheet and every methods text) and keep the exported methods text and provenance with your data.
 
 ## 12. Validation
 
@@ -1592,7 +1592,9 @@ Not covered by automated tests: Excel and LibreOffice were not used to recalcula
 
 ## 15. Version history
 
-**PeterPiper 4.0.0** (this version, 22 November 2026) - one zip for Windows and macOS; a four-page analysis window (Start > Draw > Track & check > Graphs & export) with the background chosen first and every cell's *N x background*; single cells re-tracked by themselves after a change, and an ROI troubleshooter; a graph builder; exports, copies and uploads in the background (Next movie never waits); backup and the lab folder on the start page; drift slope and kinetics as add-ons. The measurements are unchanged. `CHANGELOG.md` lists everything.
+**PeterPiper 4.0.1** (this version, 23 November 2026) - the same program as 4.0.0; only the automatic Windows / Mac tests on GitHub were fixed, so every check of the release passes.
+
+**PeterPiper 4.0.0** (22 November 2026) - one zip for Windows and macOS; a four-page analysis window (Start > Draw > Track & check > Graphs & export) with the background chosen first and every cell's *N x background*; single cells re-tracked by themselves after a change, and an ROI troubleshooter; a graph builder; exports, copies and uploads in the background (Next movie never waits); backup and the lab folder on the start page; drift slope and kinetics as add-ons. The measurements are unchanged. `CHANGELOG.md` lists everything.
 
 **PeterPiper 1.2.2** (17 November 2026) - the methods and the numbers are unchanged; the same program folder (`PeterPiperV1.2`), so *Check for updates* updates 1.2.0 / 1.2.1 in place.
 

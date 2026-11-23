@@ -94,9 +94,9 @@ ALLOWED = re.compile(r"PD4nav (?:older|V\{|V2|profile - |saved settings|trained 
 
 
 def part_a():
-    ok("A APP_NAME PeterPiperV4.0, APP_TITLE PeterPiper, version 4.0.0",
+    ok("A APP_NAME PeterPiperV4.0, APP_TITLE PeterPiper, version 4.0.1",
        (peterpiper.APP_NAME, peterpiper.APP_TITLE, peterpiper.__version__)
-       == ("PeterPiperV4.0", "PeterPiper", "4.0.0"))
+       == ("PeterPiperV4.0", "PeterPiper", "4.0.1"))
     stray = []
     for p in sorted((REPO / "app").rglob("*.py")):
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -111,7 +111,7 @@ def part_a():
     c = (REPO / "CITATION.cff").read_text(encoding="utf-8")
     ok("A quick start and citation: PeterPiper 4.0 (formerly PD4nav)",
        q.startswith("PeterPiper 4.0") and "PD4nav" in q
-       and "version: 4.0.0" in c and "formerly PD4nav" in c)
+       and "version: 4.0.1" in c and "formerly PD4nav" in c)
 
 
 # ===================================================================== B

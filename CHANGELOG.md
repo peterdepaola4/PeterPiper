@@ -1,5 +1,13 @@
 # Changelog
 
+## PeterPiper 4.0.1 (2026-11-23)
+
+The same program as 4.0.0 (same numbers, same files, same install): only the automatic
+tests that GitHub runs on Windows and Mac were fixed, so every check of this release
+passes on both systems. The Mac launcher has one extra switch that only those tests use
+(`PETERPIPER_PATH_ONLY`). Updating from 4.0.0 is quick (Help > Check for updates): the
+same program folder and package list.
+
 ## PeterPiper 4.0.0 (2026-11-22)
 
 The measurements are unchanged: the same inputs give the same numbers (a full tracking

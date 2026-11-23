@@ -1801,20 +1801,21 @@ def _resolve_overlaps(comp: str, regs: List[Optional[Roi]], q: List[float],
     order = sorted([k for k, r in enumerate(regs) if r is not None],
                    key=lambda k: (q[k] < 1.0, k))
     kept: List[int] = []
+    # V4.0 speed: the kept regions' boxes in one table (which of them can touch a
+    # region is one vectorised test, not a loop over every cell)
+    kb = np.zeros((len(regs), 4), np.int64)
+    live = np.zeros(len(regs), bool)                 # kept, not None, not empty
 
     def trimmed(r: Roi, k: int) -> Tuple[np.ndarray, bool]:
         y0, x0, y1, x1 = r.bbox
         m = r.mask.copy()
         if sides[k] is not None:
             m &= sides[k][y0:y1, x0:x1]
-        for j in kept:
+        hit = live & (kb[:, 0] < y1) & (kb[:, 2] > y0) & (kb[:, 1] < x1) & (kb[:, 3] > x0)
+        for j in np.flatnonzero(hit):
             o = out[j]
-            if o is None or not o.area:
-                continue
             oy0, ox0, oy1, ox1 = o.bbox
             a0, b0, a1, b1 = max(y0, oy0), max(x0, ox0), min(y1, oy1), min(x1, ox1)
-            if a1 <= a0 or b1 <= b0:
-                continue
             m[a0 - y0:a1 - y0, b0 - x0:b1 - x0] &= ~o.mask[a0 - oy0:a1 - oy0, b0 - ox0:b1 - ox0]
         return m, bool((m != r.mask).any())
 
@@ -1840,7 +1841,32 @@ def _resolve_overlaps(comp: str, regs: List[Optional[Roi]], q: List[float],
                 out[k] = Roi((r.bbox[0], r.bbox[1], r.bbox[0] + 1, r.bbox[1] + 1),
                              np.zeros((1, 1), bool), comp)
         kept.append(k)
+        kb[k] = out[k].bbox
+        live[k] = bool(out[k].mask.any())
     return out
+
+
+def _box_table(rois: Sequence[Optional[Roi]]) -> Tuple[np.ndarray, np.ndarray]:
+    """V4.0 speed: (boxes (N, 4), usable (N,) - not None and not empty) of a list of
+    ROIs, so the ROIs near one box are found with one vectorised test (_near)."""
+    bb = np.zeros((len(rois), 4), np.int64)
+    ok = np.zeros(len(rois), bool)
+    for j, r in enumerate(rois):
+        if r is not None:
+            bb[j] = r.bbox
+            ok[j] = bool(r.mask.any())
+    return bb, ok
+
+
+def _near(rois: Sequence[Optional[Roi]], table, box, skip: int) -> List[Roi]:
+    """The ROIs (in list order, `skip` left out) that are usable and share pixels
+    with box (y0, x0, y1, x1) - exactly the ones _paint_box(rois, box) paints."""
+    bb, ok = table
+    by0, bx0, by1, bx1 = box
+    hit = ok & (bb[:, 0] < by1) & (bb[:, 2] > by0) & (bb[:, 1] < bx1) & (bb[:, 3] > bx0)
+    if 0 <= skip < len(hit):
+        hit[skip] = False
+    return [rois[j] for j in np.flatnonzero(hit)]
 
 
 def _regrow(r: Roi, comp: str, plane: np.ndarray, n: int, side: Optional[np.ndarray],
@@ -2164,6 +2190,8 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             regions = [(_region(p[c]) if c in p else None) for p in pred]
             before = [(_region(cell[c]) if c in cell else None) for cell in cur]
             nuclei_now = [n.get("nucleus") for n in new]
+            reg_tab = _box_table(regions)                 # V4.0 speed: neighbours by box
+            nuc_tab = _box_table(nuclei_now) if c != "nucleus" else None
             regs: List[Optional[Roi]] = [None] * N
             chans, planes = [0] * N, [None] * N
             kept: Dict[int, Roi] = {}
@@ -2176,11 +2204,13 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     continue
                 g, ch = plane(stack, {}, c, p[c], k)
                 mg = marg_of[(c, k)]
-                walls = [] if c == "nucleus" else \
-                    [nuclei_now[j] for j in range(N) if j != k and nuclei_now[j] is not None]
+                # only the neighbours / other nuclei _redraw can see (its own window)
+                rbox = _box(regions[k].bbox, mg + int(_px(RING_UM, um)), *g.shape)
+                rivals = _near(regions, reg_tab, rbox, k)
+                walls = [] if c == "nucleus" else _near(nuclei_now, nuc_tab, rbox, k)
                 tol = min(FIRST_FRAME_TOL, tol_of[(c, k)]) if first_frame else tol_of[(c, k)]
                 reg = _redraw(g, regions[k], c, lev[k][c],
-                              um, mg, regions[:k] + regions[k + 1:], walls,
+                              um, mg, rivals, walls,
                               ref_area[k].get(c), tol, sides[k])
                 # the clicked frame keeps your shape if its redraw fails (0.9)
                 q[k][c] = 1.0 if reg is not None else (0.9 if first_frame else 0.3)
@@ -2191,7 +2221,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                 if mode[(c, k)] == "help":                # V3.0: stay near the main outline
                     a_ch = RL._ab(rule_ck(c, k), C)[0]
                     regm = _redraw(stack[a_ch], regions[k], c, levm[k][c],
-                                   um, mg, regions[:k] + regions[k + 1:], walls,
+                                   um, mg, rivals, walls,
                                    ref_area[k].get(c), tol, sides[k])
                     if regm is not None and getattr(regm, "fit_level", None) is not None:
                         levm[k][c] = float(regm.fit_level)

@@ -26,7 +26,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import contextlib
+import os
+import sys
+import threading
 import time
+import types
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -1936,6 +1941,157 @@ def _regrow(r: Roi, comp: str, plane: np.ndarray, n: int, side: Optional[np.ndar
     return out
 
 
+# ==========================================================================
+#  V4.0 speed: the cells of one frame side by side in worker processes
+# ==========================================================================
+# The per-cell work of a frame (the sub-pixel move, the redraw, the outlines for
+# display) is independent from cell to cell. With many cells it is split over a
+# few worker processes (threads do not help: the work is many small NumPy / SciPy
+# calls that hold Python's lock). Each worker runs the very same functions
+# (_sub_shift, _redraw, Roi._contours_now) on the very same pixels - it gets only
+# the window of the frame those functions read (_Win) - so every number is
+# bit-identical to one-by-one. The workers start once (on the first big track)
+# and are kept; if they cannot start or fail, the tracker works one by one.
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+TRACK_PROCS = _env_int("PETERPIPER_TRACK_PROCS", min(8, max(1, (os.cpu_count() or 2) // 2)))
+PROC_MIN_CELLS = _env_int("PETERPIPER_TRACK_PROC_MIN", 48)  # fewer tracked ROIs: one by one
+PROCS_WHEN_FROZEN = False     # an app bundle (PyInstaller) must call
+                              # multiprocessing.freeze_support() first, then set this
+_PROCS = None
+_PROCS_FAILED = False
+_PROCS_LOCK = threading.Lock()
+
+
+class _Win:
+    """A window of a big 2-D image that behaves like the whole image for the
+    tracker's per-cell functions: .shape is the whole image's and slicing works
+    inside the window (anything outside it is an error, never a silent zero)."""
+    __slots__ = ("a", "y0", "x0", "shape", "dtype")
+
+    def __init__(self, img: np.ndarray, box) -> None:
+        y0, x0, y1, x1 = (int(v) for v in box)
+        self.a = np.ascontiguousarray(img[y0:y1, x0:x1])
+        self.y0, self.x0 = y0, x0
+        self.shape = tuple(img.shape)
+        self.dtype = img.dtype
+
+    def __getitem__(self, key):
+        ys, xs = key
+        h, w = self.a.shape
+        if (ys.step not in (None, 1) or xs.step not in (None, 1) or ys.start < self.y0
+                or xs.start < self.x0 or ys.stop > self.y0 + h or xs.stop > self.x0 + w):
+            raise IndexError("outside the window sent to the worker")
+        return self.a[ys.start - self.y0:ys.stop - self.y0, xs.start - self.x0:xs.stop - self.x0]
+
+
+@contextlib.contextmanager
+def _plain_main():
+    """While worker processes start: no __main__ module for them to run again
+    (a script's top level must not run in every worker)."""
+    old = sys.modules.get("__main__")
+    sys.modules["__main__"] = types.ModuleType("__main__")
+    try:
+        yield
+    finally:
+        if old is not None:
+            sys.modules["__main__"] = old
+
+
+def _ping() -> int:
+    time.sleep(0.3)
+    return os.getpid()
+
+
+def worker_pool():
+    """The tracker's worker processes (started once, kept), or None when there
+    are none (few CPUs, turned off with PETERPIPER_TRACK_PROCS=1, an app bundle
+    without freeze support, or they could not start)."""
+    global _PROCS, _PROCS_FAILED
+    if TRACK_PROCS <= 1 or _PROCS_FAILED:
+        return None
+    if getattr(sys, "frozen", False) and not PROCS_WHEN_FROZEN:
+        return None
+    with _PROCS_LOCK:
+        if _PROCS is None and not _PROCS_FAILED:
+            try:
+                import multiprocessing as mp
+                from concurrent.futures import ProcessPoolExecutor
+                ex = ProcessPoolExecutor(max_workers=TRACK_PROCS,
+                                         mp_context=mp.get_context("spawn"))
+                with _plain_main():                    # every worker starts now
+                    futs = [ex.submit(_ping) for _ in range(TRACK_PROCS)]
+                for f in futs:
+                    f.result(timeout=180)
+                _PROCS = ex
+            except Exception:                          # noqa: BLE001
+                _PROCS_FAILED = True
+        return _PROCS
+
+
+def warm_up_workers() -> None:
+    """Start the tracker's worker processes now (e.g. in a background thread when
+    a movie opens), so the first big track does not wait for them (~2 s)."""
+    worker_pool()
+
+
+def _drop_pool() -> None:
+    global _PROCS, _PROCS_FAILED
+    with _PROCS_LOCK:
+        ex, _PROCS, _PROCS_FAILED = _PROCS, None, True
+    if ex is not None:
+        try:
+            ex.shutdown(wait=False, cancel_futures=True)
+        except Exception:                              # noqa: BLE001
+            pass
+
+
+def _job_shift(tasks) -> list:
+    return [(k, _sub_shift(a, b, bbox, mg)) for k, a, b, bbox, mg in tasks]
+
+
+def _redraw_two(g, pred: Roi, comp: str, level: float, um: float, mg: int, rivals, walls,
+                ref, tol: float, side, gm, levm):
+    """One cell's redraw in this frame (and, for a V3.0 helper rule, its redraw on
+    the main channel alone: gm / levm)."""
+    reg = _redraw(g, pred, comp, level, um, mg, rivals, walls, ref, tol, side)
+    regm = None if gm is None else _redraw(gm, pred, comp, levm, um, mg, rivals, walls,
+                                           ref, tol, side)
+    return reg, regm
+
+
+def _job_redraw(tasks) -> list:
+    return [(t[0],) + _redraw_two(*t[1:]) for t in tasks]
+
+
+def _job_contours(rois) -> list:
+    return [r._contours_now() for r in rois]
+
+
+def _in_workers(pool, fn, tasks: list) -> Optional[list]:
+    """fn(chunk) for chunks of tasks in the worker processes, the results in task
+    order; None if the workers broke down (the caller then works one by one)."""
+    if pool is None or not tasks:
+        return None
+    from concurrent.futures.process import BrokenProcessPool
+    n = min(len(tasks), 3 * TRACK_PROCS)
+    size = -(-len(tasks) // n)
+    try:
+        futs = [pool.submit(fn, tasks[i:i + size]) for i in range(0, len(tasks), size)]
+        out: list = []
+        for f in futs:
+            out.extend(f.result())
+        return out
+    except (BrokenProcessPool, RuntimeError):         # broken / shut down: one by one
+        _drop_pool()
+        return None
+
+
 class _FullFrames:
     """V4.0: how the tracker reads frames - here whole frames from the source
     (retrack.SparseFrames reads only the parts a re-track needs)."""
@@ -2074,6 +2230,9 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     anchor = [next((c for c in list(lead) + list(COMPS) if c in cell), None) for cell in cells]
     order_c = [c for c in COMPS if c in comps]            # nucleus first: others need it
     pool = ThreadPoolExecutor(max_workers=3)              # frames are read ahead
+    # V4.0 speed: many cells -> their per-frame work in the worker processes
+    n_pairs = sum(1 for k, cell in enumerate(cells) for c in cell if act(c, k))
+    procs = worker_pool() if n_pairs >= PROC_MIN_CELLS else None
     first = frames.get(int(t0))
     # tracking rules (None = V2.2): every rule follows on channel A (the ONLY outline)
     RL, rule_of, norm = None, {}, None
@@ -2184,6 +2343,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     trim_now: Dict[Tuple[str, int], bool] = {}
 
     def record(t: int, stack: np.ndarray, cur, q) -> None:
+        todo = []                                         # outlines still to make
         for k, cell in enumerate(cur):
             for c, r in cell.items():
                 if not act(c, k):
@@ -2192,8 +2352,18 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                 mean[c][t, :, k], area[c][t, k], nsat[c][t, :, k] = mu, a, ns
                 total[c][t, :, k] = s
                 qual[c][t, k] = q[k].get(c, 1.0)
-                r.contours()                              # ready for smooth display
+                if not r.has_contours():
+                    todo.append(r)
                 rois[c][t][k] = r
+        # the outlines, ready for smooth display (in the workers when there are many)
+        got = _in_workers(procs, _job_contours, todo) \
+            if procs is not None and len(todo) >= PROC_MIN_CELLS else None
+        if got is not None:
+            for r, ct in zip(todo, got):
+                r.set_contours(ct)
+        else:
+            for r in todo:
+                r.contours()
         # the background of this timepoint (measured once its neighbours are in)
         if meter is not None:
             bg_jobs.append(bg_pool.submit(meter.add, t, stack, meter.roi_mask(
@@ -2240,6 +2410,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             regs: List[Optional[Roi]] = [None] * N
             chans, planes = [0] * N, [None] * N
             kept: Dict[int, Roi] = {}
+            tasks = []                                    # (k, _redraw_two arguments)
             for k, p in enumerate(pred):
                 if c not in p:
                     continue
@@ -2248,15 +2419,37 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     q[k][c] = rp.quality(c, t, k)
                     continue
                 g, ch = plane(stack, {}, c, p[c], k)
+                chans[k], planes[k] = ch, g
                 mg = marg_of[(c, k)]
                 # only the neighbours / other nuclei _redraw can see (its own window)
                 rbox = _box(regions[k].bbox, mg + int(_px(RING_UM, um)), *g.shape)
                 rivals = _near(regions, reg_tab, rbox, k)
                 walls = [] if c == "nucleus" else _near(nuclei_now, nuc_tab, rbox, k)
                 tol = min(FIRST_FRAME_TOL, tol_of[(c, k)]) if first_frame else tol_of[(c, k)]
-                reg = _redraw(g, regions[k], c, lev[k][c],
-                              um, mg, rivals, walls,
-                              ref_area[k].get(c), tol, sides[k])
+                gm = stack[RL._ab(rule_ck(c, k), C)[0]] if mode[(c, k)] == "help" else None
+                tasks.append([k, g, regions[k], c, lev[k][c], um, mg, rivals, walls,
+                              ref_area[k].get(c), tol, sides[k], gm,
+                              levm[k][c] if gm is not None else None, rbox])
+            got = None
+            if procs is not None and len(tasks) >= PROC_MIN_CELLS:
+                for tk in tasks:                          # each worker gets its windows only
+                    rbox = tk.pop()
+                    tk[1] = _Win(tk[1], rbox)
+                    tk[11] = _Win(tk[11], rbox) if tk[11] is not None else None
+                    tk[12] = _Win(tk[12], rbox) if tk[12] is not None else None
+                got = _in_workers(procs, _job_redraw, tasks)
+                if got is None:                           # (workers failed: one by one)
+                    for tk in tasks:
+                        tk[1] = planes[tk[0]]
+                        tk[11] = sides[tk[0]]
+                        tk[12] = stack[RL._ab(rule_ck(c, tk[0]), C)[0]] \
+                            if tk[12] is not None else None
+            else:
+                for tk in tasks:
+                    tk.pop()
+            if got is None:
+                got = [(tk[0],) + _redraw_two(*tk[1:]) for tk in tasks]
+            for k, reg, regm in got:
                 # the clicked frame keeps your shape if its redraw fails (0.9)
                 q[k][c] = 1.0 if reg is not None else (0.9 if first_frame else 0.3)
                 if reg is None:
@@ -2264,14 +2457,10 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                 elif getattr(reg, "fit_level", None) is not None:
                     lev[k][c] = float(reg.fit_level)
                 if mode[(c, k)] == "help":                # V3.0: stay near the main outline
-                    a_ch = RL._ab(rule_ck(c, k), C)[0]
-                    regm = _redraw(stack[a_ch], regions[k], c, levm[k][c],
-                                   um, mg, rivals, walls,
-                                   ref_area[k].get(c), tol, sides[k])
                     if regm is not None and getattr(regm, "fit_level", None) is not None:
                         levm[k][c] = float(regm.fit_level)
                     reg = RL.help_guard(reg, regm if regm is not None else regions[k], um)
-                regs[k], chans[k], planes[k] = reg, ch, g
+                regs[k] = reg
             fewest = [size_limits(ref_area[k][c], min(FIRST_FRAME_TOL, tol_of[(c, k)])
                                   if first_frame else tol_of[(c, k)])[0]
                       if c in ref_area[k] else None for k in range(N)]
@@ -2312,20 +2501,40 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             if prev is not None:
                 # 1  movement -> predicted position of every ROI
                 pred = []
+                movers = [k for k in range(N) if anchor[k] is not None and act(anchor[k], k)]
+                if frames.sparse:                         # the pixels every move needs
+                    for k in movers:
+                        box = _box(cur[k][anchor[k]].bbox,
+                                   marg_of[(anchor[k], k)] + SHIFT_PAD_PX + 1, H, W)
+                        frames.ensure(prev, box)
+                        frames.ensure(stack, box)
+                moves = None
+                if procs is not None and len(movers) >= PROC_MIN_CELLS:
+                    tasks = []
+                    for k in movers:
+                        key, mg = anchor[k], marg_of[(anchor[k], k)]
+                        bb = cur[k][key].bbox
+                        g_prev = plane(prev, {}, key, cur[k][key], k)[0]
+                        g_now = plane(stack, {}, key, cur[k][key], k)[0]
+                        sbox = _box(bb, mg + SHIFT_PAD_PX, *g_now.shape)   # what it reads
+                        tasks.append((k, _Win(g_prev, sbox), _Win(g_now, sbox), bb, mg))
+                    got = _in_workers(procs, _job_shift, tasks)
+                    del tasks
+                    moves = dict(got) if got is not None else None
+                if moves is None:
+                    moves = {}
+                    for k in movers:
+                        key = anchor[k]
+                        moves[k] = _sub_shift(plane(prev, {}, key, cur[k][key], k)[0],
+                                              plane(stack, {}, key, cur[k][key], k)[0],
+                                              cur[k][key].bbox, marg_of[(key, k)])
                 for k, cell in enumerate(cur):
                     key = anchor[k]
                     if key is None:
                         pred.append({})
                         continue
                     if act(key, k):
-                        mg = marg_of[(key, k)]
-                        if frames.sparse:
-                            box = _box(cell[key].bbox, mg + SHIFT_PAD_PX + 1, H, W)
-                            frames.ensure(prev, box)
-                            frames.ensure(stack, box)
-                        g_prev = plane(prev, {}, key, cell[key], k)[0]
-                        g_now = plane(stack, {}, key, cell[key], k)[0]
-                        dy, dx = _sub_shift(g_prev, g_now, cell[key].bbox, mg)
+                        dy, dx = moves[k]
                         acc[k][0] += dy
                         acc[k][1] += dx
                         iy, ix = int(round(acc[k][0])), int(round(acc[k][1]))

@@ -170,14 +170,27 @@ class Roi:
         """Outlines as (N, 2) arrays of (x, y) image coordinates, for drawing.
         Cached on the ROI (its mask never changes once made), so redrawing the
         image while scrubbing through time costs nothing."""
-        key = (id(self.mask), id(self.outline), self.bbox,
-               bool(self.__dict__.get("show_kept")))
+        key = self._contour_key()
         cached = self.__dict__.get("_contour_cache")
         if cached is not None and cached[0] == key:
             return cached[1]
         out = self._contours_now()
         self.__dict__["_contour_cache"] = (key, out)
         return out
+
+    def _contour_key(self) -> tuple:
+        return (id(self.mask), id(self.outline), self.bbox,
+                bool(self.__dict__.get("show_kept")))
+
+    def has_contours(self) -> bool:
+        """V4.0: the outlines are cached already (contours() costs nothing)."""
+        cached = self.__dict__.get("_contour_cache")
+        return cached is not None and cached[0] == self._contour_key()
+
+    def set_contours(self, out: List[np.ndarray]) -> None:
+        """V4.0: store outlines made elsewhere (_contours_now() of an equal ROI,
+        e.g. in a worker process) as this ROI's cache."""
+        self.__dict__["_contour_cache"] = (self._contour_key(), out)
 
     def _contours_now(self) -> List[np.ndarray]:
         y0, x0, _, _ = self.bbox

@@ -357,19 +357,41 @@ if __name__ == "__main__":
         sys.exit(0)
     names = [n for n, _f in all_cases()]
     ref = reference(names)
-    print("--- current tracker", flush=True)
-    now = run_cases()
-    print("--- bit-identical to the tracker before the speed work")
+    # the comparer itself: it must see one changed pixel / last bit / NaN
+    import copy
+    r0 = ref[names[0]][0]
+    c0 = next(iter(r0["meas"]))
+    bad = copy.deepcopy(r0)
+    m = bad["rois"][c0][1][0].mask
+    m.flat[0] = not m.flat[0]
+    bad2 = copy.deepcopy(r0)
+    v = bad2["meas"][c0].mean
+    v[1, 0, 0] = np.nextafter(v[1, 0, 0], np.inf)
+    bad3 = copy.deepcopy(r0)
+    bad3["meas"][c0].mean[1, 0, 0] = np.nan
+    ok("C1 the comparer finds one changed mask pixel, the last bit of a mean, a NaN",
+       diff(r0, bad) and diff(r0, bad2) and diff(r0, bad3) and not diff(r0, copy.deepcopy(r0)))
+    timing = {}
+    for label, procs, least in (("one by one", 1, 10 ** 9), ("worker processes", 4, 1)):
+        MN.TRACK_PROCS, MN.PROC_MIN_CELLS = procs, least
+        print(f"--- current tracker, {label}", flush=True)
+        now = run_cases()
+        if procs > 1:
+            ok("W1 the worker processes ran", MN._PROCS is not None and not MN._PROCS_FAILED)
+        print(f"--- bit-identical to the tracker before the speed work ({label})")
+        for n in names:
+            d = diff(ref[n][0], now[n][0], n.split()[0])
+            ok(f"{n} [{label}]: identical", not d, "; ".join(d) if d else
+               f"before {ref[n][1]:.2f} s, now {now[n][1]:.2f} s")
+        timing[label] = now
+    print("--- timings (s): before (when the reference was made) -> one by one -> "
+          "4 worker processes")
     for n in names:
-        d = diff(ref[n][0], now[n][0], n.split()[0])
-        ok(f"{n}: identical", not d, "; ".join(d) if d else
-           f"before {ref[n][1]:.2f} s, now {now[n][1]:.2f} s")
-    print("--- timings (s): before -> now")
-    tb = sum(ref[n][1] for n in names)
-    ta = sum(now[n][1] for n in names)
-    for n in names:
-        print(f"    {n}: {ref[n][1]:.2f} -> {now[n][1]:.2f} (x{ref[n][1] / max(now[n][1], 1e-9):.2f})")
-    print(f"    all: {tb:.2f} -> {ta:.2f} (x{tb / max(ta, 1e-9):.2f})")
+        a, b, c = ref[n][1], timing["one by one"][n][1], timing["worker processes"][n][1]
+        print(f"    {n}: {a:.2f} -> {b:.2f} -> {c:.2f}")
+    print("    all: " + " -> ".join(f"{v:.2f}" for v in (
+        sum(ref[n][1] for n in names), sum(timing["one by one"][n][1] for n in names),
+        sum(timing["worker processes"][n][1] for n in names))))
     n_ok = sum(1 for _n, c in checks if c)
     print(f"{n_ok} / {len(checks)} checks passed")
     sys.exit(0 if n_ok == len(checks) else 1)

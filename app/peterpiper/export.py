@@ -84,7 +84,7 @@ def catalog(comps: Dict[str, dict], s: Settings) -> List[dict]:
                 dict(key=f"{c}|csv", group=g, section="Data",
                      label="CSV tables (one per quantity)"),
                 dict(key=f"{c}|drift", group=g, section="Data",
-                     label=f"Baseline drift slope T{getattr(s, 'drift_from', 2)}-"
+                     label=f"Add-on: baseline drift slope T{getattr(s, 'drift_from', 2)}-"
                            f"T{getattr(s, 'drift_to', 9)} per cell (Excel + Prism dot plot)")]
         for name, *_ in sorted(_panels(d["M"], s), key=lambda p: _rank(p[0])):
             out.append(dict(key=f"{c}|graph|{name}", group=g, section="Graphs (PNG, 300 dpi)",
@@ -114,8 +114,9 @@ def standard(cat: Sequence[dict], prefer: Optional[Dict[str, List[str]]] = None)
     quantities (prefer[comp], e.g. R/R0 GFP/Cy5 and F/F0 GFP) - or every F/F0 and
     R/R0 graph of a compartment that has none of them.
     """
+    # 4.0: the baseline drift slope is an add-on - written only when ticked
     keys = [it["key"] for it in cat if it["key"].endswith(("|excel", "|prism", "|prismgraph",
-                                                             "|roi_drawn", "|drift"))
+                                                             "|roi_drawn"))
             or it["key"] in ("*|roifile", "*|methods")]
     by_comp: Dict[str, List[str]] = {}
     for it in cat:

@@ -202,6 +202,15 @@ PG_SYM = {"circle": "o", "square": "s", "triangle": "t1", "triangle_down": "t",
           "open_triangle_down": "t", "open_diamond": "d", "none": None}
 
 
+def _delete_keys() -> list:
+    """4.0: Delete, and on a Mac also Backspace (its keyboard's delete key)."""
+    from .. import platforms as PF
+    keys = [QKeySequence(QKeySequence.Delete)]
+    if PF.IS_MAC:
+        keys.append(QKeySequence(Qt.Key_Backspace))
+    return keys
+
+
 def _colour_file() -> Path:
     from ..config import _settings_file
     return _settings_file().parent / "compare_colours.json"
@@ -629,6 +638,10 @@ class CompareWindow(QDialog):
         self.tree.itemSelectionChanged.connect(self._selection_changed)
         QShortcut(QKeySequence(QKeySequence.Delete), self.tree, self._remove_clicked,
                   context=Qt.WidgetShortcut)
+        from .. import platforms as PF
+        if PF.IS_MAC:                     # 4.0: a Mac keyboard's delete key is Backspace
+            QShortcut(QKeySequence(Qt.Key_Backspace), self.tree, self._remove_clicked,
+                      context=Qt.WidgetShortcut)
 
         # 1.1: a few grouped buttons instead of thirteen - every action is in a menu
         self.menu_add = QMenu(self)
@@ -1012,6 +1025,10 @@ class CompareWindow(QDialog):
         split.splitterMoved.connect(lambda *_a: self._fit_settings())
         QShortcut(QKeySequence(Qt.Key_F2), self.tree, self._rename_current,
                   context=Qt.WidgetShortcut)
+        from .. import platforms as PF
+        if PF.IS_MAC:                     # 4.0: Finder renames with Return
+            QShortcut(QKeySequence(Qt.Key_Return), self.tree, self._rename_current,
+                      context=Qt.WidgetShortcut)
         self._selection_changed()
 
         self._width_timer = QTimer(self)
@@ -2030,7 +2047,7 @@ class CompareWindow(QDialog):
         """The List ▾ menu: list housekeeping and the columns shown."""
         m.clear()
         a = m.addAction("Remove selected runs from the list", self._remove_clicked)
-        a.setShortcut(QKeySequence.Delete)
+        a.setShortcuts(_delete_keys())
         a.setEnabled(bool(self._selected_paths()))
         m.addAction("Untick all", lambda: self.set_checked([]))
         m.addSeparator()
@@ -2092,7 +2109,7 @@ class CompareWindow(QDialog):
             self._fill_put_menu(m.addMenu("Put selected runs in"))
             m.addAction("Take out of group", self._ungroup_selected)
             a = m.addAction("Remove from list", self._remove_clicked)
-            a.setShortcut(QKeySequence.Delete)
+            a.setShortcuts(_delete_keys())
         m.addSeparator()
         m.addAction("Untick all", lambda: self.set_checked([]))
         m.addAction("Open all folders", self.tree.expandAll)

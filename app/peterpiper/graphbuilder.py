@@ -758,10 +758,26 @@ def bin_labels(edges: np.ndarray, vals: np.ndarray, counts: Sequence[int]) -> Li
 
 
 def _short(v: float) -> str:
+    """4.0 integration: readable numbers - '0.12', '512', '101k', '2.82M' (not 1.01e+05)."""
+    return human(v)
+
+
+def human(v, digits: int = 3) -> str:
+    """A number as people write it: 3 significant digits, thousands as k / M / G
+    ('101k - 282k'), only tiny values in e-notation."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "?"
     if v == 0 or not np.isfinite(v):
         return f"{v:g}"
     a = abs(v)
-    return f"{v:.3g}" if 1e-3 <= a < 1e5 else f"{v:.2e}"
+    for div, suf in ((1e9, "G"), (1e6, "M"), (1e3, "k")):
+        if a >= div * 10 or (suf != "k" and a >= div):
+            return f"{v / div:.{digits}g}{suf}"
+    if a >= 1e-3:
+        return f"{v:.{digits}g}"
+    return f"{v:.2e}"
 
 
 # ================================================================ colours

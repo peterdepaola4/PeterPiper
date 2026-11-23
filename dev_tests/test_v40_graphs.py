@@ -343,9 +343,14 @@ def part_d():
     ok("D equal-count bins: 3 groups of the same size (58 cells -> 19/20)",
        len(r.groups) == 3 and max(sizes) - min(sizes) <= 1 and sum(sizes) == 58, sizes)
     zv = G.values(run, zq)[2:]
-    lows = [float(g.label.split(" ")[2]) for g in r.groups]
-    ok("D bins in order low -> high, labels say the range and n",
+    def num(t):                                    # integration: '101k', '2.82M'
+        mult = {"k": 1e3, "M": 1e6, "G": 1e9}.get(t[-1:], 1.0)
+        return float(t[:-1] if mult != 1.0 else t) * mult
+    lows = [num(g.label.split(" ")[2]) for g in r.groups]
+    ok("D bins in order low -> high, labels say the range and n, readable numbers "
+       "('101k', not '1.01e+05')",
        lows == sorted(lows) and all("(n = " in g.label for g in r.groups) and
+       not any("e+" in g.label for g in r.groups) and
        r.groups[0].label.startswith("summed DAPI"), [g.label for g in r.groups])
     ok("D bin colours differ and are not the pale end of the scale",
        len({g.colour for g in r.groups}) == 3 and all(g.colour != "#FDE725" for g in r.groups))

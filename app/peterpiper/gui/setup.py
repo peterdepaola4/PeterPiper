@@ -214,10 +214,18 @@ def prepare(nd2_path: str, parent: Optional[QWidget] = None,
     if not os.path.exists(long_path(path)):
         raise FileNotFoundError(f"The movie is not there (moved, renamed, or its drive is "
                                 f"not plugged in):\n{path}")
-    src = open_movie(path, parent)
+    # 4.0: a lab-folder movie is read from its local copy (transfers' movie cache, made
+    # by taskstatus.wait_for_movie before this) - the results stay with the movie itself
+    try:
+        from .. import transfers
+        local = transfers.local_movie(path)
+    except Exception:                                              # noqa: BLE001
+        local = path
+    src = open_movie(local, parent)
     try:
         out, _moved = default_results_folder(path)
         exp = describe(src, out_dir=out)
+        exp.nd2_path = path
         why = metadata_problems(src, exp)
         if why:
             raise NeedsCheck(path, why, run)

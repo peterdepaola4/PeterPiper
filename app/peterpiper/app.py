@@ -261,7 +261,14 @@ def main() -> int:
     # The start screen, then the analysis window; "Choose another file" there
     # comes back round to the start screen, "Next movie" (the queue) and "Open"
     # on a run (start screen, Compare) open that movie directly.
-    return run_loop(_QtUI(app, pick_user))
+    # 4.0: long jobs (exports, copies, uploads, fetching movies) run in the task center;
+    # its Qt side is made once, here, in the window thread
+    from . import tasks
+    tasks.qt_bridge()
+    try:
+        return run_loop(_QtUI(app, pick_user))
+    finally:
+        tasks.center().shutdown(5)            # running copies / exports: up to 5 s more
 
 
 if __name__ == "__main__":

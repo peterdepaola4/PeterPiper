@@ -133,6 +133,8 @@ def analyse_one(path: str, s: Settings, progress: Optional[Callable[[str], None]
             exp = describe(src, out_dir=out)
             w = ClickWindow(src, exp, Settings(**vars(s)))
             w._offered = True                          # no 'earlier analyses?' question
+            w.export_in_background = False             # 4.0: the batch waits for its export
+            w.auto_retrack = False
             _settle(w)                                 # jobs the window starts by itself
             w._auto_background()
             for comp in list(w.rules):

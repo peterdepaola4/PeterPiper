@@ -591,6 +591,14 @@ class ClickWindow(QMainWindow):
         """An explicit size (a caller, the tests) replaces the maximized start."""
         self.setWindowState(self.windowState() & ~Qt.WindowMaximized)
         super().resize(*a)
+        self._asked_w = self.width()
+
+    def _keep_width(self) -> None:
+        """4.0: switching pages may grow the window for a moment (a panel wider while
+        it is rebuilt); back to the size asked for when everything fits in it."""
+        want = getattr(self, "_asked_w", None)
+        if want and not self.isMaximized() and self.width() > want:
+            QMainWindow.resize(self, max(want, self.minimumSizeHint().width()), self.height())
 
     # ================================================================== UI
     def _build_ui(self) -> None:
@@ -3113,6 +3121,8 @@ class ClickWindow(QMainWindow):
         self._pages[k].setVisible(True)
         # Graphs & export: the graph builder (right) gets the room
         self._side_scroll.setMinimumWidth(300 if k == P_GRAPHS else 360)
+        for ms in (0, 150, 400):
+            QTimer.singleShot(ms, self._keep_width)
         self.flow.set_page(k)
         if hasattr(self, "traces"):
             if k == P_GRAPHS and getattr(self, "_graphs_dirty", True):
@@ -6029,10 +6039,21 @@ class ClickWindow(QMainWindow):
     @staticmethod
     def _help_text() -> str:
         return (
-            "The steps are pages: click 1 Rules ... 5 Export in the step bar (the blue box "
-            "says what to do next). SAVE and EXPORT are always at the foot of the panel; "
-            "Open results folder, Compare and Undo are in the row at the top.\n\n"
-            "1  TRACKING RULES - one rule per kind of ROI: 'Auto-detect [Nucleus] using "
+            "Four pages, shown across the top: 1 Start (the start window), 2 Draw, 3 Track "
+            "& check, 4 Graphs & export. Back is always there; Next says what comes next, "
+            "and the line under the pages says what to do now. Results folder, Compare and "
+            "Undo (Ctrl+Z) are at the top right.\n\n"
+            "BACKGROUND FIRST (page 2) - green squares on the image are proposed empty, dark "
+            "places: browse them (slider, or click one) and press + to use one, or Draw my "
+            "own. Every cell then shows its 'N x background' (cell mean / background mean, "
+            "per channel, at the timepoint shown - x bg under the image: all / main / off); "
+            "hover a cell for the exact numbers.\n\n"
+            "UPDATES BY ITSELF (page 3) - after tracking, changing one cell (or the background) "
+            "re-tracks only what it affects, a moment after your last change. ROI "
+            "troubleshooter...: for one problem cell, try the other rules / settings and pick "
+            "the best by eye. Exports, raw TIFFs and copies run in the background (task list "
+            "at the bottom right): Next movie never waits for them.\n\n"
+            "TRACKING RULES (page 2, folded: the defaults are usually right) - one rule per kind of ROI: 'Auto-detect [Nucleus] using "
             "[GFP]' (the main channel), with optional helper channels ('+ helper channel', "
             "e.g. 'helped by Cy5'):\n"
             "    A helper CHOOSES the cells: AUTO-DETECT picks only cells with real signal "

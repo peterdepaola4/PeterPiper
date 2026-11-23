@@ -400,6 +400,7 @@ class GraphBuilder(QWidget):
         self.plot.showGrid(x=False, y=False)
         for ax in ("left", "bottom"):
             self.plot.getAxis(ax).enableAutoSIPrefix(False)
+            _readable_ticks(self.plot.getAxis(ax))
             self.plot.getAxis(ax).setPen(pg.mkPen("k"))
             self.plot.getAxis(ax).setTextPen(pg.mkPen("k"))
         self.legend = self.plot.addLegend(offset=(-10, 10), brush=pg.mkBrush(255, 255, 255, 200))
@@ -571,6 +572,12 @@ class GraphBuilder(QWidget):
         for row in (self.row_y, self.row_x, self.row_z):
             row.set_options(comps, chans)
         self._set_split_visible()
+        many = len(self._runs) > 1
+        if self._spec is not None and keep_spec and many != getattr(self, "_many", many)                 and self._spec.x is None:
+            # from one run to several (or back): per-cell lines only for a single run
+            self._spec = replace(self._spec, show_cells=not many)
+            self._sync_options()
+        self._many = many
         if self._spec is None or not keep_spec:
             self.set_spec(default_spec(self._runs), record=False)
         else:
@@ -602,6 +609,15 @@ class GraphBuilder(QWidget):
                  keep_text: bool = False) -> None:
         if spec is None:
             return
+        # 4.0 integration: the rows SHOW what is used - e.g. X taken 'at T=30' like Y
+        # (the shape rules of graphbuilder.effective), never 'trace' with a footnote
+        # saying otherwise
+        try:
+            y, x, z, _n = G.effective(spec)
+            if (y, x, z) != (spec.y, spec.x, spec.z):
+                spec = replace(spec, y=y, x=x, z=z)
+        except Exception:                                          # noqa: BLE001
+            pass
         self._spec = spec
         self._apply_spec_to_rows()
         if not keep_text:
@@ -947,15 +963,19 @@ class GraphBuilder(QWidget):
                                                name=g.label, connect="finite"))
         if res.colour_range is not None:
             self._colour_bar(res)
-        info = []
+        info, full = [], []
         for g, m, r, p, n in res.corr:
             if np.isfinite(r):
-                info.append(f"{'ρ' if m == 'spearman' else 'r'} = {r:.2f} (n = {n}"
+                sym = 'ρ' if m == 'spearman' else 'r'
+                full.append(f"{sym} = {r:.2f} (n = {n}"
                             + (f", p = {p:.2g}" if np.isfinite(p) else "") + ")"
                             + ("" if g in ("All cells",) or len(res.corr) == 1 else f" {g}"))
-        info.append(f"{res.n_cells} cells" + (f", {res.n_runs} runs" if res.n_runs > 1 else ""))
-        self.lbl_info.setText(" · ".join(info[:3]))
-        self.lbl_info.setToolTip("<br>".join(info + res.notes))
+                if not info:                       # one short line; per bin in the hover
+                    info.append(f"{sym} = {r:.2f} (n = {n})")
+        cells = f"{res.n_cells} cells" + (f", {res.n_runs} runs" if res.n_runs > 1 else "")
+        info.append(cells)
+        self.lbl_info.setText(" · ".join(info))
+        self.lbl_info.setToolTip("<br>".join(full + [cells] + res.notes))
         if res.notes:
             self.lbl_read.setText(res.notes[0])
         self._after_draw(t0, t1)
@@ -1084,6 +1104,21 @@ def _short_label(text: str) -> str:
     return text if len(text) <= 40 else text[:38] + "…"
 
 
+def _readable_ticks(axis) -> None:
+    """4.0 integration: tick labels as '101k', '2.8M' instead of '1.01e+05' (log axes
+    keep pyqtgraph's own labels)."""
+    orig = axis.tickStrings
+
+    def strings(values, scale, spacing):
+        if getattr(axis, "logMode", False):
+            return orig(values, scale, spacing)
+        vals = [v * scale for v in values]
+        if vals and max(abs(v) for v in vals) < 1e4:
+            return orig(values, scale, spacing)
+        return [G.human(v) for v in vals]
+    axis.tickStrings = strings
+
+
 def default_spec(runs: Sequence[G.RunData]) -> G.GraphSpec:
     """F/F0 of the first channel in the first compartment vs Time (or R/R0 A/B when
     the runs know a key quantity - the caller can set_spec its own)."""
@@ -1092,4 +1127,9 @@ def default_spec(runs: Sequence[G.RunData]) -> G.GraphSpec:
     for r in runs:
         chans += [c for c in r.channels if c not in chans]
     ch = chans[0] if chans else "GFP"
-    return G.GraphSpec(y=G.Quantity(comp=comps[0], chan=ch, measure="ff0"))
+    # 4.0 integration: several runs against Time - hundreds of thin per-cell lines blur
+    # into one colour, so the mean +- SD of each run is the default (per-cell lines:
+    # Options); one run keeps its per-cell lines
+    many = len(runs) > 1
+    return G.GraphSpec(y=G.Quantity(comp=comps[0], chan=ch, measure="ff0"),
+                       show_cells=not many, split="run" if many else "pool")

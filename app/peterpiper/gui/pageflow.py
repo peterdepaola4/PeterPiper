@@ -150,7 +150,10 @@ class PageFlow(QWidget):
         super().changeEvent(e)
         from PySide6.QtCore import QEvent
         if e.type() == QEvent.PaletteChange and not getattr(self, "_styling", False):
-            self._update()
+            try:
+                self._update()
+            except RuntimeError:              # the program is closing: buttons are gone
+                pass
 
     def crumb_text(self, i: int) -> str:
         return self.crumbs[i].text().replace("&&", "&")

@@ -643,6 +643,7 @@ def parameter_table(settings, exp, track_params: Optional[Mapping] = None,
     new_bg = isinstance(p.get("background"), Mapping)
     add(sec, "Background region", "placed automatically" if auto is True else
         "drawn by hand (freehand outline)" if kind == "hand" else
+        "chosen by the user from proposed empty, dark regions" if kind == "proposed" else
         "placed by hand" if auto is False else "not recorded (automatic or by hand)",
         ("One fixed region; at every timepoint the mean of ALL its pixels in each channel "
          "is subtracted from every ROI of that channel and timepoint." if bgp.get("all_pixels")
@@ -912,6 +913,9 @@ def _background_text(bg: Mapping, prov: Mapping, bmax: float) -> str:
                  f"the image centre among equally free places")
     elif kind == "hand":
         where = f"drawn by hand as a freehand outline{size}"
+    elif kind == "proposed":
+        where = (f"a square region{size} chosen by the user among regions proposed by the "
+                 f"software as dark and even in every channel and free of cells")
     elif auto is False:
         where = f"a {_g(b.get('hand_square_um'))} µm square{size} centred where the user clicked"
     else:

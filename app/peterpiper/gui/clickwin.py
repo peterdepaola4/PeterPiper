@@ -2739,7 +2739,7 @@ class ClickWindow(QMainWindow):
         else:
             ch = self._guide_name(self.comp, long=False)
             self.lbl_seen.setText(f"Drawn and followed on: {self._guide_name(self.comp)}")
-            self.lbl_seen.setVisible(True)
+            self.lbl_seen.setVisible(not self.tool)   # (a tool's line says it then)
         self.lbl_hint.setText(HINTS[self.comp].format(ch=ch))
         # 1.1: the background's instructions on show; for cells, the line above and the
         # tools' own lines say it (the hint is the Compartment / Add tooltip)
@@ -2830,10 +2830,12 @@ class ClickWindow(QMainWindow):
                                   "the region; release to finish. Click again (or Esc) to stop.")
             self.lbl_tool.setStyleSheet(f"color: {TOOLS[key][1]}; font-weight: 700;")
             self.lbl_tool.setVisible(True)
+            self.lbl_seen.setVisible(False)          # 4.0: the tool's line says it
         else:
             # 1.1: no tool on - nothing to say here (the tools' tooltips and the blue box
             # say how to start); the line comes back with a tool
             self.lbl_tool.setVisible(False)
+            self.lbl_seen.setVisible(self.comp != "background")
             self.lbl_tool.setText(TOOL_HELP[None])
             self.lbl_tool.setStyleSheet("")
             self.lbl_tool.setProperty("muted", True)

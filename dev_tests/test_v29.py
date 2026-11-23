@@ -242,35 +242,34 @@ def part_d():
         pump(0.1)
     pump(1.0)
     ok("D no automatic background region", w.background is None and not w._bg_auto)
-    ok("D the next-step box asks you to pick a background spot",
-       "BACKGROUND" in w.lbl_next.text())
-    ok("D step bar: Rules is current until looked at", w._step_now == 0 and
-       [b.property("step") for b in w._step_btns] == ["current", "todo", "todo", "todo", "todo"])
-    # PeterPiper 1.1: one step page at a time (was: steps 1-2 open, 3-5 folded)
-    ok("D one step page at a time: Rules shown, 2-5 not", [bool(b.property("folded"))
-                                                          for b in w._step_boxes]
-       == [False, True, True, True, True] and [b.isVisibleTo(w) for b in w._step_boxes]
-       == [True, False, False, False, False])
+    # 4.0 (changed on purpose): the page header (2 Draw) asks for the background first
+    ok("D the page header asks you to pick the background first",
+       "background first" in w.lbl_next.text())
+    ok("D one page at a time: Draw shown, the others not",
+       w._page == 1 and [w._pages[k].isVisibleTo(w) for k in (1, 2, 3)] == [True, False, False])
     ok("D the learning controls are gone", not hasattr(w, "chk_learned")
        and not hasattr(w, "btn_learn"))
     w._goto_step(0, user=True)
     pump(0.3)
-    ok("D looking at the rules: ROIs becomes current", w._step_now == 1)
+    ok("D looking at the rules: they open (folded 'advanced' box)",
+       not w.rules_box.property("folded"))
     w._auto_select()
     pump(0.3)
     while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     pump(0.5)
     ok("D AUTO-DETECT found all 24", sum(1 for c in w.cells if "nucleus" in c) == 24)
-    title = w._step_boxes[0].title()
-    ok("D folded Rules step shows the active rule (V3.0: in a few words, whole on hover)",
-       "nucleus: Cy5" in title and "Auto-detect nucleus using Cy5" in w._step_boxes[0].toolTip(),
+    from peterpiper.gui import widgets as W_
+    W_.set_folded(w.rules_box, True)
+    title = w.rules_box.title()
+    ok("D folded rules box shows the active rule (V3.0: in a few words, whole on hover)",
+       "nucleus: Cy5" in title and "Auto-detect nucleus using Cy5" in w.rules_box.toolTip(),
        title)
     w._track()
     pump(0.3)
-    ok("D TRACK without a background: straight to placing it (no OK box)",
-       w.comp == "background" and w.tool == "add" and w.track is None
-       and "background spot" in w.lbl_status.text())
+    ok("D TRACK without a background: straight to choosing it (no OK box)",
+       w._page == 1 and w.picker.isVisible() and w.track is None
+       and "background" in w.lbl_status.text())
     w._place_background(400.0, 440.0)
     pump(0.2)
     ok("D a background spot placed by you", w.background is not None and not w._bg_auto)

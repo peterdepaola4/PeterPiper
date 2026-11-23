@@ -205,14 +205,20 @@ def main():
     pump(0.2)
     kept8 = sum(1 for c in w.cells if "nucleus" in c)
     # ---- 3 background by hand
-    w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("background"))
-    w._set_tool("draw")
-    ok("3) Background > Draw by hand starts the freehand outline", w.view.mode == "lasso")
+    # 4.0 (changed on purpose): the background is chosen in the background picker -
+    # 'Draw my own' is its freehand outline, '+ Use this background' takes it
+    w._bg_draw_own()
+    ok("3) Background > Draw my own starts the freehand outline", w.view.mode == "lasso")
     H_, W_ = w.exp.height, w.exp.width
     cx, cy = W_ * 0.15, H_ * 0.15
     ang = np.linspace(0, 2 * np.pi, 80)
     pts = [(cx + 120 * np.cos(a), cy + 90 * np.sin(a)) for a in ang]
     w._on_lasso(pts)
+    t_ = time.time()
+    while w.picker._own is None and time.time() - t_ < 10:
+        pump(0.05)
+    w.picker.btn_use.click()
+    pump(0.2)
     ok("3) freehand background region kept, kind 'hand'", w._bg_kind == "hand"
        and w.background is not None and not w._bg_auto and w.background.area > 25000,
        f"{w.background.area if w.background is not None else 0} px")

@@ -808,6 +808,25 @@ Careful hand annotation is what makes Smart auto-select match your judgement (se
 
 **Charlotte's Web never affects data, measurements or results.** It only listens to what happens in the analysis window, stores only its own small file (`charlotte.json`) in your user folder, draws everything in code (no image files) and uses no network; a failure in it can never disturb an analysis. PeterPiper also contains a few **optional hidden extras** (for example the extra colour palettes of section 6.18); like the game, they never touch data, and *Help > Achievements...* lists the ones a user has found.
 
+### 6.20 PeterPiper 4.0: four pages, background first, the graph builder
+
+The analysis window is one flow of four pages, shown across the top: **1 Start** (the start window: the movie or a queue of movies, the lab folder and the backup), **2 Draw**, **3 Track & check** and **4 Graphs & export**. **Back** is always there (on Draw it goes back to the start window, your work saved first); **Next** says what comes next ("Track 18 cells", "Graphs & export", "Next movie"), and one quiet line under the pages says what to do now. Every control explains itself when you hover over it.
+
+**Background first.** On Draw, PeterPiper first proposes a few empty, dark places as green squares on the image (BG 1, BG 2 ...), each with its mean in every channel. Browse them with the slider (or click one on the image) and press **+** to use one, or **Draw my own**. The cell tools wait until a background is chosen; *Change* chooses another one later (Undo takes a choice back). From then on every ROI shows its **N x background** - its mean divided by the background's mean, per channel, at the timepoint shown (1.0x = no brighter than the background); hover over a cell for the exact numbers. *x bg* under the image shows all channels, only the main one, or none.
+
+**Track & check.** Next on Draw tracks the cells and shows the traces with the cell list (include / exclude, the **baseline timepoint**, **Undo**). After that, changing one cell (moving, redrawing, adding or removing an ROI, a tracker boundary line, the background) re-tracks only what that change affects, by itself, a moment after your last change - exactly the result a full TRACK & MEASURE would give. **ROI troubleshooter...** (or right-click a cell) tries the other sensible rules and settings on one problem cell and lets you pick the best by eye. The tracking settings and the ratio check are folded ("advanced"): the defaults are usually right.
+
+**The graph builder (Graphs & export).** Type what you want like a sentence, or pick Y, X and Z from three rows:
+
+- `F/F0 GFP vs time` - every cell's trace and the mean;
+- `R/R0 nuclear Cy5/GFP vs time binned by summed DAPI at T=0` - the mean ratio of three groups of cells (low / middle / high DAPI at the baseline);
+- `whole cell mCherry at T=30 vs F/F0 of GFP at T=30` - one point per cell, with the correlation (r and n);
+- `mean of F/F0 GFP over T=0..10 vs area` - one number per cell from a window of time.
+
+**T=0 is the baseline** (as on the graphs' time axis): T=30 means 30 timepoints after it, `at 30 min` 30 minutes after it, `frame 12` the movie's own frame 12. The rows always show the time that is used. In Compare, several runs are plotted together (as their mean +- SD by default; per-cell lines on request). **Add-ons** (optional) hold the baseline drift slope: it is no longer written with every export - tick *Add-on: baseline drift slope* in the export list when you want it.
+
+Long jobs - exports, viewing copies and raw TIFFs, autosaves, the second copy, uploads to the lab folder and fetching movies from it - run in the background; the task button at the bottom right lists them (Cancel, Retry, Open folder). **Next movie never waits for them.**
+
 ## 7. Session memory: your work is kept
 
 **Autosave.** As you work, PeterPiper keeps one session file per window session in `<results folder>\PeterPiper_sessions\<file name>_session_<YYYY-MM-DD_HH-MM-SS>.npz` (the date and time the window was opened). It holds everything a saved ROI file holds: ROIs, cells, include / exclude choices and their reasons, background, drawn timepoint, tracking rules, baseline, drift window, graph look, file-name prefix, and - once tracked - **the tracking** (every ROI at every timepoint and all measurements). It is saved about 2 seconds after your last change (`AUTOSAVE_MS = 2000`), at once after tracking and after an export, and when the window closes. Packing happens in the window and writing in a background thread, so the window never freezes. Each save replaces this one file in a single step (temporary file, then swap), so it is never half-written; it never replaces any other file. The Status box says when it was last saved ("with the tracking" or "ROIs only - not tracked yet"). *File > Save my work automatically* turns this off. Just loading an earlier run and looking at it does not create a new session file.

@@ -1097,7 +1097,7 @@ class TracePanel(QWidget):
         return (f" {len(blank)} included cell{'' if len(blank) == 1 else 's'} "
                 f"{'has' if len(blank) == 1 else 'have'} no value here: a channel of this "
                 f"quantity is below {min_snr():g} x the noise of the ROI mean at the baseline "
-                f"(dividing by almost nothing; step 4 sets this).")
+                f"(dividing by almost nothing; Ratio check, on Track & check, sets this).")
 
     def _set_header(self, text: str) -> None:
         # FitLabel only ever grows (its minimum height also floors heightForWidth),

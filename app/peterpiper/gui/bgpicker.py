@@ -170,6 +170,7 @@ class BgPicker(QWidget):
         bottom.addStretch(1)
         bottom.addWidget(self.lbl_chosen)
         lay.addLayout(bottom)
+        self.bottom_row = bottom             # the window may add a button here
         self._restyle()
         self._show()
 

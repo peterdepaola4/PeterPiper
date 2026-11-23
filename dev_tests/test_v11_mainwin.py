@@ -303,9 +303,11 @@ def part_b():
     finally:
         events.off("main_window_ready", extras)
     ok("B extras_bar exists before main_window_ready; with buttons in it, it shows itself",
-       seen == [True] and w.extras_bar.isVisible() and w.extras_bar.layout().count() == 2)
+       seen == [True] and not w.extras_bar.isHidden() and w.extras_bar.layout().count() == 2)
     check_layout(w, "start")
     w._goto_step(0, user=True)
+    place_background(w)                               # 4.0: the background comes first
+    w._refresh()
     w._auto_select()
     wait(w)
     ok("B AUTO-DETECT shows the ROIs page with its slider", w._page == 1
@@ -504,7 +506,7 @@ def part_f(saved_path):
     pump(0.3)
     ok("F load_run_file loads a saved run with its tracking", loaded and w.track is not None
        and sum(1 for c in w.cells if c) == 16 and w._based_on == str(saved_path))
-    ok("F ... the Check page is shown", w._page == 3)
+    ok("F ... the Track & check page is shown", w._page == 2)
     ok("F a missing file: False", not w.load_run_file(str(OUT / "nothing_ROIs.npz")))
     from peterpiper.gui import comparewin
     real = comparewin.CompareWindow
@@ -564,18 +566,14 @@ def part_g():
     ok("G Help > Achievements... shown once something is found", w._act_eggs.isVisible())
     w._act_eggs.trigger()
     ok("G ... it calls eggsdlg.show_achievements(window)", calls == [("eggs", w)])
-    w._file_menu.aboutToShow.emit()
-    ok("G File > Back up this analysis... hidden without storagedlg",
-       not w._act_backup.isVisible())
+    # 4.0 (changed on purpose): backups live on the start page only
     sto = types.ModuleType("peterpiper.gui.storagedlg")
     sto.backup_dialog = lambda parent, nd2, out: calls.append(("backup", parent, nd2, out))
     sys.modules["peterpiper.gui.storagedlg"] = sto
     G.storagedlg = sto
     w._file_menu.aboutToShow.emit()
-    ok("G ... shown with it", w._act_backup.isVisible())
-    w._act_backup.trigger()
-    ok("G ... backup_dialog(window, nd2, out_dir)",
-       calls[-1] == ("backup", w, w.exp.nd2_path, w.exp.out_dir), str(calls[-1]))
+    ok("G File menu: no 'Back up this analysis...' (4.0: on the start page)",
+       not any("Back up" in a.text() for a in w._file_menu.actions()))
     opened = []
     W.open_path = lambda p: (opened.append(str(p)), True)[1]
     w.btn_folder.click()
@@ -599,7 +597,7 @@ _gate _gate_note _goto_step _last_key _live _load_roi_file _load_rois _mark_dirt
 _offered _on_boundary_line _on_lasso _on_point _paths_ok _place_background _prefer_sheets
 _provenance _roi_state _rois _rows _rows_changed _rules_key _run_export _runner _save_log
 _save_rois _save_timer _session_file _set_include _set_rules _set_tool _set_track_settings
-_step_boxes _step_btns _step_now _sync_traces _tool_clicked _track _track_form _undo
+_sync_traces _tool_clicked _track _track_form _undo
 _use_detector _why _writer act_ask act_autosave auto_row background boundaries btn_bound
 btn_compare btn_export btn_load cells cmb_comp cmb_view comp cur_t det_box excl exp follow
 go_back lbl_auto lbl_next lbl_saved lbl_seen lbl_status lbl_track q_base qc rules
@@ -646,6 +644,8 @@ def part_i():
     peterpiper.smartselect = mod
     try:
         w = make_window("movie_i")
+        place_background(w)                          # 4.0: the cell tools open after it
+        w._refresh()
         w._show_page(1)
         pump(0.2)
         b = w.btn_smart

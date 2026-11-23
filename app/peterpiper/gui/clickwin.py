@@ -970,7 +970,7 @@ class ClickWindow(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
+        lay.setSpacing(4)
         self._pages[k] = w
         self.side.addWidget(w)
         return lay
@@ -1126,7 +1126,7 @@ class ClickWindow(QMainWindow):
         self.lbl_counts = QLabel("")             # short lines: no wrapping, always fully shown
         form.addRow(self.lbl_counts)
         W.make_foldable(box)                     # folded (and locked) until a background
-        box._body.layout().setVerticalSpacing(5)
+        box._body.layout().setVerticalSpacing(3)
         self._cells_gated = False
         lay.addWidget(box)
 
@@ -1189,11 +1189,10 @@ class ClickWindow(QMainWindow):
         mm.setToolTipsVisible(True)
         more.setMenu(mm)
         self.btn_more = more
-        mrow = QHBoxLayout()
-        mrow.setContentsMargins(0, 0, 0, 0)
-        mrow.addWidget(more)
-        mrow.addStretch(1)
-        lay.addLayout(mrow)
+        # (it sits in the background line - or, while choosing one, in the picker's
+        # last row: no line of its own, the Draw page stays short)
+        self._bg_line_lay = bl
+        bl.insertWidget(1, more)
         lay.addStretch(1)
 
         # ================================================= page 3: Track & check
@@ -2948,6 +2947,8 @@ class ClickWindow(QMainWindow):
             self.view.set_excluded_pixels(np.zeros(0), np.zeros(0))
         self.view.set_context([r for c in COMPS if c != comp for r in self._rois(c)
                                if r is not None])
+        if hasattr(self, "_cells_gated") and (self.background is None) != self._cells_gated:
+            self._sync_bg_ui()                    # a background placed (or gone) elsewhere
         self._update_badges()                     # 4.0: N x background at this timepoint
         self._update_counts()
         self._update_next()
@@ -3975,7 +3976,8 @@ class ClickWindow(QMainWindow):
                                          "update the traces.")
                 self.lbl_track.setText(why or "ROIs changed since tracking - track again.")
             else:                                     # the old traces stay meanwhile
-                self.lbl_track.setText("Changed - updating the tracking of what changed ...")
+                self.lbl_track.setText(why or "Changed - updating the tracking of what "
+                                              "changed ...")
                 self._schedule_retrack()
         elif getattr(self, "_prev_track", None) is not None:
             self._schedule_retrack()                  # changed again before the update
@@ -4079,6 +4081,12 @@ class ClickWindow(QMainWindow):
         choosing = self.background is None or self._bg_changing
         self.picker.setVisible(choosing)
         self.bg_line.setVisible(has)
+        dest = self._bg_line_lay if has else self.picker.bottom_row
+        if dest.indexOf(self.btn_more) < 0:      # 'Load / more' goes where it is seen
+            for lay_ in (self._bg_line_lay, self.picker.bottom_row):
+                lay_.removeWidget(self.btn_more)
+            dest.insertWidget(1, self.btn_more)
+            self.btn_more.show()
         if has:
             what = self._bg_label or {"auto": "placed automatically - check it",
                                       "hand": "drawn by you", "click": "placed by you",

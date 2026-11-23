@@ -1969,25 +1969,34 @@ _PROCS_LOCK = threading.Lock()
 
 
 class _Win:
-    """A window of a big 2-D image that behaves like the whole image for the
-    tracker's per-cell functions: .shape is the whole image's and slicing works
-    inside the window (anything outside it is an error, never a silent zero)."""
+    """A window of a big 2-D image (or of a (C, H, W) stack) that behaves like the
+    whole image for the tracker's per-cell functions: .shape is the whole image's
+    and slicing works inside the window (anything outside it is an error, never a
+    silent zero). A stack window takes [channel, ys, xs] (channel: int or :)."""
     __slots__ = ("a", "y0", "x0", "shape", "dtype")
 
     def __init__(self, img: np.ndarray, box) -> None:
         y0, x0, y1, x1 = (int(v) for v in box)
-        self.a = np.ascontiguousarray(img[y0:y1, x0:x1])
+        self.a = np.ascontiguousarray(img[..., y0:y1, x0:x1])
         self.y0, self.x0 = y0, x0
         self.shape = tuple(img.shape)
         self.dtype = img.dtype
 
     def __getitem__(self, key):
-        ys, xs = key
-        h, w = self.a.shape
+        ch = None
+        if len(key) == 3:
+            ch, ys, xs = key
+            if not (isinstance(ch, (int, np.integer)) or ch == slice(None)):
+                raise IndexError("a channel or every channel")
+        else:
+            ys, xs = key
+        h, w = self.a.shape[-2:]
         if (ys.step not in (None, 1) or xs.step not in (None, 1) or ys.start < self.y0
                 or xs.start < self.x0 or ys.stop > self.y0 + h or xs.stop > self.x0 + w):
             raise IndexError("outside the window sent to the worker")
-        return self.a[ys.start - self.y0:ys.stop - self.y0, xs.start - self.x0:xs.stop - self.x0]
+        ys = slice(ys.start - self.y0, ys.stop - self.y0)
+        xs = slice(xs.start - self.x0, xs.stop - self.x0)
+        return self.a[ys, xs] if ch is None else self.a[ch, ys, xs]
 
 
 @contextlib.contextmanager
@@ -2069,8 +2078,54 @@ def _job_redraw(tasks) -> list:
     return [(t[0],) + _redraw_two(*t[1:]) for t in tasks]
 
 
-def _job_contours(rois) -> list:
-    return [r._contours_now() for r in rois]
+def _job_edge(tasks) -> list:
+    return [(k, c, _edge_level(g, reg, c, um)) for k, c, g, reg, um in tasks]
+
+
+def _trim_one(md: str, r: Roi, stack, rl, norm, um: float, v: float, comp: str) -> Roi:
+    """An AND (v = overlap_k) / WITH (v = edge level) rule's measured ROI."""
+    from . import rules as RL
+    if md == "and":
+        return RL.apply_and(r, stack, rl, norm, um, v)
+    return RL.apply_with(r, stack, rl, norm, um, v, comp)
+
+
+def _job_trim(tasks) -> list:
+    return [(k, c, _trim_one(md, r, win, rl, norm, um, v, c))
+            for k, c, md, r, win, rl, norm, um, v in tasks]
+
+
+def _bbox_pixels(stack: np.ndarray, r: Roi) -> np.ndarray:
+    """(C, h, w) copy of the stack under the ROI's box (what _measure reads)."""
+    y0, x0, y1, x1 = r.bbox
+    return np.ascontiguousarray(stack[:, y0:y1, x0:x1])
+
+
+def _record_one(r: Roi, px: np.ndarray, sat: int, outline: bool):
+    """_measure of the ROI on its box's pixels px (the same pixels, the same sums)
+    and its outlines for display (or None)."""
+    h, w = px.shape[1:]
+    mu, a, ns, s = _measure(px, Roi((0, 0, h, w), r.mask, r.kind), sat)
+    return mu, a, ns, s, (r._contours_now() if outline else None)
+
+
+def _job_record(tasks) -> list:
+    return [_record_one(*tk[3:]) for tk in tasks]
+
+
+def _send_chunks(pool, fn, tasks: list) -> Optional[list]:
+    """fn(chunk) started in the worker processes for chunks of tasks, not waited
+    for: [(chunk, future)], or None if they could not take it."""
+    if pool is None or not tasks:
+        return None
+    n = min(len(tasks), 3 * TRACK_PROCS)
+    size = -(-len(tasks) // n)
+    try:
+        return [(tasks[i:i + size], pool.submit(fn, tasks[i:i + size]))
+                for i in range(0, len(tasks), size)]
+    except RuntimeError:                               # broken / shut down
+        _drop_pool()
+        return None
 
 
 def _in_workers(pool, fn, tasks: list) -> Optional[list]:
@@ -2269,6 +2324,8 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             for lst, name in ((if_comps, "if"), (help_comps, "help"), (and_comps, "and")):
                 if m == name and c not in lst:
                     lst.append(c)
+    a_of = {(c, k): RL._ab(rule_ck(c, k), C)[0] for k, cell in enumerate(cells) for c in cell
+            if RL is not None and rule_ck(c, k) is not None}     # channel A of each pair
     gate: Dict[str, Dict[int, float]] = {c: {} for c in if_comps}
     gcache: list = []                                     # [(frame, key, helper image)]
     hsnr: Dict[str, Dict[int, dict]] = {c: {} for c in help_comps}
@@ -2281,7 +2338,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         if rl is None:
             ch = min(int(getattr(r, "channel", 0)), C - 1)
             return stack[ch], ch
-        a = RL._ab(rl, C)[0]
+        a = a_of[(c, k)]
         if mode[(c, k)] != "help":
             return stack[a], a
         key = (RL.guide_key(rl, C), frames.version(stack))
@@ -2314,8 +2371,20 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     frames.ensure(first, _box(r.bbox, pair_pad(marg_of[(c, k)], ref_area[k][c],
                                                                um, c, True), H, W))
     # the edge level of every ROI, from the frame you clicked on (channel A)
-    level = [{c: _edge_level(plane(first, {}, c, r, k)[0], _region(r), c, um)
-              for c, r in cell.items() if act(c, k)} for k, cell in enumerate(cells)]
+    level = [dict() for _ in cells]
+    e_tasks = [(k, c, plane(first, {}, c, r, k)[0], _region(r))
+               for k, cell in enumerate(cells) for c, r in cell.items() if act(c, k)]
+    got = None
+    if procs is not None and len(e_tasks) >= PROC_MIN_CELLS:   # (in the workers: windows)
+        epad = int(_px(EDGE_PAD_UM, um))
+        got = _in_workers(procs, _job_edge, [
+            (k, c, _Win(g, _box(reg.bbox, epad, *g.shape)), reg, um)
+            for k, c, g, reg in e_tasks])
+    if got is None:
+        got = [(k, c, _edge_level(g, reg, c, um)) for k, c, g, reg in e_tasks]
+    for k, c, v in got:
+        level[k][c] = v
+    del e_tasks, got
     # V3.0 helpers: the main channel's own edge level too (the 1 um guard)
     level_main = [{c: _edge_level(first[RL._ab(rule_ck(c, k), C)[0]], _region(r), c, um)
                    for c, r in cell.items() if mode[(c, k)] == "help" and act(c, k)}
@@ -2339,30 +2408,58 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         else:
             holes.append(None)
     done = [0]
+    pending: list = []                                    # V4.0 speed: [(tasks, future)]
     disturbed: set = set()
     trim_now: Dict[Tuple[str, int], bool] = {}
 
+    def put(t: int, c: str, k: int, r: Roi, got) -> None:
+        mu, a, ns, s, ct = got
+        mean[c][t, :, k], area[c][t, k], nsat[c][t, :, k] = mu, a, ns
+        total[c][t, :, k] = s
+        if ct is not None:
+            r.set_contours(ct)
+
+    # the pixels an AND / WITH trim reads around an ROI (rules.overlap_mask / with_mask)
+    trim_pad = int(max(2, _px(RING_UM, um))) + int(np.ceil(3 * max(
+        [0.5, _px(RL.AND_SIGMA_UM, um) if RL is not None else 0.5]
+        + [max(SIGMA_MIN_PX, _px(SIGMA_UM.get(c, 1.0), um)) for c in comps]))) + 1
+
+    def flush(wait: bool) -> None:
+        """Fill in what the workers have measured (all of it: wait=True)."""
+        keep = []
+        for chunk, fut in pending:
+            if not wait and not fut.done():
+                keep.append((chunk, fut))
+                continue
+            try:
+                got = fut.result()
+            except Exception:                             # noqa: BLE001
+                got = [_record_one(*tk[3:]) for tk in chunk]   # (workers failed: here)
+            for tk, g in zip(chunk, got):
+                put(tk[0], tk[1], tk[2], tk[3], g)
+        pending[:] = keep
+
     def record(t: int, stack: np.ndarray, cur, q) -> None:
-        todo = []                                         # outlines still to make
-        for k, cell in enumerate(cur):
-            for c, r in cell.items():
-                if not act(c, k):
-                    continue
-                mu, a, ns, s = _measure(stack, r, sat_level)
-                mean[c][t, :, k], area[c][t, k], nsat[c][t, :, k] = mu, a, ns
-                total[c][t, :, k] = s
-                qual[c][t, k] = q[k].get(c, 1.0)
-                if not r.has_contours():
-                    todo.append(r)
-                rois[c][t][k] = r
-        # the outlines, ready for smooth display (in the workers when there are many)
-        got = _in_workers(procs, _job_contours, todo) \
-            if procs is not None and len(todo) >= PROC_MIN_CELLS else None
-        if got is not None:
-            for r, ct in zip(todo, got):
-                r.set_contours(ct)
-        else:
-            for r in todo:
+        flush(False)
+        live = [(c, k, r) for k, cell in enumerate(cur) for c, r in cell.items() if act(c, k)]
+        for c, k, r in live:
+            qual[c][t, k] = q[k].get(c, 1.0)
+            rois[c][t][k] = r
+        # the measurements, and the outlines ready for smooth display: with many
+        # cells made by the workers while the next frames are tracked (the same
+        # _measure on the ROI's own pixels), filled in at the end
+        tasks = None
+        if procs is not None and len(live) >= PROC_MIN_CELLS:
+            tasks = [(t, c, k, r, _bbox_pixels(stack, r), sat_level, not r.has_contours())
+                     for c, k, r in live]
+            sent = _send_chunks(procs, _job_record, tasks)
+            if sent is not None:
+                pending.extend(sent)
+            else:
+                tasks = None
+        if tasks is None:
+            for c, k, r in live:
+                put(t, c, k, r, _measure(stack, r, sat_level) + (None,))
                 r.contours()
         # the background of this timepoint (measured once its neighbours are in)
         if meter is not None:
@@ -2381,21 +2478,23 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         stay whole, for the next frame and the neighbours)."""
         if not any(m in ("and", "with") for m in mode.values()):
             return cur
-        out = []
-        for k, cell in enumerate(cur):
-            d = dict(cell)
-            for c in order_c:
-                if c not in d or mode.get((c, k)) not in ("and", "with") or not act(c, k):
-                    continue
-                rl = rule_ck(c, k)
-                if mode[(c, k)] == "and":
-                    d[c] = RL.apply_and(d[c], stack, rl, norm, um, overlap_k)
-                else:
-                    d[c] = RL.apply_with(d[c], stack, rl, norm, um,
-                                         lev_with[k].get(c, 0.5), c)
-                if not d[c].mask.any():
-                    q[k][c] = 0.3                         # nothing left: NaN
-            out.append(d)
+        out = [dict(cell) for cell in cur]
+        tasks = [(k, c, mode[(c, k)], out[k][c], rule_ck(c, k),
+                  overlap_k if mode[(c, k)] == "and" else lev_with[k].get(c, 0.5))
+                 for k in range(len(out)) for c in order_c
+                 if c in out[k] and mode.get((c, k)) in ("and", "with") and act(c, k)]
+        got = None
+        if procs is not None and len(tasks) >= PROC_MIN_CELLS:   # (workers: windows)
+            got = _in_workers(procs, _job_trim, [
+                (k, c, md, r, _Win(stack, _box(r.bbox, trim_pad, *stack.shape[1:])), rl, norm,
+                 um, v) for k, c, md, r, rl, v in tasks])
+        if got is None:
+            got = [(k, c, _trim_one(md, r, stack, rl, norm, um, v, c))
+                   for k, c, md, r, rl, v in tasks]
+        for k, c, r in got:
+            out[k][c] = r
+            if not r.mask.any():
+                q[k][c] = 0.3                             # nothing left: NaN
         return out
 
     def outline_all(stack: np.ndarray, cur, q, pred, first_frame: bool, hole, t: int):
@@ -2426,7 +2525,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                 rivals = _near(regions, reg_tab, rbox, k)
                 walls = [] if c == "nucleus" else _near(nuclei_now, nuc_tab, rbox, k)
                 tol = min(FIRST_FRAME_TOL, tol_of[(c, k)]) if first_frame else tol_of[(c, k)]
-                gm = stack[RL._ab(rule_ck(c, k), C)[0]] if mode[(c, k)] == "help" else None
+                gm = stack[a_of[(c, k)]] if mode[(c, k)] == "help" else None
                 tasks.append([k, g, regions[k], c, lev[k][c], um, mg, rivals, walls,
                               ref_area[k].get(c), tol, sides[k], gm,
                               levm[k][c] if gm is not None else None, rbox])
@@ -2442,7 +2541,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     for tk in tasks:
                         tk[1] = planes[tk[0]]
                         tk[11] = sides[tk[0]]
-                        tk[12] = stack[RL._ab(rule_ck(c, tk[0]), C)[0]] \
+                        tk[12] = stack[a_of[(c, tk[0])]] \
                             if tk[12] is not None else None
             else:
                 for tk in tasks:
@@ -2587,6 +2686,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         run(list(range(t0, T)), False)               # the clicked timepoint, then forwards
         if t0 > 0:
             run(list(range(t0, -1, -1)), True)        # and backwards to the start
+        flush(True)                                   # what the workers measured meanwhile
         for j in bg_jobs:
             j.result()                                # an error in the meter surfaces here
         if meter is not None:

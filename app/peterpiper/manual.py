@@ -73,6 +73,50 @@ def _to_roi(m: np.ndarray, y0: int, x0: int, outline: Optional[np.ndarray] = Non
     return r
 
 
+# ---- V4.0 speed: exact, faster equivalents of a few SciPy calls (the same
+#      pixels / bits; dev_tests/test_v40_speed.py checks the whole tracker) -----
+def _fill_holes(m: np.ndarray) -> np.ndarray:
+    """== ndi.binary_fill_holes(m) (2-D): the background pieces (4-connected)
+    that do not touch the edge are filled - found by one labelling instead of
+    a dilation repeated until nothing changes."""
+    m = np.asarray(m, bool)
+    lab, n = ndi.label(~m)
+    if n == 0:
+        return m.copy()
+    outer = np.zeros(n + 1, bool)
+    outer[lab[0]] = True
+    outer[lab[-1]] = True
+    outer[lab[:, 0]] = True
+    outer[lab[:, -1]] = True
+    outer[0] = False
+    return ~outer[lab]
+
+
+def _steps(m: np.ndarray) -> np.ndarray:
+    """City-block (4-neighbour) steps of every pixel from m (m not empty):
+    (_steps(m) <= n) == ndi.binary_dilation(m, iterations=n) for n >= 1 - one
+    pass for every n."""
+    return ndi.distance_transform_cdt(~m, metric="taxicab")
+
+
+_GAUSS_W: Dict[float, np.ndarray] = {}
+
+
+def _smooth(a: np.ndarray, sigma: float) -> np.ndarray:
+    """== ndi.gaussian_filter(a, sigma) for a 2-D float32 array: the same two
+    1-D passes (mode 'reflect', truncate 4), the kernel kept between calls."""
+    w = _GAUSS_W.get(sigma)
+    if w is None:
+        from scipy.ndimage._filters import _gaussian_kernel1d
+        w = np.ascontiguousarray(
+            _gaussian_kernel1d(sigma, 0, int(4.0 * float(sigma) + 0.5))[::-1], np.float64)
+        _GAUSS_W[sigma] = w
+    out = np.zeros(a.shape, a.dtype)
+    ndi.correlate1d(a, w, 0, out, "reflect", 0.0, 0)
+    ndi.correlate1d(out, w, 1, out, "reflect", 0.0, 0)
+    return out
+
+
 def _keep_component(m: np.ndarray, cy: int, cx: int) -> np.ndarray:
     lab, n = ndi.label(m)
     if n == 0:
@@ -1350,13 +1394,14 @@ def _redraw(plane: np.ndarray, pred: Roi, comp: str, level: float, um: float,
     by0, bx0, by1, bx1 = box
     if by1 - by0 < 4 or bx1 - bx0 < 4:
         return None
-    sm = ndi.gaussian_filter(plane[by0:by1, bx0:bx1].astype(np.float32),
-                             max(SIGMA_MIN_PX, _px(SIGMA_UM[comp], um)))
+    sm = _smooth(plane[by0:by1, bx0:bx1].astype(np.float32),
+                 max(SIGMA_MIN_PX, _px(SIGMA_UM[comp], um)))
     P = _paint_box([pred], box)
     a_prev = int(P.sum())
     if a_prev < 9:
         return None
-    allowed = ndi.binary_dilation(P, iterations=margin)
+    steps = _steps(P)                             # (== binary_dilation, iterations=n)
+    allowed = steps <= margin
     near = [r for r in rivals if r is not None and r.area and
             r.bbox[0] < by1 and r.bbox[2] > by0 and r.bbox[1] < bx1 and r.bbox[3] > bx0]
     R = _paint_box(near, box) if near else np.zeros_like(P)
@@ -1370,7 +1415,7 @@ def _redraw(plane: np.ndarray, pred: Roi, comp: str, level: float, um: float,
     if side is not None:                          # V2.5: never across a boundary line
         allowed &= side[by0:by1, bx0:bx1]
     # local background: the same 4 um ring as on the clicked frame, minus neighbours
-    ring = ndi.binary_dilation(P, iterations=int(max(2, _px(RING_UM, um)))) & ~P & ~R & ~wall
+    ring = (steps <= int(max(2, _px(RING_UM, um)))) & ~P & ~R & ~wall
     bg = float(np.percentile(sm[ring], RING_BG_PCT)) if ring.sum() >= 20 else float(np.percentile(sm, 10))
     inner = float(np.median(sm[P]))
     if inner - bg <= 1e-6:
@@ -1381,9 +1426,9 @@ def _redraw(plane: np.ndarray, pred: Roi, comp: str, level: float, um: float,
     if n:
         hits = np.bincount(lab[P].ravel(), minlength=n + 1)
         hits[0] = 0
-        keep = np.nonzero(hits >= max(3, MIN_HIT_FRAC * a_prev))[0]
-        if keep.size:
-            new = ndi.binary_fill_holes(np.isin(lab, keep)) & allowed
+        keep = hits >= max(3, MIN_HIT_FRAC * a_prev)     # (label 0 never: hits[0] = 0)
+        if keep.any():
+            new = _fill_holes(keep[lab]) & allowed
     # size guard: the area may differ from the size you drew by at most `tol`
     # (and from the frame before by at most 1.5x); outside that the outline is
     # re-fitted to the nearest allowed size around where the cell is
@@ -1441,7 +1486,7 @@ def _at_level(sm: np.ndarray, allowed: np.ndarray, core: np.ndarray, bg: float, 
     hits[0] = 0
     if hits.max() == 0:
         return np.zeros_like(cand)
-    return ndi.binary_fill_holes(lab == int(np.argmax(hits))) & allowed
+    return _fill_holes(lab == int(np.argmax(hits))) & allowed
 
 
 def _grow_to(m: np.ndarray, allowed: np.ndarray, target: float) -> np.ndarray:
@@ -1881,8 +1926,8 @@ def _regrow(r: Roi, comp: str, plane: np.ndarray, n: int, side: Optional[np.ndar
     allowed = ~_paint_box(list(others), box)
     if side is not None:
         allowed &= side[by0:by1, bx0:bx1]
-    sm = ndi.gaussian_filter(plane[by0:by1, bx0:bx1].astype(np.float32),
-                             max(SIGMA_MIN_PX, _px(SIGMA_UM.get(comp, 1.0), um)))
+    sm = _smooth(plane[by0:by1, bx0:bx1].astype(np.float32),
+                 max(SIGMA_MIN_PX, _px(SIGMA_UM.get(comp, 1.0), um)))
     g = _grow_bright(M, sm, allowed | M, int(n))
     out = _to_roi(g, by0, bx0)
     if out is None:

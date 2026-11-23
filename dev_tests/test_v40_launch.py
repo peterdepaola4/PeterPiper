@@ -567,7 +567,9 @@ def part_e():
     mkdirs(lone)
     shutil.copy2(CMD, lone / CMD.name)
     any_sys = {"PETERPIPER_ANY_SYSTEM": "1", "PETERPIPER_INSTALL_ONLY": "1",
-               "PETERPIPER_NO_SHORTCUTS": "1"}
+               "PETERPIPER_NO_SHORTCUTS": "1",
+               # a real Mac has Python in the usual install folders: look on PATH only
+               "PETERPIPER_PATH_ONLY": "1"}
     rc, out = run_bash(bash, f'bash "{posix(lone / CMD.name)}"',
                        dict(any_sys, PETERPIPER_HOME=posix(OUT / "h1")), "cmd_lone.log")
     ok("E the .command alone (not unpacked) -> how to unpack, exit 1",

@@ -102,12 +102,16 @@ pp_find_python() {
     # 3.11 - 3.14 first (the exact tested versions exist for these), then 3.10.
     # Apple's /usr/bin/python3 is never used: it is too old (3.9), and on a Mac
     # without Apple's developer tools it opens a window offering to install them.
-    local v d c
+    # PETERPIPER_PATH_ONLY=1 (tests): look on PATH only, not in the usual install folders.
+    local v d c fixed
     for v in 3.11 3.12 3.13 3.14 3.10; do
-        for c in "$(command -v "python$v" 2>/dev/null)" \
-                 "/Library/Frameworks/Python.framework/Versions/$v/bin/python$v" \
-                 "/opt/homebrew/bin/python$v" "/usr/local/bin/python$v" \
-                 "/opt/homebrew/opt/python@$v/bin/python$v" "/usr/local/opt/python@$v/bin/python$v"; do
+        fixed="/Library/Frameworks/Python.framework/Versions/$v/bin/python$v
+/opt/homebrew/bin/python$v
+/usr/local/bin/python$v
+/opt/homebrew/opt/python@$v/bin/python$v
+/usr/local/opt/python@$v/bin/python$v"
+        [ "$PETERPIPER_PATH_ONLY" = "1" ] && fixed=""
+        for c in "$(command -v "python$v" 2>/dev/null)" $fixed; do
             [ -n "$PY" ] && return 0
             [ -n "$c" ] && [ "$c" != "/usr/bin/python$v" ] && pp_trypy "$c"
         done

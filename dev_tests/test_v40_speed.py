@@ -11,6 +11,11 @@ result of the current code is compared with them field by field:
 np.array_equal (dtype, shape, every value, NaN at the same places) for every
 array, == for everything else, every ROI's bbox / mask / outline / kind /
 channel / source / fit level / contours, at every timepoint.
+Every case runs twice with the current code: one by one (no worker processes)
+and with 4 worker processes taking every cell's move / redraw / trim /
+measurement / outlines (manual.worker_pool), each compared with the reference.
+C1) the comparer finds one changed mask pixel, the last bit of a mean, a NaN.
+W1) the worker processes really ran.
 
 S) synthetic movie of touching cells (synth_trackx.py), 25 cells, 10 timepoints:
    no rules, ONLY, AND, HELP + WITH, IF + AND, boundary lines, per-cell overrides,

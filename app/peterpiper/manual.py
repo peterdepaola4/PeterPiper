@@ -2284,7 +2284,9 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     # each cell's movement is measured around its ROI of the first 'Follow' row
     anchor = [next((c for c in list(lead) + list(COMPS) if c in cell), None) for cell in cells]
     order_c = [c for c in COMPS if c in comps]            # nucleus first: others need it
-    pool = ThreadPoolExecutor(max_workers=3)              # frames are read ahead
+    # frames are read ahead (V4.0 speed: by ONE thread, in order - a hard disk reads
+    # one frame after the other about twice as fast as three frames at once)
+    pool = ThreadPoolExecutor(max_workers=1)
     # V4.0 speed: many cells -> their per-frame work in the worker processes
     n_pairs = sum(1 for k, cell in enumerate(cells) for c in cell if act(c, k))
     procs = worker_pool() if n_pairs >= PROC_MIN_CELLS else None

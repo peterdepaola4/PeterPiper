@@ -104,7 +104,7 @@ def pump(sec=0.3):
 def wait(w, limit=180):
     t = time.time()
     pump(0.1)
-    while w._busy_now() and time.time() - t < limit:
+    while (w._busy_now() or w.bg_busy() or w.retracking()) and time.time() - t < limit:
         pump(0.05)
     pump(0.3)
 

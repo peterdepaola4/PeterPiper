@@ -670,9 +670,7 @@ class ClickWindow(QMainWindow):
         disp = QWidget()
         dl = QHBoxLayout(disp)
         dl.setContentsMargins(2, 0, 2, 0)
-        lab = QLabel("Show")
-        dl.addWidget(lab)
-        self.cmb_view = QComboBox()
+        self.cmb_view = QComboBox()                  # (4.0: no 'Show' label - narrower)
         tip(self.cmb_view, "What the image shows: one channel, two channels overlaid, or (for "
                            "a rule with helper channels) the tracking image - the combined "
                            "image the ROIs are drawn and followed on.", "Show")
@@ -2706,16 +2704,16 @@ class ClickWindow(QMainWindow):
     def _comp_chosen(self, _i: int = 0) -> None:
         """4.0: you chose another compartment - Undo can take that back too."""
         new = self.cmb_comp.currentData() or "nucleus"
-        prev = getattr(self, "_comp_prev", new)
+        prev = getattr(self, "_comp_before", new)    # (the list changed just before this)
         if new != prev and not self._busy_now():
             self._push_undo(comp=prev)
-        self._comp_prev = new
+        self._comp_before = new
 
     def _comp_changed(self, switch_view: bool = True) -> None:
         if hasattr(self, "_live_roi"):
             self._end_live()
+        self._comp_before = self.comp            # 4.0: Undo of a compartment you chose
         self.comp = self.cmb_comp.currentData() or "nucleus"
-        self._comp_prev = self.comp
         if self.comp != "background":
             self.view_comp = self.comp
             if switch_view:                       # show what this compartment is drawn on
@@ -3120,7 +3118,8 @@ class ClickWindow(QMainWindow):
                 w.setVisible(False)
         self._pages[k].setVisible(True)
         # Graphs & export: the graph builder (right) gets the room
-        self._side_scroll.setMinimumWidth(300 if k == P_GRAPHS else 360)
+        self._side_scroll.setMinimumWidth(300 if k == P_GRAPHS else 330 if k == P_TRACK
+                                          else 360)
         for ms in (0, 150, 400):
             QTimer.singleShot(ms, self._keep_width)
         self.flow.set_page(k)

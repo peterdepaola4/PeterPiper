@@ -194,7 +194,7 @@ def make_window(name):
 
 def wait(w, limit=120):
     t = time.time()
-    while w._busy_now() and time.time() - t < limit:
+    while (w._busy_now() or w.bg_busy() or w.retracking()) and time.time() - t < limit:
         pump(0.05)
     pump(0.3)
 

@@ -258,7 +258,7 @@ def part_d():
     ok("D looking at the rules: ROIs becomes current", w._step_now == 1)
     w._auto_select()
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     pump(0.5)
     ok("D AUTO-DETECT found all 24", sum(1 for c in w.cells if "nucleus" in c) == 24)
@@ -277,7 +277,7 @@ def part_d():
     w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("nucleus"))
     w._track()
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     pump(0.5)
     ok("D tracked", w.track is not None)
@@ -456,13 +456,13 @@ def part_f():
     ok("F the window title names the user", "(Ana)" in w.windowTitle())
     w._auto_select()
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     w._place_background(400.0, 440.0)             # you place it (V3.0)
     w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("nucleus"))
     w._track()
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     path = w._save_rois(silent=True)
     pump(0.3)
@@ -632,7 +632,7 @@ def part_h():
     w._goto_step(0, user=True)
     w._auto_select()
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     n = sum(1 for c in w.cells if "nucleus" in c)
     ok("H shipped movie: AUTO-DETECT finds the 16 nuclei", n == 16, str(n))
@@ -644,7 +644,7 @@ def part_h():
     w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("nucleus"))
     w._track()
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         pump(0.05)
     pump(0.3)
     M, _i = w._measured("nucleus")

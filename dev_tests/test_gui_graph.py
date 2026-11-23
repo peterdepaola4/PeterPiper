@@ -151,7 +151,7 @@ def pump(sec=0.3):
 
 def wait(w):
     pump(0.3)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         app.processEvents()
         time.sleep(0.02)
     pump(0.3)

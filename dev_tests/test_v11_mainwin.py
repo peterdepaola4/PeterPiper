@@ -111,7 +111,7 @@ def pump(sec=0.3):
 
 def wait(w):
     pump(0.2)
-    while w._busy_now():
+    while (w._busy_now() or w.bg_busy() or w.retracking()):
         APP.processEvents()
         time.sleep(0.02)
     pump(0.3)
@@ -228,18 +228,26 @@ def part_a():
        and w.go_back is False)
     w.show()
     pump(0.5)
-    ok("A one step page at a time (Rules first), traces panel hidden until tracked",
-       [b.isVisible() for b in w._step_boxes] == [True, False, False, False, False]
-       and not w._dock.isVisible())
+    # 4.0 (changed on purpose): four pages - 1 Start, 2 Draw, 3 Track & check, 4 Graphs
+    # & export - instead of the five steps
+    vis = lambda: [w._pages[k].isVisible() for k in (1, 2, 3)]          # noqa: E731
+    ok("A one page at a time (Draw first), traces panel hidden until tracked",
+       vis() == [True, False, False] and not w._dock.isVisible())
     w._goto_step(2, user=True)
     pump(0.1)
-    ok("A the step bar switches pages", [b.isVisible() for b in w._step_boxes]
-       == [False, False, True, False, False] and w._page == 2)
-    ok("A ... leaving the Rules page counts as having looked at them", w._rules_seen)
-    ok("A SAVE and EXPORT always on screen (disabled until there is something)",
+    ok("A the old step 'Track' shows the Track & check page", vis() == [False, True, False]
+       and w._page == 2)
+    w._goto_step(0, user=True)
+    pump(0.1)
+    ok("A ... the old step 'Rules' opens the folded rules on Draw", w._rules_seen
+       and w._page == 1 and not w.rules_box.property("folded"))
+    w._show_page(3)
+    pump(0.1)
+    ok("A SAVE and EXPORT on Graphs & export (disabled until there is something)",
        w.btn_save.isVisible() and w.btn_export.isVisible() and not w.btn_save.isEnabled()
        and not w.btn_export.isEnabled())
-    ok("A Open results folder, Compare, Undo, Another file in the top row",
+    w._show_page(1)
+    ok("A Results folder, Compare, Undo, Back in the top row",
        all(b.isVisible() for b in (w.btn_folder, w.btn_compare, w.btn_undo, w.btn_back)))
     ok("A not in a queue: no queue line", not w._queue_act.isVisible())
     ok("A extras_bar: there, empty and hidden", w.extras_bar.layout().count() == 0
@@ -254,7 +262,7 @@ def part_a():
 SIZES = ((1366, 768), (1280, 800), (1366, 700))
 
 
-def check_layout(w, tag, pages=range(5)):
+def check_layout(w, tag, pages=(1, 2, 3)):
     for theme in ("midnight", "daylight"):
         TH.switch(theme)
         w._style_next_box()
@@ -268,7 +276,7 @@ def check_layout(w, tag, pages=range(5)):
                 big = w.width() > sw or w.height() > sh
                 if w.slider.width() < 80 or w.view.width() < 300:
                     bad.append(f"squeezed: slider {w.slider.width()} px, image {w.view.width()} px")
-                ok(f"B {tag}: {theme} {sw}x{sh}, page {k + 1} {w._step_boxes[k]._title.split()[-1]}:"
+                ok(f"B {tag}: {theme} {sw}x{sh}, page {k + 1} {w.flow.crumb_text(k)}:"
                    f" no scroll bars", not bad and not big,
                    "; ".join(bad) + (f" window {w.width()}x{w.height()}" if big else "")
                    + (f" (lists: {'; '.join(lists)})" if lists else ""))
@@ -309,15 +317,14 @@ def part_b():
     w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("nucleus"))
     w._track()
     wait(w)
-    ok("B tracked: the Check page, the traces panel appears", w.track is not None
-       and w._page == 3 and w._dock.isVisible())
+    ok("B tracked: the Track & check page, the traces panel appears", w.track is not None
+       and w._page == 2 and w._dock.isVisible())
     check_layout(w, "tracked")
-    w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("background"))
-    w._show_page(1)
-    pump(0.2)
-    ok("B Background: its instructions are shown", w.lbl_hint.isVisible()
-       and "background" in w.lbl_hint.text().lower())
-    w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("nucleus"))
+    w._pick_background()
+    pump(0.5)
+    ok("B Background (4.0: chosen first): Change opens the background picker",
+       w._page == 1 and w.picker.isVisible())
+    w._bg_change_clicked()
     w._dirty = False
     w.close()
     pump(0.3)

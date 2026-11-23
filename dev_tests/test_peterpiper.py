@@ -252,12 +252,12 @@ def part_d():
     ok("D 'Who is using PeterPiper?' shows the logo", u.findChild(W.LogoLabel) is not None)
     u.grab().save(str(OUT / "who_is_using.png"))
     u.close()
-    bat = (REPO / "PeterPiperV1.2.bat").read_text(encoding="ascii")
+    bat = (REPO / "PeterPiperV4.0.bat").read_text(encoding="ascii")
     launch = bat[bat.index(":launch"):bat.index(":installonly")]
     ok("D launcher: logo at every start, then the shortcuts; install-only stops before both",
        launch.index("if defined ONLY goto installonly") < launch.index("call :logo")
        < launch.index("call :shortcuts") < launch.index("pythonw.exe"))
-    sc = bat[bat.index(":shortcuts"):]
+    sc = bat[bat.index(chr(10) + ":shortcuts" + chr(10)):]   # the routine itself (4.0)
     ok("D shortcuts: never with PETERPIPER_NO_SHORTCUTS, once per folder, paths not in code",
        sc.index("if defined PETERPIPER_NO_SHORTCUTS exit /b 0") < sc.index("powershell")
        and 'if /i "%MADE%"=="%PP_BAT%" exit /b 0' in sc and "$env:PP_BAT" in sc
@@ -283,7 +283,7 @@ def part_e():
     if sys.platform != "win32":
         print("     (E: Windows only - skipped)")
         return
-    bat = (REPO / "PeterPiperV1.2.bat").read_text(encoding="ascii").replace("\r\n", "\n")
+    bat = (REPO / "PeterPiperV4.0.bat").read_text(encoding="ascii").replace("\r\n", "\n")
     logo = bat[bat.index("\n:logo\n") + 1:bat.index("\n:logotext\n")]
     num = bat[bat.index("\n:modenum\n") + 1:]
     num = num[:num.index("exit /b 0\n", num.index("if not defined ROWS")) + len("exit /b 0\n")]
@@ -334,12 +334,12 @@ def part_f():
     from peterpiper import safety as S
     ro = OSError(errno.EROFS, "Read-only file system")
     ok("F a read-only drive is said in words", S.write_problem(ro, "C:/x") == "the drive is read-only")
-    real_sys = S.sys
-    S.sys = types.SimpleNamespace(platform="darwin")
+    real_mac = S.IS_MAC                       # 4.0: the system comes from platforms.py
+    S.IS_MAC = True
     try:
         mac = S.write_problem(ro, "/Volumes/External/data/OUTPUT_movie")
     finally:
-        S.sys = real_sys
+        S.IS_MAC = real_mac
     ok("F ... on a Mac drive it explains NTFS", "NTFS" in mac and "read-only" in mac, mac)
     ok("F no permission is said in words",
        "permission" in S.write_problem(PermissionError(errno.EACCES, "denied"), "x"))

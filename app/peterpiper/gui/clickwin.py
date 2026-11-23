@@ -5094,11 +5094,10 @@ class ClickWindow(QMainWindow):
         settings = copy.deepcopy(self.settings)
         comps = {c: dict(d) for c, d in comps.items()}
         background = self.background
-        local = self._local_movie or nd2
+        reader = self._reader_factory()
         need_src = any(k.endswith(("|roi_drawn", "|roi_last", "|roi_every"))
                        or k in ("*|tiffs", "*|views") for k in keys)
         path_note = self._path_note
-        pos = int(getattr(self.src, "position", 0) or 0)
 
         def roi_file(folder: Path) -> Path:         # runs in the export's thread
             used = save_roi_file(Path(folder) / f"{stem}_ROIs.npz", anchors, bg, shape,
@@ -5107,19 +5106,16 @@ class ClickWindow(QMainWindow):
             return used
 
         def work(progress=None, cancelled=None):
-            src = None
+            src, own = None, False
             try:
                 if need_src:                        # its own reader of the movie
-                    from ..nd2io import open_source
-                    src = open_source(local)
-                    if pos:
-                        src.position = pos
+                    src, own = reader()
                 out = run_export(root, exp, settings, comps, keys, src=src,
                                  background=background, t0=int(t0 or 0), roi_file_fn=roi_file,
                                  prefix=stem, provenance=prov, folder_name=fname, tag=tag,
                                  title=title, progress=progress)
             finally:
-                if src is not None:
+                if src is not None and own:
                     try:
                         src.close()
                     except Exception:                              # noqa: BLE001
@@ -5170,6 +5166,26 @@ class ClickWindow(QMainWindow):
         self._bg_tasks.add(task)
         self.set_status(f"Exporting {len(keys)} item(s) in the background (see the task list "
                         f"at the bottom right) - you can keep working or open the next movie.")
+
+    def _reader_factory(self):
+        """4.0: how a background job gets its OWN reader of this movie (it carries on
+        after this window - and its reader - closed): a new reader of the .nd2 (the
+        local copy of a lab-folder movie), at the same stage position. A source that
+        is not an .nd2 file (in memory: the tests' synthetic movies) is shared as it
+        is. Returns make() -> (source, close_it_afterwards)."""
+        from ..nd2io import ND2Source, open_source
+        if isinstance(self.src, ND2Source):
+            local = self._local_movie or str(self.exp.nd2_path)
+            pos = int(getattr(self.src, "position", 0) or 0)
+
+            def make():
+                s = open_source(local)
+                if pos:
+                    s.position = pos
+                return s, True
+            return make
+        shared = self.src
+        return lambda: (shared, False)
 
     def bg_busy(self) -> bool:
         """4.0: a background task of this window (export, TIFFs) has not reported back
@@ -5975,19 +5991,16 @@ class ClickWindow(QMainWindow):
         carries on when the next movie opens)."""
         n = self.exp.n_timepoints * self.exp.n_channels
         exp = copy.copy(self.exp)
-        local = self._local_movie or str(self.exp.nd2_path)
-        pos = int(getattr(self.src, "position", 0) or 0)
+        reader = self._reader_factory()
 
         def work(report, cancelled):
-            from ..nd2io import open_source
-            src = open_source(local)
+            src, own = reader()
             try:
-                if pos:
-                    src.position = pos
                 return export_tiffs(src, exp, progress=lambda f, m="": report(
                     f, detail=str(m).split(chr(10))[0]))
             finally:
-                src.close()
+                if own:
+                    src.close()
 
         def done(t) -> None:
             self._bg_tasks.discard(t)

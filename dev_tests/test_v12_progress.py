@@ -409,6 +409,9 @@ def part_d_window():
         pump(0.3)
         comps = w._export_data()
         n2 = len(cap)
+        # 4.0: an export normally runs in the background (task list); as in Batch
+        # analysis it can run in the window, where its bar is checked here
+        w.export_in_background = False
         w._run_export(comps, ["nucleus|csv", "nucleus|excel"])
         wait(w)
         exp_cap = cap[n2:]

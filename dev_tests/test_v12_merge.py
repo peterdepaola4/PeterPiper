@@ -403,6 +403,7 @@ def part_bcde():
     w.background = background_from_outline([(105, 110), (155, 110), (155, 155), (105, 155)],
                                            SHAPE)
     w._bg_auto, w._bg_kind = False, "hand"
+    w._refresh()                                     # 4.0: the cell tools open with it
     ok("B four cells outlined (the nucleus as two ROIs, 2 px apart)", w._n_cells() == 4
        and all("nucleus" in c for c in w.cells))
     b = w._tool_btn.get("merge")
@@ -427,11 +428,8 @@ def part_bcde():
     w._set_tool("merge")
     pump(0.1)
     ok("B Merge goes to the drawn timepoint's ROI page", w._page == 1 and w.cur_t == w.t0)
-    # the background compartment has no Merge
-    w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("background"))
-    w._set_tool("merge")
-    ok("B background compartment: no Merge", w.tool is None)
-    w.cmb_comp.setCurrentIndex(w.cmb_comp.findData("nucleus"))
+    # 4.0: no 'Background' compartment (the background is chosen first, apart)
+    ok("B no background compartment to merge in", w.cmb_comp.findData("background") < 0)
     w._set_tool("merge")
     snap = [dict(c) for c in w.cells]
     ev0 = len(GOT)

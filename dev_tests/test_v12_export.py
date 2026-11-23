@@ -749,8 +749,8 @@ def part_f():
 def part_g(w):
     print("\n=== G) screens ===", flush=True)
     w.grab().save(str(SHOTS / "v12_analysis_window.png"))
-    ok("G the analysis window keeps its way out ('Another file', top left)",
-       w.btn_back.isVisible() and "Another file" in w.btn_back.text())
+    ok("G the analysis window keeps its way out (4.0: 'Back' to the start window, top left)",
+       w.btn_back.isVisible() and "Back" in w.btn_back.text())
 
 
 def main():

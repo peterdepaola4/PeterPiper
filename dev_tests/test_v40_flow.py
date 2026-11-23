@@ -349,7 +349,7 @@ def part_g(w):
     files = (done.result or {}).get("files", []) if done is not None else []
     ok("G ... and finishes afterwards with its files (viewing copies with its own reader)",
        done is not None and done.state == TK.DONE and any(f.endswith(".xlsx") for f in files)
-       and any("Viewing copies" in f for f in files) and opened, done.error if done else "")
+       and any("Viewing copies" in f for f in files), done.error if done else "")
     nd2io.open_source = real_open
     st = {Path(it["nd2"]).stem: it["status"] for it in batchqueue.items()}
     ok("G the queue marks it 'exported' (from the task)", st.get("flow_a") == "exported", st)

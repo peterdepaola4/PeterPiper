@@ -100,131 +100,92 @@ ANALYSED BEFORE?
   export straight away), or "Start a fresh analysis". File > Earlier analyses
   of this file... shows the list at any time.
 
-ANALYSIS WINDOW  -  the blue box at the top always says what to do next
-  The step bar above it (1 Rules ... 5 Export) shows where you are; one step
-  is shown at a time - click a step to go there. SAVE and EXPORT are always at
-  the foot of the panel. Top row: Another file, Open results folder, Compare,
-  Undo - and in a queue "Movie 2 of 5", Skip, Next movie.
-  1  TRACKING RULES
-       One rule per kind of ROI (Nucleus / Whole cell / Cytoplasm / Mitochondria):
-         Auto-detect [Nucleus]  using [GFP]
-                     helped by [Cy5]          (+ helper channel)
-       The main channel ("using") is what the ROI is drawn and followed on.
-       A HELPER channel (V3.0) chooses which cells AUTO-DETECT picks (they
-       need its signal, e.g. Cy5 = transfected) and helps follow them (main
-       + half of each helper; the outline stays within 1 um of the main
-       channel's own outline). Cells you click are always kept.
-       Runs made before V3.0 with ONLY / WITH / AND / IF load and are applied
-       exactly as saved (a note says so); change the rule to use helpers.
-       Every channel is measured in every ROI - always (all ratios are made).
-       Cells move with the FIRST rule's compartment (put the nucleus first).
-       "+ Add rule" for another kind of ROI. Changing a rule = track again.
-  2  ADD ROIs
-       Compartment; the line under it says what it is "Drawn and followed on".
-       AUTO-DETECT      proposes the well-defined ROIs in a few seconds (clearly
-                        above background, normal size and shape, separate).
-                        A SLIDER under it then keeps only the N
-                        brightest found (slide left: the dimmest go first;
-                        brightness = mean in the ROI minus background).
-                        Undo removes them all. Then fix the rest.
-       SMART AUTO-SELECT (1.1, beside AUTO-DETECT) picks cells the way YOU do,
-                        learned from movies you picked by hand (named bins, one
-                        per kind of experiment; n = hand-picked movies). Unlock
-                        it by drawing the cells by hand on 3 queued movies and
-                        pressing SAVE on each (README section 6.15).
-       TRAIN AUTO-DETECT FROM MY RUNS... (V3.0) teaches it the cells YOU pick:
-                        tick runs you outlined by hand, see its score and the
-                        cells it gets right / misses / adds, answer a short
-                        keep / skip quiz, save it with a name. It becomes your
-                        own button under AUTO-DETECT for movies with the same
-                        channels (README section 6.13).
-       ADD     (green when on)  click each one - the outline is drawn for you;
-                                straight after a click, SCROLL to make it
-                                bigger / smaller (redrawn from the image)
-       REMOVE  (red when on)    click an ROI to delete it
-       DRAW BY HAND (orange)    click around an outline, double-click to finish
-       RESIZE  (purple when on) click any cell, then SCROLL: up = bigger,
-                                down = smaller (12 % per notch, no limit);
-                                "Resize all cells together" does every cell
-       SPLIT   (teal when on)   hold the left button and draw a line across
-                                an ROI: it is cut into two cells
-       MERGE   (blue, 1.2)      click an ROI, then the one next to it that is
-                                part of the same cell: they become one ROI
-                                (the first one's number; the gap is filled,
-                                never with another cell's pixels; up to 3 um
-                                apart). Track again afterwards; Undo undoes it
-       ADD TO CELL (pink)     click a cell's ROI, then click each missed
-                                part just outside it: that part is joined on
-       Click a tool again (or Esc) to turn it off. With no tool on, clicking a
-       cell selects it. Right-click an ROI: move it to another cell / make it a
-       cell of its own / remove it.
-       BACKGROUND (green box): YOU pick it (V3.0 - no longer automatic; it
-       often sat on cells): right-click an empty area > "Put the background
-       region here", or Compartment "Background", then ADD (a 60 um square
-       where you click) or DRAW BY HAND (hold the button, draw around the
-       region, release). TRACK & MEASURE without one takes you there. Cells in it are FINE: the
-       autofluorescence of non-transfected cells is background. EVERY
-       pixel of the region is used at every timepoint - nothing is left
-       out. After tracking the region is checked: only if a bright object
-       comes into it (raising the background by more than 3%) or measured
-       cells cover more than 5% of it, a box "Object in the background
-       region" says so - "Redraw background" (draw a new region, then
-       TRACK & MEASURE again) or "Keep it". Flicker and bleaching are only
-       recorded. The check never changes a value.
-  3  TRACK & MEASURE
-       Every ROI is REDRAWN at every timepoint from that frame's pixels, on its
-       rule's channel A. SIZE GUARD (a hard limit): each ROI never has more or
-       fewer pixels than +/-25 % of the size you drew ("Size may change by");
-       a redraw that spills over is re-fitted / trimmed to its brightest
-       pixels; if no outline is found the outline is moved with the cell and
-       that frame is noted in QC. 0 % = EXACTLY the number of pixels you drew,
-       at every timepoint. Two cells' ROIs never overlap.
-       TRACKER BOUNDARY: click the button, click a cell, click the points of a
-       line and double-click: that cell's ROIs never cross the line (orange;
-       fixed in the image; saved; listed in the methods). "Remove lines"
-       removes the selected cell's lines. Lines belong to the cell NUMBER.
-       MITOCHONDRIA: the mitochondria themselves are found again at every
-       timepoint - only those pixels are measured.
-       Also in this box: "Max movement between timepoints" (how far a cell may
-       move per timepoint, default 3 um) and - only while a rule uses them -
-       "IF rule: needed signal" (default 5 x noise) and "AND rule: pixel
-       threshold" (default 3 x noise). Changing any of these (or a boundary
-       line) after tracking = track again.
-  4  CHECK
-       Play (or the space bar) under the image - watch the outlines follow the
-       cells. Traces panel (right): the list of cells with Include ticks - THE
-       place to include / exclude (or double-click a trace). QC notes are
-       shown there; they never exclude a cell by themselves - you decide.
-       View "Check cells": every cell in its colour, excluded ones grey.
-       View "As exported": the graph exactly as it will be exported - choose
-       its look (mean +/- SEM, SD or 95% CI, bars or band, each cell...);
-       "Save graph..." saves it as Prism (.prism), PNG (300 dpi) or SVG.
-       The look goes into the Prism files too; if Prism cannot draw part of
-       it (e.g. a shaded band) a small brown note says what Prism shows
-       instead. Look > "Load look from a Prism file..." takes the look of a
-       .prism you styled in Prism.
-  5  EXPORT
-       Baseline timepoint = time 0 (earlier timepoints negative), F/F0 = 1.
-       "EXPORT...": put what you want on YOUR EXPORT LIST; only
-       that is written, into a new folder each time:
+ANALYSIS WINDOW  -  four pages, shown across the top
+  1 Start > 2 Draw > 3 Track & check > 4 Graphs & export.  BACK is always
+  there (on Draw it goes to the start window); NEXT (top right) says what
+  comes next ("Track 18 cells", "Graphs & export", "Next movie"). The line
+  under the pages says what to do now; rest the mouse on any control for
+  what it does. Top right: Results folder, Compare runs, Undo (Ctrl+Z) - and
+  in a queue "Movie 2 of 5", Skip, Next movie. Bottom: one status line, the
+  last autosave and the task button (exports, copies, uploads running in the
+  background - Next movie never waits for them).
+
+  2  DRAW - THE BACKGROUND FIRST
+       Green squares on the image are proposed empty, dark places (BG 1,
+       BG 2 ...), each with its mean in every channel. Browse them (slider,
+       or click one) and press + to use one - or "Draw my own" (hold the
+       left button, draw around a region). The cell tools wait until a
+       background is chosen; "Change" picks another later. EVERY pixel of
+       the region is used at every timepoint. After tracking you are told if
+       something bright came into it ("Redraw background" / "Keep it").
+       N x BACKGROUND: every cell then shows how many times brighter than
+       the background it is (cell mean / background mean, per channel, at
+       the timepoint shown): grey < 1.5x, blue 1.5-3x, yellow 3-10x, orange
+       10x+. Rest the mouse on a cell for the exact numbers. "x bg" under
+       the image: all channels / main channel / numbers only / off, and
+       "Colour outlines by level". Display only - nothing measured changes.
+  2  DRAW - THE CELLS
+       Compartment; the line under it says what it is drawn and followed on.
+       AUTO-DETECT      proposes the well-defined ROIs in a few seconds. A
+                        SLIDER under it then keeps only the N brightest.
+       SMART AUTO-SELECT (beside it) picks cells the way YOU do, learned
+                        from movies you drew by hand (README section 6.15).
+       ADD     click each one (then SCROLL to make it bigger / smaller)
+       REMOVE  click an ROI to delete it
+       DRAW BY HAND  click around an outline, double-click to finish
+       RESIZE  click a cell, then SCROLL (12 % per notch, no limit)
+       SPLIT   draw a line across an ROI: two cells
+       MERGE   click an ROI, then the one next to it: one cell
+       ADD TO CELL  click a cell's ROI, then each missed part next to it
+       Click a tool again (or Esc) to turn it off. Right-click an ROI: move
+       it to another cell / make it a cell of its own / remove it.
+       "Load / more": Load saved ROIs, earlier analyses, train auto-detect.
+       TRACKING RULES (folded, "advanced" - the defaults are usually right):
+         Auto-detect [Nucleus]  using [GFP]  helped by [Cy5]
+       the main channel is what the ROI is drawn and followed on; a helper
+       channel chooses which cells AUTO-DETECT picks and helps follow them.
+       Every channel is measured in every ROI - always.
+  3  TRACK & CHECK
+       NEXT ("Track 18 cells") follows every cell through the movie: every
+       ROI is REDRAWN at every timepoint, never more or fewer pixels than
+       +/-25 % of what you drew, two cells never overlap.
+       AFTER A CHANGE (an ROI moved, redrawn, added or removed, the
+       background): only what it affects is tracked again, by itself, a
+       moment after your last change - the result is exactly what a full
+       track gives. The cells being updated are drawn grey and dashed.
+       ROI TROUBLESHOOTER... (or right-click a cell): for one difficult cell,
+       PeterPiper tries the other sensible rules and settings side by side;
+       pick the best by eye - only that cell is tracked again.
+       TRACKER BOUNDARY: click a cell, then the points of a line (double-click
+       to finish): that cell's ROIs never cross it.
+       Play (space bar) under the image: watch the outlines follow the cells.
+       TRACES (right): tick / untick cells (THE place to include / exclude),
+       the BASELINE TIMEPOINT (time 0, F/F0 = 1) and Undo, beside the list.
+       Tracking settings and the ratio check are folded ("advanced").
+  4  GRAPHS & EXPORT
+       THE GRAPH BUILDER (right): type a graph like a sentence, e.g.
+         F/F0 GFP vs time
+         R/R0 nuclear Cy5/GFP vs time binned by summed DAPI at T=0
+         whole cell mCherry at T=30 vs F/F0 of GFP at T=30
+       (T=0 is the baseline; T=30 = 30 timepoints after it) - or pick Y, X
+       and Z from the three rows. Export the graph as PNG / SVG / table.
+       ADD-ONS (optional): the baseline drift slope (window T2-T9).
+       SAVE (with a short note) keeps this version of your work.
+       EXPORT...: put what you want on YOUR EXPORT LIST; only that is
+       written, into a new folder, IN THE BACKGROUND (you can open the next
+       movie meanwhile):
          OUTPUT_<file name>\<you>\Export_<date>_<time>\<Compartment>\...
-       The workbook and methods text carry the .nd2 name (e.g.
-       movie1_nucleus.xlsx); graphs, CSV and Prism graphs inside do not repeat
-       it (shorter paths). A "Name for the files" you type goes on every file.
-       SAVE IN (1.2): where the export goes - the movie's results folder, or
-       "Change..." for another folder (your autosaves stay in the results
-       folder); "Usual folder" goes back.
-       Long paths off (Help > Computer check...)? If a path would be too long
-       for Explorer (259 characters) or Excel (218), a warning offers
-       "Shorten names for me" (the usual answer), "Choose another folder...",
-       "Turn on Windows long paths" (needs administrator approval) or
-       "Export anyway".
+       An export that was cut off is marked ("EXPORT NOT FINISHED.txt" in
+       it, or the folder renamed ..._INCOMPLETE). SAVE IN: another folder.
+       Long paths off? A warning offers "Shorten names for me".
 
 SAVE AND THE QUEUE  (1.1)
-  SAVE (foot of the panel, Ctrl+S) keeps this version of your work - ROIs,
+  SAVE (Graphs & export page, Ctrl+S) keeps this version of your work - ROIs,
   include / exclude, tracking - with an optional short note; Compare shows it
   as "Saved: <note>". In a queue, "Next movie" opens the next movie still to
-  do (it asks to SAVE first if you changed something); "Skip" passes one.
+  do (it asks to SAVE first if you changed something) - at once, even while
+  an export is still being written; "Skip" passes one. Quitting while
+  background jobs run asks: wait for them / cancel them / quit anyway.
   The start screen's Queue tab shows each movie: to do / saved / exported /
   skipped.
 
@@ -253,8 +214,9 @@ WHAT CAN BE EXPORTED (per compartment)
                    replicates', 'mean, SEM, n', 'each cell'
   Graphs           300 dpi PNG in your graph look ("As exported" view)
   CSV tables       one per quantity: included cells + mean, SEM, n
-  Baseline drift   each cell's slope of a straight line through timepoints T2-T9
-                   (set the window in step 5), per minute
+  Baseline drift   (add-on) each cell's slope of a straight line through
+                   timepoints T2-T9 (window: Graphs & export > Add-ons),
+                   per minute - only when ticked in the export list
   ROI pictures     full resolution, numbered as in Excel
   ROI file         .npz: your ROIs AND their tracking - reload it later and
                    check / export straight away, no re-tracking
@@ -355,7 +317,7 @@ HOW THE NUMBERS ARE MADE
   corrected); ratio = background-subtracted channel A / channel B; F/F0, R/R0
   divide by the baseline timepoint; a cell's F/F0 / ratio / R/R0 is left out
   where a channel is below 5 x the noise of its ROI mean at baseline (and a
-  ratio's points where the denominator collapses) - step 4, "Ratios need
+  ratio's points where the denominator collapses) - Track & check > Ratio check, "Ratios need
   baseline"; mean +/- SD over the included cells (SD with n - 1; SEM = SD /
   sqrt(n) also given); across dishes: mean +/- SD of the dish means
   (n = dishes). Details: README.html, section 8.

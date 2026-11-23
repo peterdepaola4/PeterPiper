@@ -527,11 +527,14 @@ def part_d():
         len(segs) == 1 and segs[0][0].startswith("GFP") for _k, _r, segs in lay))
     view.set_roi_badges(b, "off")
     ok("D5 'off': no badges", view.badge_rects() == [])
-    # zoomed far out: hidden
+    # zoomed far out (4.0 integration, changed on purpose: badges ALWAYS show): the
+    # compact form - the main channel's number only, e.g. '22×'
     view.set_roi_badges(b, "all", main="GFP")
     view.vb.setRange(xRange=(-20000, 22400), yRange=(-20000, 22400), padding=0)
     pump(0.1)
-    ok("D6 zoomed far out: badges hidden", view.badge_rects() == [])
+    lay = view._badges.layout()
+    ok("D6 zoomed far out: compact badges ('22×', main channel only), never all hidden",
+       lay and all(len(s) == 1 and s[0][0] == "" and s[0][1].endswith("×") for _k, _r, s in lay))
     view.fit()
     # crowded: ROIs touching each other
     crowd = [circle_roi(300 + 34 * (i // 10), 300 + 34 * (i % 10), 15, (H, W)) for i in range(60)]

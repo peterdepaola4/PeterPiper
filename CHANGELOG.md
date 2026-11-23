@@ -1,5 +1,58 @@
 # Changelog
 
+## PeterPiper 4.0.0 (2026-11-22)
+
+The measurements are unchanged: the same inputs give the same numbers (a full tracking
+is bit-for-bit the same as in 1.2). Saved runs, ROI files and sessions of every earlier
+version open in 4.0.
+
+1. **One download for Windows and macOS.** The same folder runs on both
+   (`PeterPiperV4.0.bat` / `PeterPiperV4.0.command`); the system is detected when the
+   program starts.
+2. **Re-track single cells.** After tracking, a change to one cell (moved, redrawn,
+   added or removed, its boundary line, the background) re-tracks only what it
+   affects, by itself, a moment after your last change - the result is exactly what
+   a full track gives. Cells being updated are drawn grey and dashed. Tracking itself
+   is about 10x faster when the frames are in memory (several processes).
+3. **Undo and Back everywhere.** Undo (top row, beside the cell list, Ctrl+Z) takes
+   back adding, removing, moving and changing ROIs, include / exclude, the compartment
+   you chose and the background chosen. Every page has **Back**.
+4. **A graph builder.** "Y vs X (vs Z)" of any per-cell quantity, typed like a sentence
+   (`R/R0 nuclear Cy5/GFP vs time binned by summed DAPI at T=0`) or picked from three
+   rows; binned or coloured; per run and, in Compare, across runs (each run's mean and
+   SD band by default). T=0 is the baseline.
+5. **Long jobs in the background.** Exports, viewing copies and raw TIFFs, autosaves,
+   copies and uploads run in the background with their own progress (the task button,
+   bottom right: time left, Cancel, Retry, Open folder). **Next movie never waits for
+   them.** Quitting while they run asks whether to wait, cancel them or quit anyway;
+   an export that was cut off is clearly marked.
+6. **Backup and the lab folder on the start page** only (no longer in the analysis
+   window). The baseline drift slope is an optional **add-on**: it is written only
+   when you tick it.
+7. **Working from the lab folder** is not slow: a movie there is copied to a local
+   cache first (with a bar; the next movie of the queue is fetched ahead), results
+   are uploaded safely in the background, and an in-app guide explains how the lab
+   folder works.
+8. **The background first.** PeterPiper proposes empty, dark places, each with its
+   mean per channel; browse them and press +, or draw your own. Every ROI then shows
+   its **N x background** (ROI mean / background mean, per channel, at the timepoint
+   shown) - always, also zoomed out (then the number only); hover for the exact
+   intensities; outlines can be coloured by level.
+9. Developer settings are no longer reachable from the normal menus.
+10. **The baseline timepoint** is chosen right beside the cell include / exclude list,
+    and the graph always fits itself to what it shows.
+11. **A clean four-page flow**: Start (queue, lab folder, backup) > Draw (background
+    first, then the cells) > Track & check > Graphs & export. One page at a time,
+    one line saying what to do now, one status line, every control explained on
+    hover, no scroll bars on a 1366 x 768 screen.
+12. **ROI troubleshooter**: for one problem cell, PeterPiper tries the sensible other
+    tracking rules and settings side by side; you pick the best by eye and only that
+    cell is tracked again.
+
+New developer tests: `test_v40_flow.py`, `test_v40_safety.py`, `test_v40_view.py`,
+`test_v40_server.py`, `test_v40_trackx.py`, `test_v40_graphs.py`, `test_v40_launch.py`,
+`test_v40_speed.py`.
+
 ## PeterPiper 1.2.2 (2026-11-17)
 
 The methods and the numbers are unchanged; the same program folder as 1.2.0, so

@@ -36,7 +36,8 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from .compartments import _robust_noise
-from .manual import COMPS, LABELS, RING_UM, _box, _paint_box, _px, _shape, _snr
+from .manual import (COMPS, LABELS, RING_UM, _box, _fill_holes, _paint_box, _px, _shape, _smooth,
+                     _snr, _steps)
 from .segment import Roi
 
 MODES = ("only", "with", "and", "if")      # the rules before V3.0 (still applied exactly)
@@ -445,9 +446,9 @@ def overlap_mask(stack: np.ndarray, roi_like_region: Roi, rule: TrackRule,
     ring_px = int(max(2, _px(RING_UM, um)))
     box = _box(r.bbox, ring_px + int(np.ceil(3 * sig)) + 1, H, W)
     by0, bx0, by1, bx1 = box
-    sm = ndi.gaussian_filter(stack[b, by0:by1, bx0:bx1].astype(np.float32), sig)
+    sm = _smooth(stack[b, by0:by1, bx0:bx1].astype(np.float32), sig)
     P = _paint_box([Roi(r.bbox, _shape(r), r.kind)], box)
-    ring = ndi.binary_dilation(P, iterations=ring_px) & ~P
+    ring = ((_steps(P) <= ring_px) & ~P) if P.any() else P.copy()
     bg = float(np.percentile(sm[ring], AND_BG_PCT)) if ring.sum() >= AND_MIN_RING_PX \
         else float(norm.bg[b])
     bright = sm > bg + float(k) * float(norm.noise[b])
@@ -503,16 +504,16 @@ def with_mask(stack: np.ndarray, roi: Roi, rule: TrackRule, norm: GuideNorm, um:
     ring_px = int(max(2, _px(RING_UM, um)))
     box = _box(roi.bbox, ring_px + int(np.ceil(3 * sig)) + 1, H, W)
     by0, bx0, by1, bx1 = box
-    g = ndi.gaussian_filter(guide_plane(stack, rule, norm, box).astype(np.float32), sig)
+    g = _smooth(guide_plane(stack, rule, norm, box).astype(np.float32), sig)
     P = _paint_box([Roi(roi.bbox, _shape(roi), roi.kind)], box)
     if not P.any():
         return m.copy()
-    ring = ndi.binary_dilation(P, iterations=ring_px) & ~P
+    ring = (_steps(P) <= ring_px) & ~P
     bg = float(np.percentile(g[ring], AND_BG_PCT)) if ring.sum() >= WITH_MIN_RING_PX         else float(norm.bg[a])
     inner = float(np.median(g[P]))
     if inner - bg <= 1e-6:
         return m.copy()
-    keep = ndi.binary_fill_holes(P & (g > bg + float(level) * (inner - bg))) & P
+    keep = _fill_holes(P & (g > bg + float(level) * (inner - bg))) & P
     y0, x0, y1, x1 = roi.bbox
     return m & keep[y0 - by0:y1 - by0, x0 - bx0:x1 - bx0]
 

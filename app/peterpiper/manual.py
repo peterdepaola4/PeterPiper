@@ -26,7 +26,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import contextlib
+import os
+import sys
+import threading
 import time
+import types
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -71,6 +76,50 @@ def _to_roi(m: np.ndarray, y0: int, x0: int, outline: Optional[np.ndarray] = Non
     if outline is not None:
         r.outline = outline[a0:a1, b0:b1].copy()
     return r
+
+
+# ---- V4.0 speed: exact, faster equivalents of a few SciPy calls (the same
+#      pixels / bits; dev_tests/test_v40_speed.py checks the whole tracker) -----
+def _fill_holes(m: np.ndarray) -> np.ndarray:
+    """== ndi.binary_fill_holes(m) (2-D): the background pieces (4-connected)
+    that do not touch the edge are filled - found by one labelling instead of
+    a dilation repeated until nothing changes."""
+    m = np.asarray(m, bool)
+    lab, n = ndi.label(~m)
+    if n == 0:
+        return m.copy()
+    outer = np.zeros(n + 1, bool)
+    outer[lab[0]] = True
+    outer[lab[-1]] = True
+    outer[lab[:, 0]] = True
+    outer[lab[:, -1]] = True
+    outer[0] = False
+    return ~outer[lab]
+
+
+def _steps(m: np.ndarray) -> np.ndarray:
+    """City-block (4-neighbour) steps of every pixel from m (m not empty):
+    (_steps(m) <= n) == ndi.binary_dilation(m, iterations=n) for n >= 1 - one
+    pass for every n."""
+    return ndi.distance_transform_cdt(~m, metric="taxicab")
+
+
+_GAUSS_W: Dict[float, np.ndarray] = {}
+
+
+def _smooth(a: np.ndarray, sigma: float) -> np.ndarray:
+    """== ndi.gaussian_filter(a, sigma) for a 2-D float32 array: the same two
+    1-D passes (mode 'reflect', truncate 4), the kernel kept between calls."""
+    w = _GAUSS_W.get(sigma)
+    if w is None:
+        from scipy.ndimage._filters import _gaussian_kernel1d
+        w = np.ascontiguousarray(
+            _gaussian_kernel1d(sigma, 0, int(4.0 * float(sigma) + 0.5))[::-1], np.float64)
+        _GAUSS_W[sigma] = w
+    out = np.zeros(a.shape, a.dtype)
+    ndi.correlate1d(a, w, 0, out, "reflect", 0.0, 0)
+    ndi.correlate1d(out, w, 1, out, "reflect", 0.0, 0)
+    return out
 
 
 def _keep_component(m: np.ndarray, cy: int, cx: int) -> np.ndarray:
@@ -1350,13 +1399,14 @@ def _redraw(plane: np.ndarray, pred: Roi, comp: str, level: float, um: float,
     by0, bx0, by1, bx1 = box
     if by1 - by0 < 4 or bx1 - bx0 < 4:
         return None
-    sm = ndi.gaussian_filter(plane[by0:by1, bx0:bx1].astype(np.float32),
-                             max(SIGMA_MIN_PX, _px(SIGMA_UM[comp], um)))
+    sm = _smooth(plane[by0:by1, bx0:bx1].astype(np.float32),
+                 max(SIGMA_MIN_PX, _px(SIGMA_UM[comp], um)))
     P = _paint_box([pred], box)
     a_prev = int(P.sum())
     if a_prev < 9:
         return None
-    allowed = ndi.binary_dilation(P, iterations=margin)
+    steps = _steps(P)                             # (== binary_dilation, iterations=n)
+    allowed = steps <= margin
     near = [r for r in rivals if r is not None and r.area and
             r.bbox[0] < by1 and r.bbox[2] > by0 and r.bbox[1] < bx1 and r.bbox[3] > bx0]
     R = _paint_box(near, box) if near else np.zeros_like(P)
@@ -1370,7 +1420,7 @@ def _redraw(plane: np.ndarray, pred: Roi, comp: str, level: float, um: float,
     if side is not None:                          # V2.5: never across a boundary line
         allowed &= side[by0:by1, bx0:bx1]
     # local background: the same 4 um ring as on the clicked frame, minus neighbours
-    ring = ndi.binary_dilation(P, iterations=int(max(2, _px(RING_UM, um)))) & ~P & ~R & ~wall
+    ring = (steps <= int(max(2, _px(RING_UM, um)))) & ~P & ~R & ~wall
     bg = float(np.percentile(sm[ring], RING_BG_PCT)) if ring.sum() >= 20 else float(np.percentile(sm, 10))
     inner = float(np.median(sm[P]))
     if inner - bg <= 1e-6:
@@ -1381,9 +1431,9 @@ def _redraw(plane: np.ndarray, pred: Roi, comp: str, level: float, um: float,
     if n:
         hits = np.bincount(lab[P].ravel(), minlength=n + 1)
         hits[0] = 0
-        keep = np.nonzero(hits >= max(3, MIN_HIT_FRAC * a_prev))[0]
-        if keep.size:
-            new = ndi.binary_fill_holes(np.isin(lab, keep)) & allowed
+        keep = hits >= max(3, MIN_HIT_FRAC * a_prev)     # (label 0 never: hits[0] = 0)
+        if keep.any():
+            new = _fill_holes(keep[lab]) & allowed
     # size guard: the area may differ from the size you drew by at most `tol`
     # (and from the frame before by at most 1.5x); outside that the outline is
     # re-fitted to the nearest allowed size around where the cell is
@@ -1441,7 +1491,7 @@ def _at_level(sm: np.ndarray, allowed: np.ndarray, core: np.ndarray, bg: float, 
     hits[0] = 0
     if hits.max() == 0:
         return np.zeros_like(cand)
-    return ndi.binary_fill_holes(lab == int(np.argmax(hits))) & allowed
+    return _fill_holes(lab == int(np.argmax(hits))) & allowed
 
 
 def _grow_to(m: np.ndarray, allowed: np.ndarray, target: float) -> np.ndarray:
@@ -1801,20 +1851,21 @@ def _resolve_overlaps(comp: str, regs: List[Optional[Roi]], q: List[float],
     order = sorted([k for k, r in enumerate(regs) if r is not None],
                    key=lambda k: (q[k] < 1.0, k))
     kept: List[int] = []
+    # V4.0 speed: the kept regions' boxes in one table (which of them can touch a
+    # region is one vectorised test, not a loop over every cell)
+    kb = np.zeros((len(regs), 4), np.int64)
+    live = np.zeros(len(regs), bool)                 # kept, not None, not empty
 
     def trimmed(r: Roi, k: int) -> Tuple[np.ndarray, bool]:
         y0, x0, y1, x1 = r.bbox
         m = r.mask.copy()
         if sides[k] is not None:
             m &= sides[k][y0:y1, x0:x1]
-        for j in kept:
+        hit = live & (kb[:, 0] < y1) & (kb[:, 2] > y0) & (kb[:, 1] < x1) & (kb[:, 3] > x0)
+        for j in np.flatnonzero(hit):
             o = out[j]
-            if o is None or not o.area:
-                continue
             oy0, ox0, oy1, ox1 = o.bbox
             a0, b0, a1, b1 = max(y0, oy0), max(x0, ox0), min(y1, oy1), min(x1, ox1)
-            if a1 <= a0 or b1 <= b0:
-                continue
             m[a0 - y0:a1 - y0, b0 - x0:b1 - x0] &= ~o.mask[a0 - oy0:a1 - oy0, b0 - ox0:b1 - ox0]
         return m, bool((m != r.mask).any())
 
@@ -1840,7 +1891,32 @@ def _resolve_overlaps(comp: str, regs: List[Optional[Roi]], q: List[float],
                 out[k] = Roi((r.bbox[0], r.bbox[1], r.bbox[0] + 1, r.bbox[1] + 1),
                              np.zeros((1, 1), bool), comp)
         kept.append(k)
+        kb[k] = out[k].bbox
+        live[k] = bool(out[k].mask.any())
     return out
+
+
+def _box_table(rois: Sequence[Optional[Roi]]) -> Tuple[np.ndarray, np.ndarray]:
+    """V4.0 speed: (boxes (N, 4), usable (N,) - not None and not empty) of a list of
+    ROIs, so the ROIs near one box are found with one vectorised test (_near)."""
+    bb = np.zeros((len(rois), 4), np.int64)
+    ok = np.zeros(len(rois), bool)
+    for j, r in enumerate(rois):
+        if r is not None:
+            bb[j] = r.bbox
+            ok[j] = bool(r.mask.any())
+    return bb, ok
+
+
+def _near(rois: Sequence[Optional[Roi]], table, box, skip: int) -> List[Roi]:
+    """The ROIs (in list order, `skip` left out) that are usable and share pixels
+    with box (y0, x0, y1, x1) - exactly the ones _paint_box(rois, box) paints."""
+    bb, ok = table
+    by0, bx0, by1, bx1 = box
+    hit = ok & (bb[:, 0] < by1) & (bb[:, 2] > by0) & (bb[:, 1] < bx1) & (bb[:, 3] > bx0)
+    if 0 <= skip < len(hit):
+        hit[skip] = False
+    return [rois[j] for j in np.flatnonzero(hit)]
 
 
 def _regrow(r: Roi, comp: str, plane: np.ndarray, n: int, side: Optional[np.ndarray],
@@ -1855,14 +1931,220 @@ def _regrow(r: Roi, comp: str, plane: np.ndarray, n: int, side: Optional[np.ndar
     allowed = ~_paint_box(list(others), box)
     if side is not None:
         allowed &= side[by0:by1, bx0:bx1]
-    sm = ndi.gaussian_filter(plane[by0:by1, bx0:bx1].astype(np.float32),
-                             max(SIGMA_MIN_PX, _px(SIGMA_UM.get(comp, 1.0), um)))
+    sm = _smooth(plane[by0:by1, bx0:bx1].astype(np.float32),
+                 max(SIGMA_MIN_PX, _px(SIGMA_UM.get(comp, 1.0), um)))
     g = _grow_bright(M, sm, allowed | M, int(n))
     out = _to_roi(g, by0, bx0)
     if out is None:
         return r
     out.kind = comp
     return out
+
+
+# ==========================================================================
+#  V4.0 speed: the cells of one frame side by side in worker processes
+# ==========================================================================
+# The per-cell work of a frame (the sub-pixel move, the redraw, the outlines for
+# display) is independent from cell to cell. With many cells it is split over a
+# few worker processes (threads do not help: the work is many small NumPy / SciPy
+# calls that hold Python's lock). Each worker runs the very same functions
+# (_sub_shift, _redraw, Roi._contours_now) on the very same pixels - it gets only
+# the window of the frame those functions read (_Win) - so every number is
+# bit-identical to one-by-one. The workers start once (on the first big track)
+# and are kept; if they cannot start or fail, the tracker works one by one.
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+TRACK_PROCS = _env_int("PETERPIPER_TRACK_PROCS", min(8, max(1, (os.cpu_count() or 2) // 2)))
+PROC_MIN_CELLS = _env_int("PETERPIPER_TRACK_PROC_MIN", 48)  # fewer tracked ROIs: one by one
+PROCS_WHEN_FROZEN = False     # an app bundle (PyInstaller) must call
+                              # multiprocessing.freeze_support() first, then set this
+_PROCS = None
+_PROCS_FAILED = False
+_PROCS_LOCK = threading.Lock()
+
+
+class _Win:
+    """A window of a big 2-D image (or of a (C, H, W) stack) that behaves like the
+    whole image for the tracker's per-cell functions: .shape is the whole image's
+    and slicing works inside the window (anything outside it is an error, never a
+    silent zero). A stack window takes [channel, ys, xs] (channel: int or :)."""
+    __slots__ = ("a", "y0", "x0", "shape", "dtype")
+
+    def __init__(self, img: np.ndarray, box) -> None:
+        y0, x0, y1, x1 = (int(v) for v in box)
+        self.a = np.ascontiguousarray(img[..., y0:y1, x0:x1])
+        self.y0, self.x0 = y0, x0
+        self.shape = tuple(img.shape)
+        self.dtype = img.dtype
+
+    def __getitem__(self, key):
+        ch = None
+        if len(key) == 3:
+            ch, ys, xs = key
+            if not (isinstance(ch, (int, np.integer)) or ch == slice(None)):
+                raise IndexError("a channel or every channel")
+        else:
+            ys, xs = key
+        h, w = self.a.shape[-2:]
+        if (ys.step not in (None, 1) or xs.step not in (None, 1) or ys.start < self.y0
+                or xs.start < self.x0 or ys.stop > self.y0 + h or xs.stop > self.x0 + w):
+            raise IndexError("outside the window sent to the worker")
+        ys = slice(ys.start - self.y0, ys.stop - self.y0)
+        xs = slice(xs.start - self.x0, xs.stop - self.x0)
+        return self.a[ys, xs] if ch is None else self.a[ch, ys, xs]
+
+
+@contextlib.contextmanager
+def _plain_main():
+    """While worker processes start: no __main__ module for them to run again
+    (a script's top level must not run in every worker)."""
+    old = sys.modules.get("__main__")
+    sys.modules["__main__"] = types.ModuleType("__main__")
+    try:
+        yield
+    finally:
+        if old is not None:
+            sys.modules["__main__"] = old
+
+
+def _ping() -> int:
+    time.sleep(0.3)
+    return os.getpid()
+
+
+def worker_pool():
+    """The tracker's worker processes (started once, kept), or None when there
+    are none (few CPUs, turned off with PETERPIPER_TRACK_PROCS=1, an app bundle
+    without freeze support, or they could not start)."""
+    global _PROCS, _PROCS_FAILED
+    if TRACK_PROCS <= 1 or _PROCS_FAILED:
+        return None
+    if getattr(sys, "frozen", False) and not PROCS_WHEN_FROZEN:
+        return None
+    with _PROCS_LOCK:
+        if _PROCS is None and not _PROCS_FAILED:
+            try:
+                import multiprocessing as mp
+                from concurrent.futures import ProcessPoolExecutor
+                ex = ProcessPoolExecutor(max_workers=TRACK_PROCS,
+                                         mp_context=mp.get_context("spawn"))
+                with _plain_main():                    # every worker starts now
+                    futs = [ex.submit(_ping) for _ in range(TRACK_PROCS)]
+                for f in futs:
+                    f.result(timeout=180)
+                _PROCS = ex
+            except Exception:                          # noqa: BLE001
+                _PROCS_FAILED = True
+        return _PROCS
+
+
+def warm_up_workers() -> None:
+    """Start the tracker's worker processes now (e.g. in a background thread when
+    a movie opens), so the first big track does not wait for them (~2 s)."""
+    worker_pool()
+
+
+def _drop_pool() -> None:
+    global _PROCS, _PROCS_FAILED
+    with _PROCS_LOCK:
+        ex, _PROCS, _PROCS_FAILED = _PROCS, None, True
+    if ex is not None:
+        try:
+            ex.shutdown(wait=False, cancel_futures=True)
+        except Exception:                              # noqa: BLE001
+            pass
+
+
+def _job_shift(tasks) -> list:
+    return [(k, _sub_shift(a, b, bbox, mg)) for k, a, b, bbox, mg in tasks]
+
+
+def _redraw_two(g, pred: Roi, comp: str, level: float, um: float, mg: int, rivals, walls,
+                ref, tol: float, side, gm, levm):
+    """One cell's redraw in this frame (and, for a V3.0 helper rule, its redraw on
+    the main channel alone: gm / levm)."""
+    reg = _redraw(g, pred, comp, level, um, mg, rivals, walls, ref, tol, side)
+    regm = None if gm is None else _redraw(gm, pred, comp, levm, um, mg, rivals, walls,
+                                           ref, tol, side)
+    return reg, regm
+
+
+def _job_redraw(tasks) -> list:
+    return [(t[0],) + _redraw_two(*t[1:]) for t in tasks]
+
+
+def _job_edge(tasks) -> list:
+    return [(k, c, _edge_level(g, reg, c, um)) for k, c, g, reg, um in tasks]
+
+
+def _trim_one(md: str, r: Roi, stack, rl, norm, um: float, v: float, comp: str) -> Roi:
+    """An AND (v = overlap_k) / WITH (v = edge level) rule's measured ROI."""
+    from . import rules as RL
+    if md == "and":
+        return RL.apply_and(r, stack, rl, norm, um, v)
+    return RL.apply_with(r, stack, rl, norm, um, v, comp)
+
+
+def _job_trim(tasks) -> list:
+    return [(k, c, _trim_one(md, r, win, rl, norm, um, v, c))
+            for k, c, md, r, win, rl, norm, um, v in tasks]
+
+
+def _bbox_pixels(stack: np.ndarray, r: Roi) -> np.ndarray:
+    """(C, h, w) copy of the stack under the ROI's box (what _measure reads)."""
+    y0, x0, y1, x1 = r.bbox
+    return np.ascontiguousarray(stack[:, y0:y1, x0:x1])
+
+
+def _record_one(r: Roi, px: np.ndarray, sat: int, outline: bool):
+    """_measure of the ROI on its box's pixels px (the same pixels, the same sums)
+    and its outlines for display (or None)."""
+    h, w = px.shape[1:]
+    mu, a, ns, s = _measure(px, Roi((0, 0, h, w), r.mask, r.kind), sat)
+    return mu, a, ns, s, (r._contours_now() if outline else None)
+
+
+def _job_record(tasks) -> list:
+    return [_record_one(*tk[3:]) for tk in tasks]
+
+
+def _send_chunks(pool, fn, tasks: list) -> Optional[list]:
+    """fn(chunk) started in the worker processes for chunks of tasks, not waited
+    for: [(chunk, future)], or None if they could not take it."""
+    if pool is None or not tasks:
+        return None
+    n = min(len(tasks), 3 * TRACK_PROCS)
+    size = -(-len(tasks) // n)
+    try:
+        return [(tasks[i:i + size], pool.submit(fn, tasks[i:i + size]))
+                for i in range(0, len(tasks), size)]
+    except RuntimeError:                               # broken / shut down
+        _drop_pool()
+        return None
+
+
+def _in_workers(pool, fn, tasks: list) -> Optional[list]:
+    """fn(chunk) for chunks of tasks in the worker processes, the results in task
+    order; None if the workers broke down (the caller then works one by one)."""
+    if pool is None or not tasks:
+        return None
+    from concurrent.futures.process import BrokenProcessPool
+    n = min(len(tasks), 3 * TRACK_PROCS)
+    size = -(-len(tasks) // n)
+    try:
+        futs = [pool.submit(fn, tasks[i:i + size]) for i in range(0, len(tasks), size)]
+        out: list = []
+        for f in futs:
+            out.extend(f.result())
+        return out
+    except (BrokenProcessPool, RuntimeError):         # broken / shut down: one by one
+        _drop_pool()
+        return None
 
 
 class _FullFrames:
@@ -2002,7 +2284,12 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
     # each cell's movement is measured around its ROI of the first 'Follow' row
     anchor = [next((c for c in list(lead) + list(COMPS) if c in cell), None) for cell in cells]
     order_c = [c for c in COMPS if c in comps]            # nucleus first: others need it
-    pool = ThreadPoolExecutor(max_workers=3)              # frames are read ahead
+    # frames are read ahead (V4.0 speed: by ONE thread, in order - a hard disk reads
+    # one frame after the other about twice as fast as three frames at once)
+    pool = ThreadPoolExecutor(max_workers=1)
+    # V4.0 speed: many cells -> their per-frame work in the worker processes
+    n_pairs = sum(1 for k, cell in enumerate(cells) for c in cell if act(c, k))
+    procs = worker_pool() if n_pairs >= PROC_MIN_CELLS else None
     first = frames.get(int(t0))
     # tracking rules (None = V2.2): every rule follows on channel A (the ONLY outline)
     RL, rule_of, norm = None, {}, None
@@ -2039,6 +2326,8 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             for lst, name in ((if_comps, "if"), (help_comps, "help"), (and_comps, "and")):
                 if m == name and c not in lst:
                     lst.append(c)
+    a_of = {(c, k): RL._ab(rule_ck(c, k), C)[0] for k, cell in enumerate(cells) for c in cell
+            if RL is not None and rule_ck(c, k) is not None}     # channel A of each pair
     gate: Dict[str, Dict[int, float]] = {c: {} for c in if_comps}
     gcache: list = []                                     # [(frame, key, helper image)]
     hsnr: Dict[str, Dict[int, dict]] = {c: {} for c in help_comps}
@@ -2051,7 +2340,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         if rl is None:
             ch = min(int(getattr(r, "channel", 0)), C - 1)
             return stack[ch], ch
-        a = RL._ab(rl, C)[0]
+        a = a_of[(c, k)]
         if mode[(c, k)] != "help":
             return stack[a], a
         key = (RL.guide_key(rl, C), frames.version(stack))
@@ -2084,8 +2373,20 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     frames.ensure(first, _box(r.bbox, pair_pad(marg_of[(c, k)], ref_area[k][c],
                                                                um, c, True), H, W))
     # the edge level of every ROI, from the frame you clicked on (channel A)
-    level = [{c: _edge_level(plane(first, {}, c, r, k)[0], _region(r), c, um)
-              for c, r in cell.items() if act(c, k)} for k, cell in enumerate(cells)]
+    level = [dict() for _ in cells]
+    e_tasks = [(k, c, plane(first, {}, c, r, k)[0], _region(r))
+               for k, cell in enumerate(cells) for c, r in cell.items() if act(c, k)]
+    got = None
+    if procs is not None and len(e_tasks) >= PROC_MIN_CELLS:   # (in the workers: windows)
+        epad = int(_px(EDGE_PAD_UM, um))
+        got = _in_workers(procs, _job_edge, [
+            (k, c, _Win(g, _box(reg.bbox, epad, *g.shape)), reg, um)
+            for k, c, g, reg in e_tasks])
+    if got is None:
+        got = [(k, c, _edge_level(g, reg, c, um)) for k, c, g, reg in e_tasks]
+    for k, c, v in got:
+        level[k][c] = v
+    del e_tasks, got
     # V3.0 helpers: the main channel's own edge level too (the 1 um guard)
     level_main = [{c: _edge_level(first[RL._ab(rule_ck(c, k), C)[0]], _region(r), c, um)
                    for c, r in cell.items() if mode[(c, k)] == "help" and act(c, k)}
@@ -2109,20 +2410,59 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         else:
             holes.append(None)
     done = [0]
+    pending: list = []                                    # V4.0 speed: [(tasks, future)]
     disturbed: set = set()
     trim_now: Dict[Tuple[str, int], bool] = {}
 
+    def put(t: int, c: str, k: int, r: Roi, got) -> None:
+        mu, a, ns, s, ct = got
+        mean[c][t, :, k], area[c][t, k], nsat[c][t, :, k] = mu, a, ns
+        total[c][t, :, k] = s
+        if ct is not None:
+            r.set_contours(ct)
+
+    # the pixels an AND / WITH trim reads around an ROI (rules.overlap_mask / with_mask)
+    trim_pad = int(max(2, _px(RING_UM, um))) + int(np.ceil(3 * max(
+        [0.5, _px(RL.AND_SIGMA_UM, um) if RL is not None else 0.5]
+        + [max(SIGMA_MIN_PX, _px(SIGMA_UM.get(c, 1.0), um)) for c in comps]))) + 1
+
+    def flush(wait: bool) -> None:
+        """Fill in what the workers have measured (all of it: wait=True)."""
+        keep = []
+        for chunk, fut in pending:
+            if not wait and not fut.done():
+                keep.append((chunk, fut))
+                continue
+            try:
+                got = fut.result()
+            except Exception:                             # noqa: BLE001
+                got = [_record_one(*tk[3:]) for tk in chunk]   # (workers failed: here)
+            for tk, g in zip(chunk, got):
+                put(tk[0], tk[1], tk[2], tk[3], g)
+        pending[:] = keep
+
     def record(t: int, stack: np.ndarray, cur, q) -> None:
-        for k, cell in enumerate(cur):
-            for c, r in cell.items():
-                if not act(c, k):
-                    continue
-                mu, a, ns, s = _measure(stack, r, sat_level)
-                mean[c][t, :, k], area[c][t, k], nsat[c][t, :, k] = mu, a, ns
-                total[c][t, :, k] = s
-                qual[c][t, k] = q[k].get(c, 1.0)
-                r.contours()                              # ready for smooth display
-                rois[c][t][k] = r
+        flush(False)
+        live = [(c, k, r) for k, cell in enumerate(cur) for c, r in cell.items() if act(c, k)]
+        for c, k, r in live:
+            qual[c][t, k] = q[k].get(c, 1.0)
+            rois[c][t][k] = r
+        # the measurements, and the outlines ready for smooth display: with many
+        # cells made by the workers while the next frames are tracked (the same
+        # _measure on the ROI's own pixels), filled in at the end
+        tasks = None
+        if procs is not None and len(live) >= PROC_MIN_CELLS:
+            tasks = [(t, c, k, r, _bbox_pixels(stack, r), sat_level, not r.has_contours())
+                     for c, k, r in live]
+            sent = _send_chunks(procs, _job_record, tasks)
+            if sent is not None:
+                pending.extend(sent)
+            else:
+                tasks = None
+        if tasks is None:
+            for c, k, r in live:
+                put(t, c, k, r, _measure(stack, r, sat_level) + (None,))
+                r.contours()
         # the background of this timepoint (measured once its neighbours are in)
         if meter is not None:
             bg_jobs.append(bg_pool.submit(meter.add, t, stack, meter.roi_mask(
@@ -2140,21 +2480,23 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         stay whole, for the next frame and the neighbours)."""
         if not any(m in ("and", "with") for m in mode.values()):
             return cur
-        out = []
-        for k, cell in enumerate(cur):
-            d = dict(cell)
-            for c in order_c:
-                if c not in d or mode.get((c, k)) not in ("and", "with") or not act(c, k):
-                    continue
-                rl = rule_ck(c, k)
-                if mode[(c, k)] == "and":
-                    d[c] = RL.apply_and(d[c], stack, rl, norm, um, overlap_k)
-                else:
-                    d[c] = RL.apply_with(d[c], stack, rl, norm, um,
-                                         lev_with[k].get(c, 0.5), c)
-                if not d[c].mask.any():
-                    q[k][c] = 0.3                         # nothing left: NaN
-            out.append(d)
+        out = [dict(cell) for cell in cur]
+        tasks = [(k, c, mode[(c, k)], out[k][c], rule_ck(c, k),
+                  overlap_k if mode[(c, k)] == "and" else lev_with[k].get(c, 0.5))
+                 for k in range(len(out)) for c in order_c
+                 if c in out[k] and mode.get((c, k)) in ("and", "with") and act(c, k)]
+        got = None
+        if procs is not None and len(tasks) >= PROC_MIN_CELLS:   # (workers: windows)
+            got = _in_workers(procs, _job_trim, [
+                (k, c, md, r, _Win(stack, _box(r.bbox, trim_pad, *stack.shape[1:])), rl, norm,
+                 um, v) for k, c, md, r, rl, v in tasks])
+        if got is None:
+            got = [(k, c, _trim_one(md, r, stack, rl, norm, um, v, c))
+                   for k, c, md, r, rl, v in tasks]
+        for k, c, r in got:
+            out[k][c] = r
+            if not r.mask.any():
+                q[k][c] = 0.3                             # nothing left: NaN
         return out
 
     def outline_all(stack: np.ndarray, cur, q, pred, first_frame: bool, hole, t: int):
@@ -2164,9 +2506,12 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             regions = [(_region(p[c]) if c in p else None) for p in pred]
             before = [(_region(cell[c]) if c in cell else None) for cell in cur]
             nuclei_now = [n.get("nucleus") for n in new]
+            reg_tab = _box_table(regions)                 # V4.0 speed: neighbours by box
+            nuc_tab = _box_table(nuclei_now) if c != "nucleus" else None
             regs: List[Optional[Roi]] = [None] * N
             chans, planes = [0] * N, [None] * N
             kept: Dict[int, Roi] = {}
+            tasks = []                                    # (k, _redraw_two arguments)
             for k, p in enumerate(pred):
                 if c not in p:
                     continue
@@ -2175,13 +2520,37 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                     q[k][c] = rp.quality(c, t, k)
                     continue
                 g, ch = plane(stack, {}, c, p[c], k)
+                chans[k], planes[k] = ch, g
                 mg = marg_of[(c, k)]
-                walls = [] if c == "nucleus" else \
-                    [nuclei_now[j] for j in range(N) if j != k and nuclei_now[j] is not None]
+                # only the neighbours / other nuclei _redraw can see (its own window)
+                rbox = _box(regions[k].bbox, mg + int(_px(RING_UM, um)), *g.shape)
+                rivals = _near(regions, reg_tab, rbox, k)
+                walls = [] if c == "nucleus" else _near(nuclei_now, nuc_tab, rbox, k)
                 tol = min(FIRST_FRAME_TOL, tol_of[(c, k)]) if first_frame else tol_of[(c, k)]
-                reg = _redraw(g, regions[k], c, lev[k][c],
-                              um, mg, regions[:k] + regions[k + 1:], walls,
-                              ref_area[k].get(c), tol, sides[k])
+                gm = stack[a_of[(c, k)]] if mode[(c, k)] == "help" else None
+                tasks.append([k, g, regions[k], c, lev[k][c], um, mg, rivals, walls,
+                              ref_area[k].get(c), tol, sides[k], gm,
+                              levm[k][c] if gm is not None else None, rbox])
+            got = None
+            if procs is not None and len(tasks) >= PROC_MIN_CELLS:
+                for tk in tasks:                          # each worker gets its windows only
+                    rbox = tk.pop()
+                    tk[1] = _Win(tk[1], rbox)
+                    tk[11] = _Win(tk[11], rbox) if tk[11] is not None else None
+                    tk[12] = _Win(tk[12], rbox) if tk[12] is not None else None
+                got = _in_workers(procs, _job_redraw, tasks)
+                if got is None:                           # (workers failed: one by one)
+                    for tk in tasks:
+                        tk[1] = planes[tk[0]]
+                        tk[11] = sides[tk[0]]
+                        tk[12] = stack[a_of[(c, tk[0])]] \
+                            if tk[12] is not None else None
+            else:
+                for tk in tasks:
+                    tk.pop()
+            if got is None:
+                got = [(tk[0],) + _redraw_two(*tk[1:]) for tk in tasks]
+            for k, reg, regm in got:
                 # the clicked frame keeps your shape if its redraw fails (0.9)
                 q[k][c] = 1.0 if reg is not None else (0.9 if first_frame else 0.3)
                 if reg is None:
@@ -2189,14 +2558,10 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
                 elif getattr(reg, "fit_level", None) is not None:
                     lev[k][c] = float(reg.fit_level)
                 if mode[(c, k)] == "help":                # V3.0: stay near the main outline
-                    a_ch = RL._ab(rule_ck(c, k), C)[0]
-                    regm = _redraw(stack[a_ch], regions[k], c, levm[k][c],
-                                   um, mg, regions[:k] + regions[k + 1:], walls,
-                                   ref_area[k].get(c), tol, sides[k])
                     if regm is not None and getattr(regm, "fit_level", None) is not None:
                         levm[k][c] = float(regm.fit_level)
                     reg = RL.help_guard(reg, regm if regm is not None else regions[k], um)
-                regs[k], chans[k], planes[k] = reg, ch, g
+                regs[k] = reg
             fewest = [size_limits(ref_area[k][c], min(FIRST_FRAME_TOL, tol_of[(c, k)])
                                   if first_frame else tol_of[(c, k)])[0]
                       if c in ref_area[k] else None for k in range(N)]
@@ -2237,20 +2602,40 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
             if prev is not None:
                 # 1  movement -> predicted position of every ROI
                 pred = []
+                movers = [k for k in range(N) if anchor[k] is not None and act(anchor[k], k)]
+                if frames.sparse:                         # the pixels every move needs
+                    for k in movers:
+                        box = _box(cur[k][anchor[k]].bbox,
+                                   marg_of[(anchor[k], k)] + SHIFT_PAD_PX + 1, H, W)
+                        frames.ensure(prev, box)
+                        frames.ensure(stack, box)
+                moves = None
+                if procs is not None and len(movers) >= PROC_MIN_CELLS:
+                    tasks = []
+                    for k in movers:
+                        key, mg = anchor[k], marg_of[(anchor[k], k)]
+                        bb = cur[k][key].bbox
+                        g_prev = plane(prev, {}, key, cur[k][key], k)[0]
+                        g_now = plane(stack, {}, key, cur[k][key], k)[0]
+                        sbox = _box(bb, mg + SHIFT_PAD_PX, *g_now.shape)   # what it reads
+                        tasks.append((k, _Win(g_prev, sbox), _Win(g_now, sbox), bb, mg))
+                    got = _in_workers(procs, _job_shift, tasks)
+                    del tasks
+                    moves = dict(got) if got is not None else None
+                if moves is None:
+                    moves = {}
+                    for k in movers:
+                        key = anchor[k]
+                        moves[k] = _sub_shift(plane(prev, {}, key, cur[k][key], k)[0],
+                                              plane(stack, {}, key, cur[k][key], k)[0],
+                                              cur[k][key].bbox, marg_of[(key, k)])
                 for k, cell in enumerate(cur):
                     key = anchor[k]
                     if key is None:
                         pred.append({})
                         continue
                     if act(key, k):
-                        mg = marg_of[(key, k)]
-                        if frames.sparse:
-                            box = _box(cell[key].bbox, mg + SHIFT_PAD_PX + 1, H, W)
-                            frames.ensure(prev, box)
-                            frames.ensure(stack, box)
-                        g_prev = plane(prev, {}, key, cell[key], k)[0]
-                        g_now = plane(stack, {}, key, cell[key], k)[0]
-                        dy, dx = _sub_shift(g_prev, g_now, cell[key].bbox, mg)
+                        dy, dx = moves[k]
                         acc[k][0] += dy
                         acc[k][1] += dx
                         iy, ix = int(round(acc[k][0])), int(round(acc[k][1]))
@@ -2303,6 +2688,7 @@ def track_cells(src, exp, cells: Sequence[Dict[str, Roi]], background: Roi, t0: 
         run(list(range(t0, T)), False)               # the clicked timepoint, then forwards
         if t0 > 0:
             run(list(range(t0, -1, -1)), True)        # and backwards to the start
+        flush(True)                                   # what the workers measured meanwhile
         for j in bg_jobs:
             j.result()                                # an error in the meter surfaces here
         if meter is not None:

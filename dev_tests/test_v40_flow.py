@@ -226,6 +226,16 @@ def part_a_b_c_d_e(w):
     ok("C zoomed far out the badges still show, compact ('22×': number only)",
        len(lay_) >= 4 and all(s[0][0] == "" and s[0][1].endswith("×") for _k, _r, s in lay_),
        f"{len(lay_)} shown, e.g. {lay_[0][2][0][1] if lay_ else ''}")
+    from PySide6.QtCore import QPointF, QRectF
+    vb_ = w.view.vb
+    o_, e_ = vb_.mapFromView(QPointF(0, 0)), vb_.mapFromView(QPointF(1, 1))
+    y0, x0, y1, x1 = w.background.bbox
+    bg_r = QRectF(o_.x() + x0 * (e_.x() - o_.x()), o_.y() + y0 * (e_.y() - o_.y()),
+                  (x1 - x0) * (e_.x() - o_.x()), (y1 - y0) * (e_.y() - o_.y()))
+    lab_r = QRectF(bg_r.left(), bg_r.top() - 30, 110, 30)
+    bad_ = [r for _k, r, _s in lay_ if r.intersects(lab_r)
+            or (r.intersects(bg_r) and not bg_r.contains(r))]
+    ok("C ... none on the background's label or across its outline", not bad_, len(bad_))
     w.view.fit()
     pump(0.2)
     w.cmb_badges.setCurrentIndex(w.cmb_badges.findData("numbers"))

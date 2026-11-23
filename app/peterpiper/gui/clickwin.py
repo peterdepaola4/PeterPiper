@@ -5276,6 +5276,7 @@ class ClickWindow(QMainWindow):
                         src.close()
                     except Exception:                              # noqa: BLE001
                         pass
+                reader.release()                     # (never opened: its pin goes)
             # what happens even when the window has closed meanwhile
             try:
                 from .. import outlog                # V2.8: the log of every save
@@ -5303,6 +5304,7 @@ class ClickWindow(QMainWindow):
 
         def done(t) -> None:
             self._bg_tasks.discard(t)
+            reader.release()                       # (a job cancelled before it started)
             if self._closed:
                 return
             try:
@@ -5352,7 +5354,10 @@ class ClickWindow(QMainWindow):
                     finally:
                         transfers.unpin(local)
 
+            state = {"made": False, "released": False}
+
             def make():
+                state["made"] = True
                 try:
                     s = open_source(local)
                 except BaseException:
@@ -5361,9 +5366,21 @@ class ClickWindow(QMainWindow):
                 if pos:
                     s.position = pos
                 return _Pinned(s), True
+
+            def release() -> None:
+                """The job ended without opening its reader (cancelled before it
+                started): its pin goes too."""
+                if not state["made"] and not state["released"]:
+                    state["released"] = True
+                    transfers.unpin(local)
+            make.release = release
             return make
         shared = self.src
-        return lambda: (shared, False)
+
+        def make_shared():
+            return shared, False
+        make_shared.release = lambda: None
+        return make_shared
 
     def bg_busy(self) -> bool:
         """4.0: a background task of this window (export, TIFFs) has not reported back
@@ -6198,6 +6215,7 @@ class ClickWindow(QMainWindow):
 
         def done(t) -> None:
             self._bg_tasks.discard(t)
+            reader.release()                       # (a job cancelled before it started)
             if self._closed:
                 return
             try:

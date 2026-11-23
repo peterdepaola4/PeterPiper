@@ -401,6 +401,16 @@ class _BadgeLayer(QGraphicsObject):
         # would cover another badge or ROI
         far = float(np.median(Rs - Ls)) < self.TINY
         To = Ts - h - self.GAP                              # each ROI with its number
+        # the chosen background: badges keep off its 'Background' label and its outline
+        bgr = getattr(v, "_background", None)
+        avoid = []
+        if bgr is not None:
+            y0, x0, y1, x1 = (float(q) for q in bgr.bbox)
+            bL, bR, bT, bB = o.x() + x0 * sx, o.x() + x1 * sx, o.y() + y0 * sy, o.y() + y1 * sy
+            lw = self.width_of("Background", True) * 1.35 + 12
+            lh = h * 1.5
+            avoid.append(("label", bL - 2, bT - lh - 4, bL + lw, bT + 2))
+            avoid.append(("outline", bL, bT, bR, bB))
         n = len(self.entries)
         P = np.empty((n, 4))                                # placed badges: l, t, r, b
         k_placed = 0
@@ -430,6 +440,15 @@ class _BadgeLayer(QGraphicsObject):
                 hit = (Ls < r) & (l < Rs) & (To < b) & (t < Bs)
                 hit[i] = False
                 if hit.any():
+                    continue
+                bad = False
+                for kind, al, at, ar, ab in avoid:
+                    if al < r and l < ar and at < b and t < ab:          # touches it
+                        if kind == "label":
+                            bad = True
+                        elif not (l > al + 3 and r < ar - 3 and t > at + 3 and b < ab - 3):
+                            bad = True                               # crosses the outline
+                if bad:
                     continue
                 if k_placed:
                     q = P[:k_placed]

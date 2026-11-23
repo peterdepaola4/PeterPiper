@@ -274,6 +274,24 @@ def part_e():
        transfers._pinned.get(k) == 1)
     transfers.unpin(p)
     ok("E ... released after the second", k not in transfers._pinned)
+    # an export / TIFF job cancelled before it started: its pin is released too
+    from peterpiper.nd2io import ND2Source
+    w = window("movie_pin")
+    real_src = w.src
+    fake = ND2Source.__new__(ND2Source)
+    fake.position = 0
+    w.src = fake
+    w._local_movie = str(OUT / "pinned_movie.nd2")
+    kk = transfers._key(w._local_movie)
+    reader = w._reader_factory()
+    pinned = transfers._pinned.get(kk, 0)
+    reader.release()
+    ok("E a job cancelled before it opened its reader releases its pin",
+       pinned == 1 and kk not in transfers._pinned, pinned)
+    w.src = real_src
+    w._dirty = False
+    w.close()
+    pump(0.2)
 
 
 def part_f():

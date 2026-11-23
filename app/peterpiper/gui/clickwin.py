@@ -953,6 +953,10 @@ class ClickWindow(QMainWindow):
             self._dock.hide()
         elif self.track is not None or self._busy_now():
             self._show_traces()
+            if not self._dock.isFloating():       # 4.0: the graph builder gets the room
+                share = 0.46 if k == P_GRAPHS else 0.33
+                QTimer.singleShot(0, lambda s=share: self.resizeDocks(
+                    [self._dock], [int(self.width() * s)], Qt.Horizontal))
 
     # ------------------------------------------------------- 4.0 page header
     def _build_toolbar(self) -> None:
